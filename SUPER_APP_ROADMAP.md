@@ -111,7 +111,7 @@ Ngành ưu tiên:
 - [x] UI quản lý ủy quyền tối ưu cho từng account.
 - [x] UI lịch sử sync dữ liệu gần nhất.
 - [x] UI danh sách recommendation ở trạng thái nháp.
-- [ ] Nút duyệt/từ chối recommendation.
+- [x] Nút duyệt/từ chối recommendation.
 
 ### Phase B - Optimization Action Center
 
@@ -120,6 +120,7 @@ Ngành ưu tiên:
 - [ ] Action types: tăng ngân sách, giảm ngân sách, tạm dừng để kiểm tra, nhân bản winner, tạo creative mới.
 - [ ] Confirm modal trước khi áp dụng.
 - [ ] Kiểm tra authorization trước khi gọi Meta.
+- [x] Kiểm tra authorization trước khi gọi Meta.
 - [ ] Log action vào Supabase.
 - [ ] Không áp dụng nếu vượt giới hạn ủy quyền.
 

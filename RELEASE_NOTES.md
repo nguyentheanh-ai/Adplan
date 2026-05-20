@@ -84,3 +84,22 @@
 - `npm.cmd run lint`: pass.
 - `npm.cmd test`: pass.
 - `npm.cmd run build`: pass.
+
+## 2026-05-21 - Recommendation approval gate
+
+### Đã bổ sung
+
+- Thêm `PATCH /api/optimization/recommendations` để duyệt, từ chối hoặc mở lại khuyến nghị.
+- Thêm `PUT /api/optimization/recommendations` để apply có kiểm soát:
+  - bắt buộc recommendation đã được duyệt,
+  - bắt buộc account đã bật ủy quyền,
+  - bắt buộc loại hành động nằm trong phạm vi được phép,
+  - các hành động chưa có API an toàn sẽ ghi nhận dạng proposal-only thay vì fake apply.
+- UI `Tối ưu Ads` có nút `Duyệt`, `Từ chối`, `Mở lại`, `Áp dụng`.
+
+### Kiểm tra đã chạy
+
+- `npm.cmd run typecheck`: pass.
+- `npm.cmd run lint`: pass.
+- `npm.cmd test`: pass.
+- `npm.cmd run build`: pass.

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppSession } from "@/lib/auth/session";
+import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
+import { metaErrorResponse, updateMetaBudget } from "@/lib/meta/facebook";
 import type { CreativePerformance, NormalizedCampaignPerformance } from "@/lib/meta/types";
 import { buildOptimizationRecommendations } from "@/lib/optimization/recommendations";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -163,4 +165,112 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data: data ?? [] });
+}
+
+export async function PATCH(request: Request) {
+  const session = await getAppSession();
+  if (!session) return NextResponse.json({ error: "Bạn cần đăng nhập Facebook." }, { status: 401 });
+
+  const body = (await request.json().catch(() => ({}))) as {
+    recommendation_id?: string;
+    status?: "approved" | "rejected" | "draft";
+  };
+  if (!body.recommendation_id || !body.status) {
+    return NextResponse.json({ error: "Thiếu recommendation_id hoặc status." }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("optimization_recommendations")
+    .update({
+      status: body.status,
+      approved_by: body.status === "approved" ? session.name || session.facebookId : null,
+      approved_at: body.status === "approved" ? new Date().toISOString() : null
+    })
+    .eq("id", body.recommendation_id)
+    .eq("user_id", session.userId)
+    .select("*")
+    .single();
+
+  if (error) {
+    if (isMissingTable(error)) return NextResponse.json({ error: "Chưa có bảng optimization_recommendations." }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ data });
+}
+
+export async function PUT(request: Request) {
+  const session = await getAppSession();
+  if (!session) return NextResponse.json({ error: "Bạn cần đăng nhập Facebook." }, { status: 401 });
+
+  try {
+    const body = (await request.json().catch(() => ({}))) as { recommendation_id?: string };
+    if (!body.recommendation_id) return NextResponse.json({ error: "Thiếu recommendation_id." }, { status: 400 });
+
+    const admin = createAdminClient();
+    const { data: recommendation, error } = await admin
+      .from("optimization_recommendations")
+      .select("*")
+      .eq("id", body.recommendation_id)
+      .eq("user_id", session.userId)
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!recommendation) return NextResponse.json({ error: "Không tìm thấy khuyến nghị." }, { status: 404 });
+    if (recommendation.status !== "approved") {
+      return NextResponse.json({ error: "Khuyến nghị cần được duyệt trước khi áp dụng." }, { status: 400 });
+    }
+
+    const { data: authorization, error: authError } = await admin
+      .from("optimization_authorizations")
+      .select("*")
+      .eq("user_id", session.userId)
+      .eq("ad_account_id", recommendation.ad_account_id)
+      .maybeSingle();
+    if (authError) return NextResponse.json({ error: authError.message }, { status: 500 });
+    if (!authorization || authorization.status !== "enabled") {
+      return NextResponse.json({ error: "Tài khoản này chưa bật ủy quyền tối ưu." }, { status: 403 });
+    }
+
+    const allowedActions = Array.isArray(authorization.allowed_actions) ? authorization.allowed_actions : [];
+    if (!allowedActions.includes(recommendation.recommendation_type)) {
+      return NextResponse.json({ error: "Loại hành động này chưa nằm trong phạm vi khách ủy quyền." }, { status: 403 });
+    }
+
+    const actionPayload = (recommendation.action_payload ?? {}) as Record<string, unknown>;
+    let result: unknown = {
+      status: "proposal_only",
+      message: "Hành động này đã được duyệt nhưng chưa có API apply tự động an toàn. App giữ ở dạng proposal để khách xử lý thủ công."
+    };
+
+    if (recommendation.recommendation_type === "scale_budget" && typeof actionPayload.new_daily_budget === "string") {
+      const accessToken = await requireFacebookProviderToken();
+      result = await updateMetaBudget({
+        objectId: recommendation.entity_id,
+        dailyBudget: actionPayload.new_daily_budget,
+        accessToken
+      });
+    }
+
+    const { data: updated, error: updateError } = await admin
+      .from("optimization_recommendations")
+      .update({
+        status: "applied",
+        applied_at: new Date().toISOString(),
+        evidence_json: {
+          ...(recommendation.evidence_json ?? {}),
+          apply_result: result
+        }
+      })
+      .eq("id", recommendation.id)
+      .eq("user_id", session.userId)
+      .select("*")
+      .single();
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+    return NextResponse.json({ data: updated, result });
+  } catch (error) {
+    const response = metaErrorResponse(error);
+    return NextResponse.json(response.body, { status: response.status === 500 ? 400 : response.status });
+  }
 }

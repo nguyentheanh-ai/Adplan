@@ -234,6 +234,30 @@ export function OptimizationCenterClient() {
     }).catch((error: Error) => toast.error(error.message));
   }
 
+  async function updateRecommendationStatus(recommendationId: string, status: "approved" | "rejected" | "draft") {
+    await withProgress(status === "approved" ? "Đang duyệt khuyến nghị..." : "Đang cập nhật khuyến nghị...", async () => {
+      const payload = await readJson<{ data: Recommendation }>("/api/optimization/recommendations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recommendation_id: recommendationId, status })
+      });
+      setRecommendations((current) => current.map((item) => (item.id === recommendationId ? payload.data : item)));
+      toast.success(status === "approved" ? "Đã duyệt khuyến nghị." : "Đã cập nhật khuyến nghị.");
+    }).catch((error: Error) => toast.error(error.message));
+  }
+
+  async function applyRecommendation(recommendationId: string) {
+    await withProgress("Đang kiểm tra ủy quyền và áp dụng an toàn...", async () => {
+      const payload = await readJson<{ data: Recommendation; result?: { message?: string; status?: string } }>("/api/optimization/recommendations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recommendation_id: recommendationId })
+      });
+      setRecommendations((current) => current.map((item) => (item.id === recommendationId ? payload.data : item)));
+      toast.success(payload.result?.message || "Đã áp dụng hoặc ghi nhận proposal.");
+    }).catch((error: Error) => toast.error(error.message));
+  }
+
   function toggleAction(value: string) {
     const current = authorization?.allowed_actions ?? [];
     const next = current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
@@ -383,9 +407,28 @@ export function OptimizationCenterClient() {
                     {item.expected_impact ? <p className="mt-2 text-sm font-semibold text-primary">{item.expected_impact}</p> : null}
                     <p className="mt-2 text-xs text-outline">{item.entity_name || item.entity_id}</p>
                   </div>
-                  <Button disabled title={enabled ? "Bước tiếp theo sẽ thêm confirm và API apply an toàn." : "Cần bật ủy quyền trước khi áp dụng."}>
-                    Áp dụng sau khi duyệt
-                  </Button>
+                  <div className="flex flex-wrap gap-2 md:justify-end">
+                    {item.status === "draft" ? (
+                      <>
+                        <Button variant="secondary" onClick={() => void updateRecommendationStatus(item.id, "rejected")} disabled={Boolean(busyLabel)}>
+                          Từ chối
+                        </Button>
+                        <Button onClick={() => void updateRecommendationStatus(item.id, "approved")} disabled={Boolean(busyLabel)}>
+                          Duyệt
+                        </Button>
+                      </>
+                    ) : null}
+                    {item.status === "approved" ? (
+                      <Button onClick={() => void applyRecommendation(item.id)} disabled={Boolean(busyLabel) || !enabled} title={enabled ? "Áp dụng trong phạm vi đã ủy quyền." : "Cần bật ủy quyền trước khi áp dụng."}>
+                        Áp dụng
+                      </Button>
+                    ) : null}
+                    {item.status === "rejected" ? (
+                      <Button variant="secondary" onClick={() => void updateRecommendationStatus(item.id, "draft")} disabled={Boolean(busyLabel)}>
+                        Mở lại
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             )) : (
