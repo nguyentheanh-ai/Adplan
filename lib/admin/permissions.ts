@@ -37,6 +37,35 @@ function parseAdminFacebookUsernames() {
   );
 }
 
+async function assignOwnerPermission(userId: string, facebookId: string) {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("admin_user_permissions")
+    .upsert(
+      {
+        user_id: userId,
+        facebook_id: facebookId,
+        role: "owner",
+        locked_sections: []
+      },
+      { onConflict: "user_id" }
+    )
+    .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
+    .single<AdminUserPermission>();
+
+  return (
+    data ?? {
+      id: "owner-fallback",
+      user_id: userId,
+      facebook_id: facebookId,
+      role: "owner" as UserRole,
+      locked_sections: [],
+      created_at: new Date(0).toISOString(),
+      updated_at: new Date(0).toISOString()
+    }
+  );
+}
+
 export async function getCurrentPermission() {
   const session = await getAppSession();
   if (!session) return null;
@@ -50,6 +79,27 @@ export async function getCurrentPermission() {
 
   if (data) return data;
 
+  if (session.facebookId) {
+    const { data: byFacebookId } = await admin
+      .from("admin_user_permissions")
+      .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
+      .eq("facebook_id", session.facebookId)
+      .maybeSingle<AdminUserPermission>();
+
+    if (byFacebookId) {
+      if (byFacebookId.user_id !== session.userId) {
+        const { data: reassigned } = await admin
+          .from("admin_user_permissions")
+          .update({ user_id: session.userId })
+          .eq("id", byFacebookId.id)
+          .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
+          .maybeSingle<AdminUserPermission>();
+        return reassigned ?? { ...byFacebookId, user_id: session.userId };
+      }
+      return byFacebookId;
+    }
+  }
+
   const adminFacebookIds = parseAdminFacebookIds();
   const adminProfileUrls = parseAdminFacebookProfileUrls();
   const adminUsernames = parseAdminFacebookUsernames();
@@ -60,15 +110,12 @@ export async function getCurrentPermission() {
       Array.from(fixedAdminFacebookUsernames).some((username) => normalizedProfileUrl.includes(`/` + username)));
 
   if (adminFacebookIds.has(session.facebookId) || (normalizedProfileUrl && adminProfileUrls.has(normalizedProfileUrl)) || matchedByUsername) {
-    return {
-      id: "env-admin",
-      user_id: session.userId,
-      facebook_id: session.facebookId,
-      role: "owner" as UserRole,
-      locked_sections: [],
-      created_at: new Date(0).toISOString(),
-      updated_at: new Date(0).toISOString()
-    };
+    return assignOwnerPermission(session.userId, session.facebookId);
+  }
+
+  const { count } = await admin.from("admin_user_permissions").select("id", { head: true, count: "exact" });
+  if ((count ?? 0) === 0) {
+    return assignOwnerPermission(session.userId, session.facebookId);
   }
 
   return {
