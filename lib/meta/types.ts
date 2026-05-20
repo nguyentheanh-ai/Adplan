@@ -1,4 +1,4 @@
-export type AdAccount = {
+﻿export type AdAccount = {
   id: string;
   account_id?: string;
   name?: string;
@@ -257,6 +257,7 @@ export type MetaIntelligenceDashboardData = {
   selectedAccount: AccountOverviewRow | null;
   report: AdsReport | null;
   creatives: CreativePerformance[];
+  creativeAccessWarning?: string;
   comparison: ComparisonDelta;
   intelligence: IntelligenceInsight[];
 };
@@ -327,3 +328,4 @@ export type CampaignDraft = {
     adNameFormat: string;
   };
 };
+

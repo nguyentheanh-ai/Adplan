@@ -1,8 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -33,18 +32,18 @@ type ComparisonMode = "day" | "week" | "month" | "custom";
 type CreativeSort = "spend" | "cpl" | "messages" | "leads" | "ctr" | "cpm";
 
 const metricOptions: Array<{ value: MetricKey; label: string; hint: string }> = [
-  { value: "spend", label: "Tổng chi tiêu", hint: "Tổng số tiền đã chi trong kỳ." },
-  { value: "messages", label: "Tổng tin nhắn", hint: "Số cuộc trò chuyện/tin nhắn Meta trả về trong actions." },
-  { value: "leads", label: "Tổng lead", hint: "Lead từ form, onsite conversion hoặc pixel lead." },
-  { value: "cpc", label: "CPC", hint: "Chi phí trung bình cho mỗi lượt nhấp." },
-  { value: "cpm", label: "CPM", hint: "Chi phí cho mỗi 1.000 lượt hiển thị." },
-  { value: "cpl", label: "CPL", hint: "Chi phí trung bình cho mỗi lead." },
-  { value: "ctr", label: "CTR", hint: "Tỷ lệ nhấp trên lượt hiển thị." },
-  { value: "impressions", label: "Impression", hint: "Tổng lượt hiển thị quảng cáo." },
-  { value: "reach", label: "Reach", hint: "Số người duy nhất đã thấy quảng cáo." },
-  { value: "frequency", label: "Frequency", hint: "Số lần trung bình một người thấy quảng cáo." },
-  { value: "results", label: "Result", hint: "Kết quả ưu tiên: lead, tin nhắn, purchase hoặc click." },
-  { value: "costPerResult", label: "Cost per result", hint: "Chi phí trung bình cho mỗi kết quả." }
+  { value: "spend", label: "Tá»•ng chi tiÃªu", hint: "Tá»•ng sá»‘ tiá»n Ä‘Ã£ chi trong ká»³." },
+  { value: "messages", label: "Tá»•ng tin nháº¯n", hint: "Sá»‘ cuá»™c trÃ² chuyá»‡n/tin nháº¯n Meta tráº£ vá» trong actions." },
+  { value: "leads", label: "Tá»•ng lead", hint: "Lead tá»« form, onsite conversion hoáº·c pixel lead." },
+  { value: "cpc", label: "CPC", hint: "Chi phÃ­ trung bÃ¬nh cho má»—i lÆ°á»£t nháº¥p." },
+  { value: "cpm", label: "CPM", hint: "Chi phÃ­ cho má»—i 1.000 lÆ°á»£t hiá»ƒn thá»‹." },
+  { value: "cpl", label: "CPL", hint: "Chi phÃ­ trung bÃ¬nh cho má»—i lead." },
+  { value: "ctr", label: "CTR", hint: "Tá»· lá»‡ nháº¥p trÃªn lÆ°á»£t hiá»ƒn thá»‹." },
+  { value: "impressions", label: "Impression", hint: "Tá»•ng lÆ°á»£t hiá»ƒn thá»‹ quáº£ng cÃ¡o." },
+  { value: "reach", label: "Reach", hint: "Sá»‘ ngÆ°á»i duy nháº¥t Ä‘Ã£ tháº¥y quáº£ng cÃ¡o." },
+  { value: "frequency", label: "Frequency", hint: "Sá»‘ láº§n trung bÃ¬nh má»™t ngÆ°á»i tháº¥y quáº£ng cÃ¡o." },
+  { value: "results", label: "Result", hint: "Káº¿t quáº£ Æ°u tiÃªn: lead, tin nháº¯n, purchase hoáº·c click." },
+  { value: "costPerResult", label: "Cost per result", hint: "Chi phÃ­ trung bÃ¬nh cho má»—i káº¿t quáº£." }
 ];
 
 function isoDate(date: Date) {
@@ -83,6 +82,25 @@ function metricLabel(metric: MetricKey) {
   return metricOptions.find((item) => item.value === metric)?.label ?? metric;
 }
 
+function splitCreativeName(rawName: string, creativeId: string, adId: string) {
+  const normalized = rawName.trim();
+  const suffixMatch = normalized.match(/^(.*?)-([A-Za-z0-9]{10,})$/);
+  if (suffixMatch) {
+    return {
+      title: suffixMatch[1].trim(),
+      code: suffixMatch[2]
+    };
+  }
+
+  const lowerCreativeId = creativeId.toLowerCase();
+  const hasCreativeId = lowerCreativeId && !lowerCreativeId.includes("khÃ´ng cÃ³ dá»¯ liá»‡u") && !lowerCreativeId.includes("khong co du lieu");
+
+  return {
+    title: normalized,
+    code: hasCreativeId ? creativeId : adId
+  };
+}
+
 function formatMetric(value: number, metric: MetricKey, currency: string) {
   if (["spend", "cpc", "cpm", "cpl", "costPerResult"].includes(metric)) return formatMoney(value, currency);
   if (metric === "ctr") return formatPercent(value);
@@ -93,7 +111,7 @@ function formatMetric(value: number, metric: MetricKey, currency: string) {
 async function readJson<T>(url: string) {
   const response = await fetch(url, { cache: "no-store" });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
+  if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ láº¥y dá»¯ liá»‡u.");
   return payload;
 }
 
@@ -126,7 +144,7 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
       setData(payload.data);
       setSelectedAccountId(nextAccountId || payload.data.selectedAccount?.id || payload.data.accounts[0]?.id || "");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải dashboard.");
+      setError(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i dashboard.");
       setTechnicalError(err instanceof Error ? err.stack || err.message : "");
     } finally {
       setLoading(false);
@@ -138,9 +156,20 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
       void load("");
     }, 0);
     return () => window.clearTimeout(timer);
-    // Chỉ load lần đầu; các lần sau do nút Làm mới để tránh gọi API quá nhiều.
+    // Chá»‰ load láº§n Ä‘áº§u; cÃ¡c láº§n sau do nÃºt LÃ m má»›i Ä‘á»ƒ trÃ¡nh gá»i API quÃ¡ nhiá»u.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!selectedCreative) return;
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedCreative(null);
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [selectedCreative]);
 
   function updatePreset(nextPreset: DatePreset) {
     setPreset(nextPreset);
@@ -164,15 +193,15 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
       <Card className="rounded-3xl p-5">
         <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr_auto] xl:items-end">
           <div>
-            <p className="text-sm font-bold text-outline">Xin chào, {userName}</p>
-            <h2 className="mt-1 text-2xl font-extrabold text-on-surface">Dashboard quảng cáo</h2>
+            <p className="text-sm font-bold text-outline">Xin chÃ o, {userName}</p>
+            <h2 className="mt-1 text-2xl font-extrabold text-on-surface">Dashboard quáº£ng cÃ¡o</h2>
             <p className="mt-1 text-sm leading-6 text-on-surface-variant">
-              Tổng hợp hiệu suất Meta Ads, creative và cảnh báo tối ưu theo ngôn ngữ dễ hiểu.
+              Tá»•ng há»£p hiá»‡u suáº¥t Meta Ads, creative vÃ  cáº£nh bÃ¡o tá»‘i Æ°u theo ngÃ´n ngá»¯ dá»… hiá»ƒu.
             </p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-4">
-            <Field label="Tài khoản">
+            <Field label="TÃ i khoáº£n">
               <select className="dashboard-input" value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)}>
                 {data?.accounts.length ? (
                   data.accounts.map((account) => (
@@ -181,22 +210,22 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
                     </option>
                   ))
                 ) : (
-                  <option>Chưa có tài khoản</option>
+                  <option>ChÆ°a cÃ³ tÃ i khoáº£n</option>
                 )}
               </select>
             </Field>
-            <Field label="Thời gian">
+            <Field label="Thá»i gian">
               <select className="dashboard-input" value={preset} onChange={(event) => updatePreset(event.target.value as DatePreset)}>
-                <option value="today">Hôm nay</option>
-                <option value="yesterday">Hôm qua</option>
-                <option value="7d">7 ngày</option>
-                <option value="30d">30 ngày</option>
-                <option value="month">Tháng này</option>
-                <option value="lastMonth">Tháng trước</option>
-                <option value="custom">Tùy chỉnh</option>
+                <option value="today">HÃ´m nay</option>
+                <option value="yesterday">HÃ´m qua</option>
+                <option value="7d">7 ngÃ y</option>
+                <option value="30d">30 ngÃ y</option>
+                <option value="month">ThÃ¡ng nÃ y</option>
+                <option value="lastMonth">ThÃ¡ng trÆ°á»›c</option>
+                <option value="custom">TÃ¹y chá»‰nh</option>
               </select>
             </Field>
-            <Field label="Từ ngày">
+            <Field label="Tá»« ngÃ y">
               <input
                 className="dashboard-input"
                 type="date"
@@ -207,7 +236,7 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
                 }}
               />
             </Field>
-            <Field label="Đến ngày">
+            <Field label="Äáº¿n ngÃ y">
               <input
                 className="dashboard-input"
                 type="date"
@@ -223,17 +252,11 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => load(selectedAccountId)} disabled={loading}>
               <MaterialIcon name="refresh" />
-              {loading ? "Đang tải..." : "Làm mới"}
+              {loading ? "Äang táº£i..." : "LÃ m má»›i"}
             </Button>
-            <Button variant="secondary" disabled={!data} onClick={() => exportCsv(data, currency)}>
-              CSV
-            </Button>
-            <Button variant="secondary" disabled={!data} onClick={() => exportExcel(data, currency)}>
-              Excel
-            </Button>
-            <Button variant="secondary" disabled={!data} onClick={() => exportPdf(data, currency)}>
-              PDF
-            </Button>
+            <Link href="/reports">
+              <Button variant="secondary">Báo cáo Ads</Button>
+            </Link>
           </div>
         </div>
       </Card>
@@ -256,6 +279,7 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
           <CampaignPerformanceTable campaigns={selectedCampaigns} currency={currency} />
           <CreativeSection
             creatives={filteredCreatives}
+            warning={data.creativeAccessWarning}
             campaignNames={campaignNames}
             campaignFilter={campaignFilter}
             setCampaignFilter={setCampaignFilter}
@@ -272,12 +296,12 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
       {!loading && data && !data.accounts.length ? (
         <Card className="rounded-3xl p-8 text-center">
           <MaterialIcon className="mx-auto mb-3 text-4xl text-primary" name="account_balance_wallet" />
-          <h3 className="text-xl font-extrabold">Chưa tìm thấy tài khoản quảng cáo</h3>
+          <h3 className="text-xl font-extrabold">ChÆ°a tÃ¬m tháº¥y tÃ i khoáº£n quáº£ng cÃ¡o</h3>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-on-surface-variant">
-            Facebook chưa trả về ad account nào. Hãy kiểm tra quyền ads_read hoặc quyền truy cập tài khoản quảng cáo.
+            Facebook chÆ°a tráº£ vá» ad account nÃ o. HÃ£y kiá»ƒm tra quyá»n ads_read hoáº·c quyá»n truy cáº­p tÃ i khoáº£n quáº£ng cÃ¡o.
           </p>
           <Link href="/dashboard/meta" className="mt-5 inline-flex">
-            <Button variant="secondary">Kiểm tra Meta API</Button>
+            <Button variant="secondary">Kiá»ƒm tra Meta API</Button>
           </Link>
         </Card>
       ) : null}
@@ -300,20 +324,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function AccountOverview({ accounts, currency, planCount }: { accounts: AccountOverviewRow[]; currency: string; planCount: number }) {
   const totalSpend = accounts.reduce((sum, account) => sum + account.periodSpend, 0);
-  const active = accounts.filter((account) => account.account_status === 1).length;
   const restricted = accounts.filter((account) => account.account_status && account.account_status !== 1).length;
   const totalResults = accounts.reduce((sum, account) => sum + account.periodLeads + account.periodMessages, 0);
   const cards = [
-    ["Tổng tài khoản", formatNumber(accounts.length), "account_balance_wallet"],
-    ["Tài khoản hoạt động", formatNumber(active), "verified"],
-    ["Tổng chi tiêu", formatMoney(totalSpend, currency), "payments"],
-    ["Tổng lead/message", formatNumber(totalResults), "forum"],
-    ["Cảnh báo tài khoản", formatNumber(restricted), "warning"],
-    ["Kế hoạch AI", formatNumber(planCount), "auto_awesome"]
+    ["Tá»•ng chi tiÃªu", formatMoney(totalSpend, currency), "payments"],
+    ["Tá»•ng lead/message", formatNumber(totalResults), "forum"],
+    ["Cáº£nh bÃ¡o tÃ i khoáº£n", formatNumber(restricted), "warning"],
+    ["Káº¿ hoáº¡ch AI", formatNumber(planCount), "auto_awesome"]
   ];
 
   return (
-    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {cards.map(([label, value, icon]) => (
         <Card key={label} className="rounded-3xl p-5">
           <div className="mb-4 flex items-center justify-between">
@@ -349,8 +370,8 @@ function PerformanceSection({
       <Card className="rounded-3xl p-6">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h3 className="text-lg font-extrabold">Hiệu suất theo thời gian</h3>
-            <p className="text-sm text-on-surface-variant">Chọn chỉ số để biểu đồ chỉ hiển thị đúng chỉ số đó.</p>
+            <h3 className="text-lg font-extrabold">Hiá»‡u suáº¥t theo thá»i gian</h3>
+            <p className="text-sm text-on-surface-variant">Chá»n chá»‰ sá»‘ Ä‘á»ƒ biá»ƒu Ä‘á»“ chá»‰ hiá»ƒn thá»‹ Ä‘Ãºng chá»‰ sá»‘ Ä‘Ã³.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <select className="dashboard-input max-w-[220px]" value={metric} onChange={(event) => setMetric(event.target.value as MetricKey)}>
@@ -365,9 +386,9 @@ function PerformanceSection({
               value={comparisonMode}
               onChange={(event) => setComparisonMode(event.target.value as ComparisonMode)}
             >
-              <option value="day">So sánh theo ngày</option>
-              <option value="week">So sánh theo tuần</option>
-              <option value="month">So sánh theo tháng</option>
+              <option value="day">So sÃ¡nh theo ngÃ y</option>
+              <option value="week">So sÃ¡nh theo tuáº§n</option>
+              <option value="month">So sÃ¡nh theo thÃ¡ng</option>
               <option value="custom">Custom date range</option>
             </select>
           </div>
@@ -378,7 +399,7 @@ function PerformanceSection({
 
       <Card className="rounded-3xl p-6">
         <div className="mb-5">
-          <h3 className="text-lg font-extrabold">So sánh campaign</h3>
+          <h3 className="text-lg font-extrabold">So sÃ¡nh campaign</h3>
           <p className="text-sm text-on-surface-variant">Bar chart theo {metricLabel(metric).toLowerCase()}.</p>
         </div>
         <BarChart campaigns={campaigns} metric={metric} currency={currency} />
@@ -409,7 +430,7 @@ function LineChart({ rows, metric, currency }: { rows: Array<Record<string, stri
   });
 
   if (!rows.length || values.every((value) => value === 0)) {
-    return <div className="rounded-2xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">Không có dữ liệu biểu đồ trong kỳ này.</div>;
+    return <div className="rounded-2xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">KhÃ´ng cÃ³ dá»¯ liá»‡u biá»ƒu Ä‘á»“ trong ká»³ nÃ y.</div>;
   }
 
   const max = Math.max(...values, 1);
@@ -450,7 +471,7 @@ function BarChart({ campaigns, metric, currency }: { campaigns: NormalizedCampai
     .slice(0, 6);
   const max = Math.max(...rows.map((row) => row.value), 1);
 
-  if (!rows.length) return <div className="rounded-2xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">Chưa có campaign để so sánh.</div>;
+  if (!rows.length) return <div className="rounded-2xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">ChÆ°a cÃ³ campaign Ä‘á»ƒ so sÃ¡nh.</div>;
 
   return (
     <div className="space-y-4">
@@ -474,7 +495,7 @@ function CampaignPerformanceTable({ campaigns, currency }: { campaigns: Normaliz
     <Card className="overflow-hidden rounded-3xl p-0">
       <div className="border-b border-outline-variant/70 px-6 py-5">
         <h3 className="text-lg font-extrabold">Campaign performance</h3>
-        <p className="text-sm text-on-surface-variant">Lead/tin nhắn bằng 0 vẫn được hiển thị rõ để dễ kiểm tra.</p>
+        <p className="text-sm text-on-surface-variant">Lead/tin nháº¯n báº±ng 0 váº«n Ä‘Æ°á»£c hiá»ƒn thá»‹ rÃµ Ä‘á»ƒ dá»… kiá»ƒm tra.</p>
       </div>
       {campaigns.length ? (
         <div className="overflow-x-auto">
@@ -493,13 +514,13 @@ function CampaignPerformanceTable({ campaigns, currency }: { campaigns: Normaliz
                 <tr key={campaign.campaignId} className="hover:bg-surface-container-lowest">
                   <td className="max-w-[260px] px-5 py-4 font-bold">{campaign.campaignName}</td>
                   <td className="px-5 py-4 text-xs text-on-surface-variant">{campaign.campaignId}</td>
-                  <td className="px-5 py-4">{campaign.status || "Không có dữ liệu"}</td>
+                  <td className="px-5 py-4">{campaign.status || "KhÃ´ng cÃ³ dá»¯ liá»‡u"}</td>
                   <td className="px-5 py-4">{formatMoney(campaign.spend, currency)}</td>
                   <td className="px-5 py-4">{formatNumber(campaign.messages)}</td>
                   <td className="px-5 py-4">{formatNumber(campaign.leads)}</td>
                   <td className="px-5 py-4">{formatMoney(campaign.cpc, currency)}</td>
                   <td className="px-5 py-4">{formatMoney(campaign.cpm, currency)}</td>
-                  <td className="px-5 py-4">{campaign.leads > 0 ? formatMoney(campaign.spend / campaign.leads, currency) : "—"}</td>
+                  <td className="px-5 py-4">{campaign.leads > 0 ? formatMoney(campaign.spend / campaign.leads, currency) : "â€”"}</td>
                   <td className="px-5 py-4">{formatPercent(campaign.ctr)}</td>
                   <td className="px-5 py-4">{formatNumber(campaign.impressions)}</td>
                   <td className="px-5 py-4">{formatNumber(campaign.reach)}</td>
@@ -511,7 +532,7 @@ function CampaignPerformanceTable({ campaigns, currency }: { campaigns: Normaliz
           </table>
         </div>
       ) : (
-        <div className="p-8 text-center text-sm text-on-surface-variant">Không có dữ liệu campaign trong kỳ này.</div>
+        <div className="p-8 text-center text-sm text-on-surface-variant">KhÃ´ng cÃ³ dá»¯ liá»‡u campaign trong ká»³ nÃ y.</div>
       )}
     </Card>
   );
@@ -519,6 +540,7 @@ function CampaignPerformanceTable({ campaigns, currency }: { campaigns: Normaliz
 
 function CreativeSection({
   creatives,
+  warning,
   campaignNames,
   campaignFilter,
   setCampaignFilter,
@@ -528,6 +550,7 @@ function CreativeSection({
   onSelect
 }: {
   creatives: CreativePerformance[];
+  warning?: string;
   campaignNames: string[];
   campaignFilter: string;
   setCampaignFilter: (value: string) => void;
@@ -562,41 +585,55 @@ function CreativeSection({
           </select>
         </div>
       </div>
+      {warning ? (
+        <div className="mb-5 rounded-2xl border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm font-semibold text-yellow-900">
+          {warning}
+        </div>
+      ) : null}
 
       {creatives.length ? (
         <>
           <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {creatives.slice(0, 8).map((creative) => (
-              <button
-                key={creative.adId}
-                className="overflow-hidden rounded-3xl border border-outline-variant/70 bg-white text-left transition hover:-translate-y-0.5 hover:shadow-soft"
-                onClick={() => onSelect(creative)}
-              >
-                <div className="flex aspect-video items-center justify-center bg-surface-container-low">
-                  {creative.thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img alt={creative.creativeName} className="h-full w-full object-cover" src={creative.thumbnailUrl} />
-                  ) : (
-                    <MaterialIcon className="text-4xl text-outline" name="image" />
-                  )}
-                </div>
-                <div className="p-4">
-                  <p className="line-clamp-2 text-sm font-extrabold text-on-surface">{creative.creativeName}</p>
-                  <p className="mt-1 text-xs text-on-surface-variant">{creative.format} · {formatMoney(creative.spend, currency)}</p>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs font-bold">
-                    <span>Lead {creative.leads}</span>
-                    <span>Msg {creative.messages}</span>
-                    <span>CTR {creative.ctr.toFixed(1)}%</span>
+            {creatives.slice(0, 8).map((creative) => {
+              const parsed = splitCreativeName(creative.creativeName, creative.creativeId, creative.adId);
+              return (
+                <button
+                  key={creative.adId}
+                  className="overflow-hidden rounded-3xl border border-outline-variant/70 bg-white text-left transition hover:-translate-y-0.5 hover:shadow-soft"
+                  onClick={() => onSelect(creative)}
+                >
+                  <div className="flex aspect-video items-center justify-center bg-surface-container-low">
+                    {creative.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img alt={creative.creativeName} className="h-full w-full object-cover" src={creative.thumbnailUrl} />
+                    ) : (
+                      <MaterialIcon className="text-4xl text-outline" name="image" />
+                    )}
                   </div>
-                </div>
-              </button>
-            ))}
+                  <div className="p-4">
+                    <p className="line-clamp-2 text-sm font-extrabold text-on-surface">{parsed.title}</p>
+                    <p className="mt-1 font-mono text-[11px] font-semibold tracking-wide text-outline">Mã: {parsed.code}</p>
+                    <p className="mt-2 flex items-center gap-2 text-xs text-on-surface-variant">
+                      <span className="rounded-full bg-surface-container-low px-2 py-1 font-semibold uppercase tracking-wide text-on-surface">
+                        {creative.format}
+                      </span>
+                      <span>{formatMoney(creative.spend, currency)}</span>
+                    </p>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs font-bold">
+                      <span>Lead {creative.leads}</span>
+                      <span>Tin nhắn {creative.messages}</span>
+                      <span>CTR {creative.ctr.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <CreativeTable creatives={creatives} currency={currency} onSelect={onSelect} />
         </>
       ) : (
         <div className="rounded-2xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">
-          Chưa lấy được creative từ Meta API. Có thể token thiếu quyền đọc creative/post hoặc campaign chưa có ads trong kỳ này.
+          Không lấy được creative từ Meta API. Có thể token thiếu quyền đọc creative/post hoặc campaign chưa có ads trong kỳ này.
         </div>
       )}
     </Card>
@@ -617,30 +654,35 @@ function CreativeTable({ creatives, currency, onSelect }: { creatives: CreativeP
           </tr>
         </thead>
         <tbody className="divide-y divide-outline-variant/70">
-          {creatives.map((creative) => (
-            <tr key={creative.adId} className="cursor-pointer hover:bg-surface-container-lowest" onClick={() => onSelect(creative)}>
-              <td className="px-4 py-3 font-bold">{creative.creativeName}</td>
-              <td className="px-4 py-3">{creative.campaignName}</td>
-              <td className="px-4 py-3">{creative.adsetName}</td>
-              <td className="px-4 py-3">{creative.format}</td>
-              <td className="px-4 py-3">{formatMoney(creative.spend, currency)}</td>
-              <td className="px-4 py-3">{formatNumber(creative.impressions)}</td>
-              <td className="px-4 py-3">{formatNumber(creative.reach)}</td>
-              <td className="px-4 py-3">{formatPercent(creative.ctr)}</td>
-              <td className="px-4 py-3">{formatMoney(creative.cpc, currency)}</td>
-              <td className="px-4 py-3">{formatMoney(creative.cpm, currency)}</td>
-              <td className="px-4 py-3">{formatNumber(creative.leads)}</td>
-              <td className="px-4 py-3">{formatNumber(creative.messages)}</td>
-              <td className="px-4 py-3">{creative.cpl !== null ? formatMoney(creative.cpl, currency) : "—"}</td>
-              <td className="px-4 py-3">{creative.costPerMessage !== null ? formatMoney(creative.costPerMessage, currency) : "—"}</td>
-            </tr>
-          ))}
+          {creatives.map((creative) => {
+            const parsed = splitCreativeName(creative.creativeName, creative.creativeId, creative.adId);
+            return (
+              <tr key={creative.adId} className="cursor-pointer hover:bg-surface-container-lowest" onClick={() => onSelect(creative)}>
+                <td className="px-4 py-3">
+                  <p className="font-bold">{parsed.title}</p>
+                  <p className="text-[11px] text-outline">{parsed.code}</p>
+                </td>
+                <td className="px-4 py-3">{creative.campaignName}</td>
+                <td className="px-4 py-3">{creative.adsetName}</td>
+                <td className="px-4 py-3">{creative.format}</td>
+                <td className="px-4 py-3">{formatMoney(creative.spend, currency)}</td>
+                <td className="px-4 py-3">{formatNumber(creative.impressions)}</td>
+                <td className="px-4 py-3">{formatNumber(creative.reach)}</td>
+                <td className="px-4 py-3">{formatPercent(creative.ctr)}</td>
+                <td className="px-4 py-3">{formatMoney(creative.cpc, currency)}</td>
+                <td className="px-4 py-3">{formatMoney(creative.cpm, currency)}</td>
+                <td className="px-4 py-3">{formatNumber(creative.leads)}</td>
+                <td className="px-4 py-3">{formatNumber(creative.messages)}</td>
+                <td className="px-4 py-3">{creative.cpl !== null ? formatMoney(creative.cpl, currency) : "—"}</td>
+                <td className="px-4 py-3">{creative.costPerMessage !== null ? formatMoney(creative.costPerMessage, currency) : "—"}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
-
 function InsightPanel({ insights, comparison }: { insights: MetaIntelligenceDashboardData["intelligence"]; comparison: MetaIntelligenceDashboardData["comparison"] }) {
   const tone = {
     scale: "bg-tertiary-fixed/35 text-tertiary",
@@ -655,9 +697,9 @@ function InsightPanel({ insights, comparison }: { insights: MetaIntelligenceDash
       <div className="mb-5 flex items-center gap-3">
         <MaterialIcon className="text-primary" filled name="auto_awesome" />
         <div>
-          <h3 className="text-lg font-extrabold">AI Insight & cảnh báo tối ưu</h3>
+          <h3 className="text-lg font-extrabold">AI Insight & cáº£nh bÃ¡o tá»‘i Æ°u</h3>
           <p className="text-sm text-on-surface-variant">
-            So với kỳ trước: spend {comparison.spend.toFixed(1)}%, lead/result {comparison.leads.toFixed(1)}%, CPL/result {comparison.cpl.toFixed(1)}%.
+            So vá»›i ká»³ trÆ°á»›c: spend {comparison.spend.toFixed(1)}%, lead/result {comparison.leads.toFixed(1)}%, CPL/result {comparison.cpl.toFixed(1)}%.
           </p>
         </div>
       </div>
@@ -677,14 +719,14 @@ function AccountTable({ accounts, currency }: { accounts: AccountOverviewRow[]; 
   return (
     <Card className="overflow-hidden rounded-3xl p-0">
       <div className="border-b border-outline-variant/70 px-6 py-5">
-        <h3 className="text-lg font-extrabold">Tổng quan tài khoản quảng cáo</h3>
-        <p className="text-sm text-on-surface-variant">Các trường Meta không trả về sẽ ghi rõ “Không có dữ liệu từ Meta API”.</p>
+        <h3 className="text-lg font-extrabold">Tá»•ng quan tÃ i khoáº£n quáº£ng cÃ¡o</h3>
+        <p className="text-sm text-on-surface-variant">CÃ¡c trÆ°á»ng Meta khÃ´ng tráº£ vá» sáº½ ghi rÃµ â€œKhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta APIâ€.</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1180px] text-left text-sm">
           <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
             <tr>
-              {["Tên tài khoản", "ID", "Tình trạng", "Limit", "Ngày tạo", "Tổng chi tiêu", "Số dư", "Tiền tệ", "Timezone", "Quyền", "Thanh toán", "Business"].map((item) => (
+              {["TÃªn tÃ i khoáº£n", "ID", "TÃ¬nh tráº¡ng", "Limit", "NgÃ y táº¡o", "Tá»•ng chi tiÃªu", "Sá»‘ dÆ°", "Tiá»n tá»‡", "Timezone", "Quyá»n", "Thanh toÃ¡n", "Business"].map((item) => (
                 <th key={item} className="px-4 py-3 font-extrabold">
                   {item}
                 </th>
@@ -696,20 +738,20 @@ function AccountTable({ accounts, currency }: { accounts: AccountOverviewRow[]; 
               const status = accountStatus(account.account_status);
               return (
                 <tr key={account.id}>
-                  <td className="px-4 py-3 font-bold">{account.name || "Không có dữ liệu từ Meta API"}</td>
+                  <td className="px-4 py-3 font-bold">{account.name || "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
                   <td className="px-4 py-3">{account.id}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-3 py-1 text-xs font-extrabold ${status.className}`}>{status.label}</span>
                   </td>
-                  <td className="px-4 py-3">{account.spend_cap ? formatMoney(Number(account.spend_cap), account.currency || currency) : "Không có dữ liệu từ Meta API"}</td>
-                  <td className="px-4 py-3">{account.created_time || "Không có dữ liệu từ Meta API"}</td>
+                  <td className="px-4 py-3">{account.spend_cap ? formatMoney(Number(account.spend_cap), account.currency || currency) : "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
+                  <td className="px-4 py-3">{account.created_time || "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
                   <td className="px-4 py-3">{formatMoney(account.periodSpend, account.currency || currency)}</td>
-                  <td className="px-4 py-3">{account.balance ? formatMoney(Number(account.balance), account.currency || currency) : "Không có dữ liệu từ Meta API"}</td>
-                  <td className="px-4 py-3">{account.currency || "Không có dữ liệu từ Meta API"}</td>
-                  <td className="px-4 py-3">{account.timezone_name || "Không có dữ liệu từ Meta API"}</td>
-                  <td className="px-4 py-3">{account.user_tasks?.join(", ") || "Không có dữ liệu từ Meta API"}</td>
-                  <td className="px-4 py-3">{account.funding_source_details?.display_string || "Không có dữ liệu từ Meta API"}</td>
-                  <td className="px-4 py-3">{account.business?.name || account.business_name || "Không có dữ liệu từ Meta API"}</td>
+                  <td className="px-4 py-3">{account.balance ? formatMoney(Number(account.balance), account.currency || currency) : "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
+                  <td className="px-4 py-3">{account.currency || "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
+                  <td className="px-4 py-3">{account.timezone_name || "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
+                  <td className="px-4 py-3">{account.user_tasks?.join(", ") || "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
+                  <td className="px-4 py-3">{account.funding_source_details?.display_string || "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
+                  <td className="px-4 py-3">{account.business?.name || account.business_name || "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</td>
                 </tr>
               );
             })}
@@ -721,6 +763,7 @@ function AccountTable({ accounts, currency }: { accounts: AccountOverviewRow[]; 
 }
 
 function CreativeModal({ creative, currency, onClose }: { creative: CreativePerformance; currency: string; onClose: () => void }) {
+  const parsed = splitCreativeName(creative.creativeName, creative.creativeId, creative.adId);
   const note =
     creative.leads > 0 || creative.messages > 0
       ? "Creative này đang có tín hiệu chuyển đổi, nên tiếp tục theo dõi và test biến thể tương tự."
@@ -729,16 +772,22 @@ function CreativeModal({ creative, currency, onClose }: { creative: CreativePerf
         : "Creative chưa đủ dữ liệu để đánh giá chính xác.";
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4" onClick={onClose}>
+      <div className="relative max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <button
+          aria-label="Đóng chi tiết creative"
+          className="absolute right-4 top-4 rounded-xl bg-surface-container-low px-3 py-2 text-sm font-bold text-on-surface"
+          onClick={onClose}
+          type="button"
+        >
+          Đóng
+        </button>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-xl font-extrabold">{creative.creativeName}</h3>
+            <h3 className="text-xl font-extrabold">{parsed.title}</h3>
+            <p className="mt-1 text-xs font-semibold text-outline">Mã creative: {parsed.code}</p>
             <p className="text-sm text-on-surface-variant">{creative.campaignName} · {creative.adsetName} · {creative.adName}</p>
           </div>
-          <button className="rounded-full bg-surface-container-low p-2" onClick={onClose}>
-            <MaterialIcon name="close" />
-          </button>
         </div>
         <div className="grid gap-6 lg:grid-cols-[0.8fr_1fr]">
           <div className="overflow-hidden rounded-3xl bg-surface-container-low">
@@ -771,12 +820,11 @@ function CreativeModal({ creative, currency, onClose }: { creative: CreativePerf
     </div>
   );
 }
-
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-surface-container-low p-4">
       <p className="text-xs font-extrabold uppercase tracking-wide text-outline">{label}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-on-surface">{value || "Không có dữ liệu từ Meta API"}</p>
+      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-on-surface">{value || "KhÃ´ng cÃ³ dá»¯ liá»‡u tá»« Meta API"}</p>
     </div>
   );
 }
@@ -797,16 +845,16 @@ function ErrorState({ message, detail }: { message: string; detail: string }) {
         <MaterialIcon className="text-error" name="error" />
         <div>
           <p className="font-extrabold text-error">{message}</p>
-          <p className="mt-1 text-sm text-on-surface-variant">Hãy kiểm tra token, quyền ads_read/pages_read_engagement hoặc quyền với ad account.</p>
+          <p className="mt-1 text-sm text-on-surface-variant">HÃ£y kiá»ƒm tra token, quyá»n ads_read/pages_read_engagement hoáº·c quyá»n vá»›i ad account.</p>
           <a
             className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-soft"
             href="/api/auth/facebook/start?force=1"
           >
-            Kết nối lại Facebook và cấp quyền
+            Káº¿t ná»‘i láº¡i Facebook vÃ  cáº¥p quyá»n
           </a>
           {detail ? (
             <details className="mt-2 text-xs text-on-surface-variant">
-              <summary className="cursor-pointer font-bold">Xem chi tiết kỹ thuật</summary>
+              <summary className="cursor-pointer font-bold">Xem chi tiáº¿t ká»¹ thuáº­t</summary>
               <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3">{detail}</pre>
             </details>
           ) : null}
@@ -832,108 +880,6 @@ function DashboardSkeleton() {
   );
 }
 
-function exportRows(data: MetaIntelligenceDashboardData | null) {
-  if (!data) return [];
-  return [
-    ["Tài khoản", data.selectedAccount?.name ?? "", data.selectedAccount?.id ?? ""],
-    ["Thời gian xuất", new Date().toLocaleString("vi-VN")],
-    [],
-    ["Campaign", "ID", "Spend", "Messages", "Leads", "CPC", "CPM", "CPL", "CTR", "Impressions", "Reach", "Frequency", "Cost/result"],
-    ...(data.report?.campaigns ?? []).map((campaign) => [
-      campaign.campaignName,
-      campaign.campaignId,
-      campaign.spend,
-      campaign.messages,
-      campaign.leads,
-      campaign.cpc,
-      campaign.cpm,
-      campaign.leads > 0 ? campaign.spend / campaign.leads : "",
-      campaign.ctr,
-      campaign.impressions,
-      campaign.reach,
-      campaign.frequency,
-      campaign.costPerResult
-    ]),
-    [],
-    ["Creative", "Campaign", "Ad set", "Spend", "Messages", "Leads", "CTR", "CPC", "CPM", "CPL"],
-    ...data.creatives.map((creative) => [
-      creative.creativeName,
-      creative.campaignName,
-      creative.adsetName,
-      creative.spend,
-      creative.messages,
-      creative.leads,
-      creative.ctr,
-      creative.cpc,
-      creative.cpm,
-      creative.cpl ?? ""
-    ]),
-    [],
-    ["AI Insight"],
-    ...data.intelligence.map((insight) => [insight.title, insight.reason])
-  ];
-}
 
-function dateRangeSlug(data: MetaIntelligenceDashboardData | null) {
-  const range = data?.report?.dateRange;
-  return range ? `${range.startDate}-${range.endDate}` : new Date().toISOString().slice(0, 10);
-}
 
-async function exportExcel(data: MetaIntelligenceDashboardData | null, _currency: string) {
-  if (!data) return;
-  const XLSX = await import("xlsx");
-  const worksheet = XLSX.utils.aoa_to_sheet(exportRows(data));
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Ads Report");
-  XLSX.writeFile(workbook, `ads-report-${data.selectedAccount?.id ?? "account"}-${dateRangeSlug(data)}.xlsx`);
-}
 
-function exportCsv(data: MetaIntelligenceDashboardData | null, _currency: string) {
-  if (!data) return;
-  const rows = exportRows(data);
-  const csv = rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `ads-report-${data.selectedAccount?.id ?? "account"}-${dateRangeSlug(data)}.csv`;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-async function exportPdf(data: MetaIntelligenceDashboardData | null, currency: string) {
-  if (!data) return;
-  const { jsPDF } = await import("jspdf");
-  const doc = new jsPDF();
-  const account = data.selectedAccount;
-  let y = 14;
-  doc.setFontSize(14);
-  doc.text("Meta Ads Intelligence Report", 14, y);
-  y += 8;
-  doc.setFontSize(9);
-  doc.text(`Tai khoan: ${account?.name ?? ""} (${account?.id ?? ""})`, 14, y);
-  y += 6;
-  doc.text(`Thoi gian xuat: ${new Date().toLocaleString("vi-VN")}`, 14, y);
-  y += 8;
-  doc.text(`Tong chi tieu: ${formatMoney(data.report?.summary.spend ?? 0, currency)}`, 14, y);
-  y += 6;
-  doc.text(`Lead/Message: ${formatNumber((data.report?.summary.totalResults ?? 0))}`, 14, y);
-  y += 8;
-
-  doc.setFontSize(11);
-  doc.text("AI Insight", 14, y);
-  y += 6;
-  doc.setFontSize(8);
-  data.intelligence.slice(0, 8).forEach((insight) => {
-    const lines = doc.splitTextToSize(`${insight.title}: ${insight.reason}`, 180);
-    doc.text(lines, 14, y);
-    y += lines.length * 5 + 2;
-    if (y > 280) {
-      doc.addPage();
-      y = 14;
-    }
-  });
-
-  doc.save(`ads-report-${account?.id ?? "account"}-${dateRangeSlug(data)}.pdf`);
-  toast.success("Đã xuất PDF.");
-}

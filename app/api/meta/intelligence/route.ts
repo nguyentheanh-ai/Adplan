@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
 import {
   getMetaAccountInsights,
@@ -37,13 +37,13 @@ export async function GET(request: Request) {
         try {
           detail = await getMetaAdAccountDetails(account.id, accessToken);
         } catch (error) {
-          dataStatus = error instanceof Error ? error.message : "Không lấy được chi tiết tài khoản từ Meta API.";
+          dataStatus = error instanceof Error ? error.message : "KhÃ´ng láº¥y Ä‘Æ°á»£c chi tiáº¿t tÃ i khoáº£n tá»« Meta API.";
         }
 
         try {
           rows = await getMetaAccountInsights(account.id, dateRange, accessToken);
         } catch (error) {
-          dataStatus = error instanceof Error ? error.message : "Không lấy được chi tiêu tài khoản từ Meta API.";
+          dataStatus = error instanceof Error ? error.message : "KhÃ´ng láº¥y Ä‘Æ°á»£c chi tiÃªu tÃ i khoáº£n tá»« Meta API.";
         }
 
         return buildAccountOverviewRow({ ...account, ...detail }, rows, dataStatus);
@@ -60,20 +60,31 @@ export async function GET(request: Request) {
           campaignInsights: [],
           daily: [],
           previousInsights: [],
-          ads: []
+          ads: [],
+          creativeAccessWarning: undefined
         })
       });
     }
 
     const previousRange = getPreviousDateRange(dateRange);
     const selectedAccount = accountRows.find((account) => account.id === selectedId || account.account_id === selectedId.replace(/^act_/, "")) ?? null;
-    const [campaigns, campaignInsights, daily, previousInsights, ads] = await Promise.all([
+    let creativeAccessWarning: string | undefined;
+    const [campaigns, campaignInsights, daily, previousInsights] = await Promise.all([
       getMetaCampaigns(selectedId, accessToken).catch(() => []),
       getMetaCampaignInsights(selectedId, dateRange, accessToken).catch(() => []),
       getMetaDailyInsights(selectedId, dateRange, accessToken).catch(() => []),
-      getMetaCampaignInsights(selectedId, previousRange, accessToken).catch(() => []),
-      getMetaAdsWithCreatives(selectedId, dateRange, accessToken).catch(() => [])
+      getMetaCampaignInsights(selectedId, previousRange, accessToken).catch(() => [])
     ]);
+    const ads = await getMetaAdsWithCreatives(selectedId, dateRange, accessToken).catch((error) => {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (message.includes("pages_read_engagement") || message.includes("permission") || message.includes("page")) {
+        creativeAccessWarning =
+          "TÃ i khoáº£n nÃ y chÆ°a cÃ³ quyá»n xem post/creative cá»§a Page. Cáº§n quyá»n quáº£n trá»‹ Page hoáº·c pages_read_engagement Ä‘á»ƒ xem Ä‘áº§y Ä‘á»§ ná»™i dung post.";
+      } else {
+        creativeAccessWarning = "KhÃ´ng thá»ƒ táº£i dá»¯ liá»‡u post/creative tá»« Meta API á»Ÿ tÃ i khoáº£n nÃ y.";
+      }
+      return [];
+    });
 
     return NextResponse.json({
       data: buildMetaIntelligenceDashboardData({
@@ -84,7 +95,8 @@ export async function GET(request: Request) {
         campaignInsights,
         daily,
         previousInsights,
-        ads
+        ads,
+        creativeAccessWarning
       })
     });
   } catch (error) {
@@ -92,3 +104,4 @@ export async function GET(request: Request) {
     return NextResponse.json(response.body, { status: response.status });
   }
 }
+
