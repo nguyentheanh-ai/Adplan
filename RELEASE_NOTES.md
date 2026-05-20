@@ -102,6 +102,15 @@
 - `npm.cmd test`: pass.
 - `npm.cmd run build`: pass.
 
+## 2026-05-21 - Optimization action history UI
+
+### Đã bổ sung
+
+- Thêm `GET /api/optimization/action-logs` để đọc lịch sử tối ưu theo user/account.
+- Trang `Tối ưu Ads` có panel `Lịch sử tối ưu`, hiển thị hành động đã chặn, đã áp dụng, thất bại hoặc chỉ ghi nhận proposal.
+- Sau khi áp dụng recommendation, UI tự tải lại lịch sử để khách thấy dấu vết ngay.
+- Nếu Supabase chưa chạy migration action log, API trả danh sách rỗng kèm trạng thái fallback thay vì làm crash app.
+
 ## 2026-05-21 - Recommendation approval gate
 
 ### Đã bổ sung

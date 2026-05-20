@@ -34,6 +34,18 @@ type Recommendation = {
   created_at: string;
 };
 
+type ActionLog = {
+  id: string;
+  ad_account_id: string;
+  recommendation_id?: string | null;
+  action_type: string;
+  entity_type: string;
+  entity_id: string;
+  status: "blocked" | "success" | "failed" | "proposal_only";
+  error_message?: string | null;
+  created_at: string;
+};
+
 type SyncResult = {
   sync_run_id: string;
   account_count: number;
@@ -72,12 +84,38 @@ function priorityClass(priority: Recommendation["priority"]) {
   return "bg-surface-container text-on-surface-variant";
 }
 
+function actionStatusClass(status: ActionLog["status"]) {
+  if (status === "success") return "bg-emerald-50 text-emerald-700";
+  if (status === "blocked" || status === "failed") return "bg-error-container text-error";
+  return "bg-amber-50 text-amber-800";
+}
+
+function actionStatusLabel(status: ActionLog["status"]) {
+  if (status === "success") return "Đã áp dụng";
+  if (status === "blocked") return "Đã chặn";
+  if (status === "failed") return "Thất bại";
+  return "Chỉ ghi nhận";
+}
+
+function formatDateTime(value: string) {
+  if (!value) return "Không rõ thời gian";
+  try {
+    return new Intl.DateTimeFormat("vi-VN", {
+      dateStyle: "short",
+      timeStyle: "short"
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
 export function OptimizationCenterClient() {
   const [accounts, setAccounts] = useState<AdAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [range, setRange] = useState(defaultRange());
   const [authorization, setAuthorization] = useState<Authorization | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
   const [busyLabel, setBusyLabel] = useState("");
 
@@ -94,6 +132,7 @@ export function OptimizationCenterClient() {
       range: { startDate: string; endDate: string };
       authorization: Authorization | null;
       recommendations: Recommendation[];
+      actionLogs?: ActionLog[];
       lastSync: SyncResult | null;
     }>(cacheKey);
     if (cached) {
@@ -103,6 +142,7 @@ export function OptimizationCenterClient() {
         setRange(cached.range);
         setAuthorization(cached.authorization);
         setRecommendations(cached.recommendations);
+        setActionLogs(cached.actionLogs ?? []);
         setLastSync(cached.lastSync);
       });
       return;
@@ -114,8 +154,8 @@ export function OptimizationCenterClient() {
 
   useEffect(() => {
     if (!selectedAccountId) return;
-    setCachedState(cacheKey, { accounts, selectedAccountId, range, authorization, recommendations, lastSync });
-  }, [accounts, selectedAccountId, range, authorization, recommendations, lastSync]);
+    setCachedState(cacheKey, { accounts, selectedAccountId, range, authorization, recommendations, actionLogs, lastSync });
+  }, [accounts, selectedAccountId, range, authorization, recommendations, actionLogs, lastSync]);
 
   async function withProgress<T>(label: string, fn: () => Promise<T>) {
     setBusyLabel(label);
@@ -134,7 +174,7 @@ export function OptimizationCenterClient() {
       setAccounts(rows);
       setSelectedAccountId(accountId);
       if (accountId) {
-        await Promise.all([loadAuthorization(accountId, true), loadRecommendations(accountId, true)]);
+        await Promise.all([loadAuthorization(accountId, true), loadRecommendations(accountId, true), loadActionLogs(accountId, true)]);
       }
     }).catch((error: Error) => toast.error(error.message));
   }
@@ -166,13 +206,23 @@ export function OptimizationCenterClient() {
     setRecommendations(payload.data ?? []);
   }
 
+  async function loadActionLogs(accountId = selectedAccountId, force = false) {
+    if (!accountId) return;
+    const payload = await readJson<{ data: ActionLog[]; storage?: string }>(
+      `/api/optimization/action-logs?ad_account_id=${encodeURIComponent(accountId)}&limit=30`,
+      { force }
+    );
+    setActionLogs(payload.data ?? []);
+  }
+
   async function onAccountChange(accountId: string) {
     setSelectedAccountId(accountId);
     setDefaultAdAccountId(accountId);
     setRecommendations([]);
+    setActionLogs([]);
     setLastSync(null);
     await withProgress("Đang đổi tài khoản tối ưu...", async () => {
-      await Promise.all([loadAuthorization(accountId, true), loadRecommendations(accountId, true)]);
+      await Promise.all([loadAuthorization(accountId, true), loadRecommendations(accountId, true), loadActionLogs(accountId, true)]);
     });
   }
 
@@ -242,6 +292,7 @@ export function OptimizationCenterClient() {
         body: JSON.stringify({ recommendation_id: recommendationId, status })
       });
       setRecommendations((current) => current.map((item) => (item.id === recommendationId ? payload.data : item)));
+      await loadActionLogs(selectedAccountId, true);
       toast.success(status === "approved" ? "Đã duyệt khuyến nghị." : "Đã cập nhật khuyến nghị.");
     }).catch((error: Error) => toast.error(error.message));
   }
@@ -260,6 +311,7 @@ export function OptimizationCenterClient() {
         body: JSON.stringify({ recommendation_id: recommendationId })
       });
       setRecommendations((current) => current.map((item) => (item.id === recommendationId ? payload.data : item)));
+      await loadActionLogs(selectedAccountId, true);
       toast.success(payload.result?.message || "Đã áp dụng hoặc ghi nhận proposal.");
     }).catch((error: Error) => toast.error(error.message));
   }
@@ -445,6 +497,60 @@ export function OptimizationCenterClient() {
           </div>
         </Card>
       </div>
+
+      <Card className="rounded-xl p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-outline">Lịch sử tối ưu</p>
+            <h3 className="mt-2 text-xl font-extrabold">Mọi hành động đều được ghi lại</h3>
+            <p className="mt-2 text-sm leading-6 text-on-surface-variant">
+              Khu vực này giúp chủ doanh nghiệp biết app đã chặn, đã ghi nhận hay đã áp dụng tối ưu nào. Không có hành động tự động nào bị ẩn.
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => void loadActionLogs(selectedAccountId, true)} disabled={Boolean(busyLabel) || !selectedAccountId}>
+            <MaterialIcon name="refresh" />
+            Tải lịch sử
+          </Button>
+        </div>
+
+        <div className="mt-5 overflow-x-auto">
+          {actionLogs.length ? (
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-surface-container-low text-xs font-bold uppercase text-outline">
+                <tr>
+                  <th className="px-4 py-3">Thời gian</th>
+                  <th className="px-4 py-3">Trạng thái</th>
+                  <th className="px-4 py-3">Hành động</th>
+                  <th className="px-4 py-3">Đối tượng</th>
+                  <th className="px-4 py-3">Ghi chú</th>
+                </tr>
+              </thead>
+              <tbody>
+                {actionLogs.map((item) => (
+                  <tr key={item.id} className="border-t border-outline-variant">
+                    <td className="px-4 py-3 font-semibold">{formatDateTime(item.created_at)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${actionStatusClass(item.status)}`}>
+                        {actionStatusLabel(item.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold">{item.action_type}</td>
+                    <td className="px-4 py-3 text-on-surface-variant">
+                      <div className="font-semibold text-on-surface">{item.entity_type}</div>
+                      <div className="max-w-[240px] truncate text-xs">{item.entity_id}</div>
+                    </td>
+                    <td className="px-4 py-3 text-on-surface-variant">{item.error_message || "Đã ghi nhận trong phạm vi ủy quyền."}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="rounded-lg bg-surface-container-low p-6 text-sm text-on-surface-variant">
+              Chưa có lịch sử tối ưu cho tài khoản này. Khi bạn duyệt và áp dụng khuyến nghị, app sẽ ghi rõ kết quả ở đây.
+            </div>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }

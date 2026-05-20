@@ -170,3 +170,10 @@ Ngành ưu tiên:
 - Meta Marketing API Ads: https://developers.facebook.com/docs/marketing-api/reference/ad-account/ads/
 - Gemini API generateContent: https://ai.google.dev/api/generate-content
 - Gemini structured output: https://ai.google.dev/gemini-api/docs/structured-output
+
+## Progress 2026-05-21 - Autopilot transparency
+
+- [x] Add server route `GET /api/optimization/action-logs`.
+- [x] Show "Lịch sử tối ưu" inside Optimization Center.
+- [x] Reload logs after apply recommendation.
+- [x] Keep missing-schema fallback so production does not crash before Supabase migrations are applied.
