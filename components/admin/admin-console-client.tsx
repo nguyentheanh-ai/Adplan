@@ -12,14 +12,15 @@ type AdminUserRow = {
   id: string;
   email: string;
   full_name?: string | null;
+  facebook_id?: string | null;
   created_at: string;
   permission: AdminUserPermission | null;
 };
 
 const lockOptions = [
-  { key: "reports", label: "Báo cáo Ads" },
-  { key: "campaign_builder", label: "Tạo Campaign AI" },
-  { key: "audiences", label: "Tệp khách hàng" },
+  { key: "reports", label: "Bao cao Ads" },
+  { key: "campaign_builder", label: "Tao Campaign AI" },
+  { key: "audiences", label: "Tep khach hang" },
   { key: "creative", label: "Creative" },
   { key: "meta_api", label: "Meta API" }
 ];
@@ -27,7 +28,7 @@ const lockOptions = [
 async function readJson<T>(url: string, init?: RequestInit) {
   const response = await fetch(url, { cache: "no-store", ...init });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "Không thể tải dữ liệu.");
+  if (!response.ok) throw new Error(payload.error || "Khong the tai du lieu.");
   return payload;
 }
 
@@ -36,28 +37,25 @@ export function AdminConsoleClient() {
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
 
   async function loadUsers() {
     setLoading(true);
     setError("");
+    setWarning("");
     try {
-      const payload = await readJson<{ data: AdminUserRow[] }>("/api/admin/users");
+      const payload = await readJson<{ data: AdminUserRow[]; warning?: string }>("/api/admin/users");
       setRows(payload.data ?? []);
+      setWarning(payload.warning ?? "");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải danh sách user.");
+      setError(err instanceof Error ? err.message : "Khong the tai danh sach user.");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadUsers();
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
+    void loadUsers();
   }, []);
 
   async function updateUser(row: AdminUserRow, role: UserRole, lockedSections: string[]) {
@@ -68,14 +66,15 @@ export function AdminConsoleClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: row.id,
+          facebook_id: row.facebook_id || row.permission?.facebook_id || null,
           role,
           locked_sections: lockedSections
         })
       });
-      toast.success("Đã cập nhật quyền.");
+      toast.success("Da cap nhat quyen.");
       await loadUsers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể cập nhật quyền.");
+      toast.error(err instanceof Error ? err.message : "Khong the cap nhat quyen.");
     } finally {
       setSavingId("");
     }
@@ -85,7 +84,7 @@ export function AdminConsoleClient() {
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-3">
         <Card className="rounded-3xl p-5">
-          <p className="text-sm font-bold text-on-surface-variant">Tổng người dùng</p>
+          <p className="text-sm font-bold text-on-surface-variant">Tong nguoi dung Facebook</p>
           <p className="mt-2 text-3xl font-extrabold">{rows.length}</p>
         </Card>
         <Card className="rounded-3xl p-5">
@@ -95,7 +94,7 @@ export function AdminConsoleClient() {
           </p>
         </Card>
         <Card className="rounded-3xl p-5">
-          <p className="text-sm font-bold text-on-surface-variant">Tài khoản bị khóa mục</p>
+          <p className="text-sm font-bold text-on-surface-variant">Tai khoan bi khoa muc</p>
           <p className="mt-2 text-3xl font-extrabold">{rows.filter((item) => (item.permission?.locked_sections ?? []).length > 0).length}</p>
         </Card>
       </section>
@@ -103,17 +102,18 @@ export function AdminConsoleClient() {
       <Card className="overflow-hidden rounded-3xl p-0">
         <div className="flex items-center justify-between border-b border-outline-variant/70 px-6 py-5">
           <div>
-            <h3 className="text-lg font-extrabold">Quản lý phân quyền</h3>
-            <p className="text-sm text-on-surface-variant">Cấp quyền và khóa từng mục theo tài khoản đăng ký.</p>
+            <h3 className="text-lg font-extrabold">Quan ly phan quyen</h3>
+            <p className="text-sm text-on-surface-variant">Moi user dang nhap bang Facebook deu hien o day de cap quyen tung tinh nang.</p>
           </div>
           <Button variant="secondary" onClick={() => void loadUsers()} disabled={loading}>
             <MaterialIcon name="refresh" />
-            Làm mới
+            Lam moi
           </Button>
         </div>
 
         {error ? <p className="px-6 py-4 text-sm font-bold text-error">{error}</p> : null}
-        {loading ? <p className="px-6 py-5 text-sm text-on-surface-variant">Đang tải danh sách user...</p> : null}
+        {warning ? <p className="px-6 py-4 text-sm font-bold text-warning">{warning}</p> : null}
+        {loading ? <p className="px-6 py-5 text-sm text-on-surface-variant">Dang tai danh sach user...</p> : null}
 
         {!loading ? (
           <div className="divide-y divide-outline-variant/70">
@@ -131,10 +131,8 @@ export function AdminConsoleClient() {
 
       <Card className="rounded-3xl p-0">
         <div className="border-b border-outline-variant/70 px-6 py-5">
-          <h3 className="text-lg font-extrabold">Meta API nội bộ</h3>
-          <p className="text-sm text-on-surface-variant">
-            Khu test tài khoản/campaign đã chuyển sang trang Admin để khách hàng chỉ tập trung dashboard và báo cáo.
-          </p>
+          <h3 className="text-lg font-extrabold">Meta API noi bo</h3>
+          <p className="text-sm text-on-surface-variant">Khu test tai khoan/campaign danh cho admin.</p>
         </div>
         <div className="p-6">
           <MetaDashboard />
@@ -159,12 +157,13 @@ function UserPermissionRow({
   return (
     <div className="grid gap-4 px-6 py-5 lg:grid-cols-[1.2fr_0.8fr_1fr_auto] lg:items-center">
       <div>
-        <p className="font-bold text-on-surface">{row.full_name || "Chưa cập nhật tên"}</p>
+        <p className="font-bold text-on-surface">{row.full_name || "Chua cap nhat ten"}</p>
         <p className="text-sm text-on-surface-variant">{row.email}</p>
+        {row.facebook_id ? <p className="text-xs text-outline">Facebook ID: {row.facebook_id}</p> : null}
       </div>
 
       <label className="space-y-2">
-        <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Quyền</span>
+        <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Quyen</span>
         <select className="dashboard-input" value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
           <option value="owner">Owner</option>
           <option value="manager">Manager</option>
@@ -173,7 +172,7 @@ function UserPermissionRow({
       </label>
 
       <div className="space-y-2">
-        <p className="text-xs font-extrabold uppercase tracking-wide text-outline">Mục khóa</p>
+        <p className="text-xs font-extrabold uppercase tracking-wide text-outline">Muc khoa</p>
         <div className="flex flex-wrap gap-2">
           {lockOptions.map((option) => {
             const active = lockedSections.includes(option.key);
@@ -197,7 +196,7 @@ function UserPermissionRow({
 
       <div className="flex justify-end">
         <Button onClick={() => onSave(role, lockedSections)} disabled={saving}>
-          {saving ? "Đang lưu..." : "Lưu quyền"}
+          {saving ? "Dang luu..." : "Luu quyen"}
         </Button>
       </div>
     </div>
