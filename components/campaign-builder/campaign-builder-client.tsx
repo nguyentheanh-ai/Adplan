@@ -319,14 +319,18 @@ export function CampaignBuilderClient() {
   }
 
   async function saveTemplate() {
+    const templateName = window.prompt(
+      "Tên mẫu chiến dịch (để dùng lại):",
+      `${form.objective} - ${form.productName || "Mẫu mới"}`
+    );
+    if (!templateName) return;
+
     try {
-      const name = window.prompt("Tên mẫu chiến dịch (để dùng lại):", `${form.objective} - ${form.productName || "Mẫu mới"}`);
-      if (!name) return;
       await readJson("/api/campaign-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
+          name: templateName,
           account_id: selectedAccountId || null,
           objective: form.objective,
           payload: { ...form, adAccountId: selectedAccountId }
@@ -346,7 +350,7 @@ export function CampaignBuilderClient() {
         id: `local-${Date.now()}`,
         user_id: "local",
         account_id: selectedAccountId || null,
-        name,
+        name: templateName,
         objective: form.objective,
         payload: { ...form, adAccountId: selectedAccountId },
         created_at: new Date().toISOString(),
