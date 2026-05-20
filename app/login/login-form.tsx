@@ -6,7 +6,7 @@ import { MaterialIcon } from "@/components/material-icon";
 import { createClient } from "@/lib/supabase/client";
 
 const productionRedirectTo = "https://adsplan.theanhmarketing.com/dashboard";
-const facebookScopes = "email,public_profile,ads_read,ads_management,read_insights";
+const facebookScopes = "public_profile,ads_read,ads_management,read_insights";
 
 export function LoginForm() {
   const [loading, setLoading] = useState(false);

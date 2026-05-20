@@ -162,7 +162,7 @@ META_API_VERSION=v23.0
 For real Facebook login, configure Supabase Auth provider `Facebook` with your Meta app id/secret and set the callback URL in Meta Developer dashboard. The login page requests:
 
 ```text
-public_profile,email,ads_read,ads_management,business_management
+public_profile,ads_read,ads_management,read_insights
 ```
 
 Then open `/login`, continue with Facebook, and the app redirects to `/dashboard/meta`. The page loads ad accounts from `/api/meta/adaccounts`, lets the user choose one, stores that choice in local React state, and uses the selected `ad_account_id` when listing or creating campaigns.
