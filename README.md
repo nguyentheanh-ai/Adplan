@@ -62,10 +62,15 @@ Open `http://localhost:3000`.
 
 - `/login` - Facebook-only login UI using direct Facebook OAuth.
 - `/dashboard` - recent generated plans and empty state
+- `/reports` - advanced Meta Ads reporting with KPI cards, daily chart, breakdown, and CSV export
+- `/campaign-builder` - AI Campaign Builder draft preview for Meta campaign/ad set/ad configuration
+- `/audiences` - audience library placeholder for saved persona and interest sets
+- `/creative` - creative library placeholder for future media assets
 - `/ask` - guided 9-question AI chat flow
 - `/persona/[id]` - generated customer persona
 - `/plan/[id]` - reviewable Facebook Ads campaign plan
 - `/dashboard/meta` - Meta Graph API connection test, campaign list, and paused campaign creation
+- `/history` - generated plan history
 - `/settings` - account and environment status
 
 ## Server API
@@ -150,6 +155,76 @@ The route uses the selected `ad_account_id` from the UI and the server-side Face
 ```
 
 The app never creates an `ACTIVE` campaign.
+
+### `GET /api/meta/report`
+
+Server-side reporting route for the selected ad account.
+
+Query:
+
+```text
+?ad_account_id=act_1295473488844957&start_date=2026-05-01&end_date=2026-05-20
+```
+
+The route reads the logged-in Facebook session token on the server and returns:
+
+- KPI summary: spend, impressions, reach, CTR, CPC, CPM, results, cost per result, ROAS
+- campaign-level performance
+- daily account insights for the chart
+- rule-based AI insight suggestions
+
+### `GET /api/meta/breakdown`
+
+Server-side breakdown route. Supported values:
+
+```text
+breakdown=age
+breakdown=gender
+breakdown=placement
+```
+
+If Meta does not support a breakdown for the account, permission, or date range, the UI shows a friendly error and does not crash.
+
+### `GET /api/meta/targeting-search`
+
+Server-side Facebook Targeting Search route used by Campaign Builder.
+
+Query:
+
+```text
+?ad_account_id=act_1295473488844957&q=spa%20cham%20soc%20da
+```
+
+If Meta returns an error or no verified interests, the UI falls back to internal suggestions and labels them as not verified by Facebook.
+
+## Reporting and Export
+
+The Ads report page supports:
+
+- ad account selector
+- date presets: today, yesterday, last 7 days, last 30 days, this month, custom range
+- campaign performance table
+- age/gender/placement breakdown where Meta supports it
+- CSV export with account id, date range, KPI summary, and campaign rows
+
+CSV filename format:
+
+```text
+ads-report-{account_id}-{start_date}-{end_date}.csv
+```
+
+XLSX/PDF export is not enabled in this MVP because the project currently avoids extra browser export packages. CSV is the production-safe default.
+
+## Campaign Builder
+
+`/campaign-builder` creates a preview-only campaign draft:
+
+- Campaign: name, objective, budget, schedule, default `PAUSED`
+- Ad Set: audience, age, gender, location, interests, placement, optimization goal, billing event
+- Ads: fanpage, media placeholder, primary text, headline, description, CTA, URL
+- Naming format for campaign, ad set, and ad
+
+The “Launch lên Meta” button is disabled in this MVP. Real launch should keep campaign status `PAUSED` and require a confirm modal before calling Meta create endpoints.
 
 ## Meta Setup
 

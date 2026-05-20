@@ -7,11 +7,12 @@ import { MaterialIcon } from "@/components/material-icon";
 
 const navItems = [
   { href: "/dashboard", label: "Tổng quan", icon: "dashboard", match: "/dashboard" },
-  { href: "/ask", label: "Đặt câu hỏi", icon: "contact_support", match: "/ask" },
-  { href: "/dashboard", label: "Chân dung khách hàng", icon: "group", match: "/persona" },
-  { href: "/dashboard", label: "Kế hoạch quảng cáo", icon: "ads_click", match: "/plan" },
+  { href: "/reports", label: "Báo cáo Ads", icon: "monitoring", match: "/reports" },
+  { href: "/campaign-builder", label: "Tạo Campaign AI", icon: "auto_awesome", match: "/campaign-builder" },
+  { href: "/audiences", label: "Tệp khách hàng", icon: "groups", match: "/audiences" },
+  { href: "/creative", label: "Creative", icon: "palette", match: "/creative" },
   { href: "/dashboard/meta", label: "Meta API", icon: "hub", match: "/dashboard/meta" },
-  { href: "/dashboard", label: "Lịch sử tư vấn", icon: "history", match: "/history" },
+  { href: "/history", label: "Lịch sử", icon: "history", match: "/history" },
   { href: "/settings", label: "Cài đặt", icon: "settings", match: "/settings" }
 ];
 
@@ -25,7 +26,7 @@ export function AppShell({
   title,
   description,
   actions,
-  contentClassName = "px-gutter pb-12 pt-24"
+  contentClassName = "px-gutter pb-24 pt-24 md:pb-12"
 }: {
   children: React.ReactNode;
   title?: string;
@@ -40,7 +41,7 @@ export function AppShell({
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
-      // Ignore local configuration errors and return to login.
+      // Đưa người dùng về login kể cả khi logout endpoint lỗi tạm thời.
     }
     router.replace("/login");
     router.refresh();
@@ -48,77 +49,80 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-background text-on-background">
-      <aside className="fixed left-0 top-0 z-50 hidden h-full w-[280px] flex-col border-r border-outline-variant bg-surface py-2 shadow-sm md:flex">
-        <div className="px-6 py-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-container text-on-primary">
+      <aside className="fixed left-0 top-0 z-50 hidden h-full w-[268px] flex-col border-r border-outline-variant/70 bg-white/95 shadow-soft backdrop-blur md:flex">
+        <div className="px-5 py-6">
+          <Link href="/dashboard" className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ai-gradient text-white shadow-glow">
               <MaterialIcon filled name="insights" />
             </div>
             <div>
-              <h1 className="text-[24px] font-extrabold leading-none text-primary">AdPlanner AI</h1>
-              <p className="mt-1 text-[12px] font-medium uppercase tracking-wide text-outline">Premium Ads Partner</p>
+              <h1 className="text-xl font-extrabold leading-none text-primary">AdPlanner AI</h1>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-outline">Meta ads cockpit</p>
             </div>
-          </div>
+          </Link>
         </div>
 
-        <nav className="custom-scrollbar flex-1 space-y-1 overflow-y-auto px-4">
-          {navItems.map((item, index) => {
+        <nav className="custom-scrollbar flex-1 space-y-1 overflow-y-auto px-3">
+          {navItems.map((item) => {
             const active = isActive(pathname, item.match);
             return (
               <Link
-                key={`${item.label}-${index}`}
+                key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-4 py-3 text-on-surface-variant transition-colors duration-200 hover:bg-surface-variant/50",
-                  active && "border-l-4 border-primary bg-primary-fixed/20 font-bold text-primary"
+                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-on-surface-variant transition hover:bg-surface-container-low hover:text-primary",
+                  active && "bg-primary text-white shadow-glow hover:bg-primary hover:text-white"
                 )}
               >
-                <MaterialIcon filled={active} name={item.icon} />
-                <span className="text-base">{item.label}</span>
+                <MaterialIcon className="text-[22px]" filled={active} name={item.icon} />
+                <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="border-t border-outline-variant px-6 py-6">
+        <div className="px-4 py-5">
+          <div className="mb-4 rounded-2xl border border-outline-variant/70 bg-surface-container-low p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-outline">Kết nối</p>
+            <p className="mt-1 text-sm font-bold text-on-surface">Facebook Marketing API</p>
+            <p className="mt-1 text-xs leading-5 text-on-surface-variant">Campaign thật luôn được giữ PAUSED trước khi duyệt.</p>
+          </div>
           <button
             onClick={signOut}
-            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-on-surface-variant transition hover:bg-surface-variant/50 hover:text-primary"
+            className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold text-on-surface-variant transition hover:bg-surface-container-low hover:text-primary"
           >
             <MaterialIcon name="logout" />
-            <span className="font-semibold">Đăng xuất</span>
+            Đăng xuất
           </button>
         </div>
       </aside>
 
-      <header className="fixed right-0 top-0 z-40 flex h-16 w-full items-center justify-between border-b border-outline-variant bg-surface/80 px-4 backdrop-blur-md md:w-[calc(100%-280px)] md:px-6">
-        <div className="hidden text-sm font-bold text-primary md:block">AI Ads Planner</div>
+      <header className="fixed right-0 top-0 z-40 flex h-16 w-full items-center justify-between border-b border-outline-variant/70 bg-white/82 px-4 backdrop-blur md:w-[calc(100%-268px)] md:px-6">
         <Link className="flex items-center gap-2 md:hidden" href="/dashboard">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white">
             <MaterialIcon filled name="insights" />
           </div>
           <span className="font-extrabold text-primary">AdPlanner AI</span>
         </Link>
-        <div className="flex items-center gap-4 md:gap-6">
-          <div className="flex items-center gap-3">
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-bold text-on-surface">Tài khoản</p>
-              <p className="text-[11px] uppercase tracking-wider text-outline">Facebook</p>
-            </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-primary-fixed bg-primary-fixed text-sm font-extrabold text-primary">
-              FB
-            </div>
+        <div className="hidden text-sm font-bold text-primary md:block">AI Ads Planner</div>
+        <div className="flex items-center gap-3">
+          <div className="hidden text-right sm:block">
+            <p className="text-sm font-bold text-on-surface">Tài khoản</p>
+            <p className="text-[11px] uppercase tracking-wider text-outline">Facebook</p>
+          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary-fixed bg-primary-fixed text-sm font-extrabold text-primary">
+            FB
           </div>
         </div>
       </header>
 
-      <main className={cn("min-h-screen md:ml-[280px]", contentClassName)}>
-        <div className="mx-auto max-w-[1200px]">
+      <main className={cn("min-h-screen md:ml-[268px]", contentClassName)}>
+        <div className="mx-auto max-w-[1280px]">
           {title ? (
-            <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
-                <h2 className="text-[24px] font-semibold leading-[1.4] text-on-background">{title}</h2>
-                {description ? <p className="mt-2 text-base leading-7 text-on-surface-variant">{description}</p> : null}
+                <h2 className="text-[26px] font-extrabold leading-tight text-on-background">{title}</h2>
+                {description ? <p className="mt-2 max-w-3xl text-sm leading-6 text-on-surface-variant">{description}</p> : null}
               </div>
               {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
             </div>
@@ -127,17 +131,17 @@ export function AppShell({
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-outline-variant bg-surface px-4 md:hidden">
-        {navItems.slice(0, 5).map((item, index) => {
+      <nav className="fixed bottom-0 left-0 right-0 z-50 grid h-16 grid-cols-5 border-t border-outline-variant/70 bg-white px-2 md:hidden">
+        {navItems.slice(0, 5).map((item) => {
           const active = isActive(pathname, item.match);
           return (
             <Link
-              key={`${item.label}-mobile-${index}`}
+              key={`${item.href}-mobile`}
               href={item.href}
-              className={cn("flex flex-col items-center gap-1 text-on-surface-variant", active && "text-primary")}
+              className={cn("flex flex-col items-center justify-center gap-1 text-on-surface-variant", active && "text-primary")}
             >
-              <MaterialIcon filled={active} name={item.icon} />
-              <span className="text-[10px] font-bold">{item.label.split(" ")[0]}</span>
+              <MaterialIcon className="text-[22px]" filled={active} name={item.icon} />
+              <span className="max-w-full truncate text-[10px] font-bold">{item.label}</span>
             </Link>
           );
         })}

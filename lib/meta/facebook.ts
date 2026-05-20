@@ -1,20 +1,16 @@
-export type MetaAdAccount = {
-  id: string;
-  account_id?: string;
-  name?: string;
-  account_status?: number;
-  currency?: string;
-  timezone_name?: string;
-  business_name?: string;
-};
+import type {
+  AdAccount,
+  AudienceSuggestion,
+  BreakdownRow,
+  BreakdownType,
+  Campaign,
+  CampaignInsight,
+  DailyInsight,
+  DateRange
+} from "@/lib/meta/types";
 
-export type MetaCampaign = {
-  id: string;
-  name: string;
-  status?: string;
-  objective?: string;
-  created_time?: string;
-};
+export type MetaAdAccount = AdAccount;
+export type MetaCampaign = Campaign;
 
 export type MetaApiErrorPayload = {
   error?: {
@@ -97,11 +93,19 @@ export function classifyMetaError(status: number, payload: MetaApiErrorPayload) 
   let userMessage = `Meta API trả lỗi: ${rawMessage}`;
 
   if (metaError?.code === 190 || lowerMessage.includes("invalid oauth") || lowerMessage.includes("access token")) {
-    userMessage = "Token Meta không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại Facebook hoặc tạo lại access token.";
+    userMessage = "Token Meta không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại Facebook.";
   } else if (lowerMessage.includes("ads_read")) {
-    userMessage = "Token thiếu quyền ads_read để đọc tài khoản quảng cáo hoặc campaign.";
+    userMessage = "Token thiếu quyền ads_read để đọc tài khoản quảng cáo hoặc báo cáo.";
   } else if (lowerMessage.includes("ads_management")) {
     userMessage = "Token thiếu quyền ads_management để tạo campaign.";
+  } else if (metaError?.code === 4 || metaError?.code === 17 || lowerMessage.includes("rate limit")) {
+    userMessage = "Meta API đang giới hạn tần suất gọi. Hãy thử lại sau ít phút.";
+  } else if (
+    lowerMessage.includes("breakdowns") ||
+    lowerMessage.includes("breakdown") ||
+    lowerMessage.includes("not supported")
+  ) {
+    userMessage = "Breakdown này chưa được Meta hỗ trợ cho dữ liệu hoặc quyền hiện tại.";
   } else if (metaError?.code === 10 || metaError?.code === 200 || lowerMessage.includes("permission")) {
     userMessage = "Token thiếu quyền cần thiết với Meta Marketing API.";
   } else if (
@@ -158,7 +162,7 @@ async function metaFetch<T>(
 }
 
 export async function getMetaAdAccounts(accessToken?: string | null) {
-  const payload = await metaFetch<{ data: MetaAdAccount[] }>("me/adaccounts", {
+  const payload = await metaFetch<{ data: AdAccount[] }>("me/adaccounts", {
     accessToken,
     params: {
       fields: "id,account_id,name,currency,timezone_name,account_status"
@@ -170,15 +174,141 @@ export async function getMetaAdAccounts(accessToken?: string | null) {
 
 export async function getMetaCampaigns(adAccountIdInput?: string | null, accessToken?: string | null) {
   const adAccountId = resolveAdAccountId(adAccountIdInput);
-  const payload = await metaFetch<{ data: MetaCampaign[] }>(`${adAccountId}/campaigns`, {
+  const payload = await metaFetch<{ data: Campaign[] }>(`${adAccountId}/campaigns`, {
     accessToken,
     params: {
       fields: "id,name,status,objective,created_time",
-      limit: "50"
+      limit: "100"
     }
   });
 
   return payload.data ?? [];
+}
+
+const insightFields = [
+  "campaign_id",
+  "campaign_name",
+  "objective",
+  "spend",
+  "impressions",
+  "reach",
+  "frequency",
+  "cpm",
+  "ctr",
+  "cpc",
+  "clicks",
+  "actions",
+  "cost_per_action_type",
+  "purchase_roas",
+  "website_purchase_roas",
+  "action_values"
+].join(",");
+
+function serializeDateRange(dateRange: DateRange) {
+  return JSON.stringify({
+    since: dateRange.startDate,
+    until: dateRange.endDate
+  });
+}
+
+export async function getMetaCampaignInsights(
+  adAccountIdInput: string | null | undefined,
+  dateRange: DateRange,
+  accessToken?: string | null
+) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const payload = await metaFetch<{ data: CampaignInsight[] }>(`${adAccountId}/insights`, {
+    accessToken,
+    params: {
+      level: "campaign",
+      fields: insightFields,
+      time_range: serializeDateRange(dateRange),
+      limit: "100"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function getMetaDailyInsights(
+  adAccountIdInput: string | null | undefined,
+  dateRange: DateRange,
+  accessToken?: string | null
+) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const payload = await metaFetch<{ data: DailyInsight[] }>(`${adAccountId}/insights`, {
+    accessToken,
+    params: {
+      level: "account",
+      time_increment: "1",
+      fields: "date_start,date_stop,spend,impressions,reach,ctr,cpc,cpm,clicks",
+      time_range: serializeDateRange(dateRange),
+      limit: "100"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+function resolveBreakdown(breakdown: BreakdownType) {
+  if (breakdown === "placement") return "publisher_platform";
+  return breakdown;
+}
+
+export async function getMetaBreakdownInsights({
+  adAccountId,
+  dateRange,
+  breakdown,
+  accessToken
+}: {
+  adAccountId?: string | null;
+  dateRange: DateRange;
+  breakdown: BreakdownType;
+  accessToken?: string | null;
+}) {
+  const normalizedAdAccountId = resolveAdAccountId(adAccountId);
+  const resolvedBreakdown = resolveBreakdown(breakdown);
+  const payload = await metaFetch<{ data: BreakdownRow[] }>(`${normalizedAdAccountId}/insights`, {
+    accessToken,
+    params: {
+      level: "campaign",
+      breakdowns: resolvedBreakdown,
+      fields: `${insightFields},${resolvedBreakdown}`,
+      time_range: serializeDateRange(dateRange),
+      limit: "100"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function searchFacebookInterests({
+  query,
+  adAccountId,
+  accessToken
+}: {
+  query: string;
+  adAccountId?: string | null;
+  accessToken?: string | null;
+}) {
+  const normalizedAdAccountId = resolveAdAccountId(adAccountId);
+  const payload = await metaFetch<{
+    data: Array<{ id: string; name: string; audience_size?: number }>;
+  }>(`${normalizedAdAccountId}/targetingsearch`, {
+    accessToken,
+    params: {
+      type: "adinterest",
+      q: query,
+      limit: "12"
+    }
+  });
+
+  return (payload.data ?? []).map<AudienceSuggestion>((item) => ({
+    id: item.id,
+    name: item.name,
+    audience_size: item.audience_size,
+    source: "facebook"
+  }));
 }
 
 export async function createPausedMetaCampaign({
