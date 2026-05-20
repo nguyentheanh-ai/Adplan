@@ -341,6 +341,19 @@ export async function getMetaManagedPages(accessToken?: string | null) {
   return payload.data ?? [];
 }
 
+export function sanitizeMetaPage(page: { id: string; name: string; category?: string; access_token?: string }) {
+  return {
+    id: page.id,
+    name: page.name,
+    category: page.category
+  };
+}
+
+export async function getMetaManagedPageAccessToken(pageId: string, accessToken?: string | null) {
+  const pages = await getMetaManagedPages(accessToken);
+  return pages.find((page) => page.id === pageId)?.access_token || null;
+}
+
 export async function getMetaPagePosts({
   pageId,
   accessToken

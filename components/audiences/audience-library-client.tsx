@@ -50,6 +50,25 @@ async function readJson<T>(url: string, init?: RequestInit) {
   return payload;
 }
 
+function localAudienceKey(accountId: string) {
+  return `adplanner_saved_audiences_${accountId || "global"}`;
+}
+
+function readLocalAudiences(accountId: string) {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(localAudienceKey(accountId)) || "[]") as SavedAudience[];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalAudience(accountId: string, audience: SavedAudience) {
+  if (typeof window === "undefined") return;
+  const current = readLocalAudiences(accountId).filter((item) => item.id !== audience.id);
+  window.localStorage.setItem(localAudienceKey(accountId), JSON.stringify([audience, ...current].slice(0, 100)));
+}
+
 function buildAudienceRows(creatives: CreativePerformance[]) {
   const map = new Map<string, Omit<AudienceRow, "code"> & { campaignSet: Set<string>; topCampaignCounter: Map<string, number> }>();
 
@@ -148,10 +167,10 @@ export function AudienceLibraryClient() {
 
   async function loadSavedAudiences(accountId: string) {
     try {
-      const res = await readJson<{ data: SavedAudience[] }>(`/api/saved-audiences?account_id=${encodeURIComponent(accountId)}`);
-      setSavedAudiences(res.data ?? []);
+      const res = await readJson<{ data: SavedAudience[]; storage?: string }>(`/api/saved-audiences?account_id=${encodeURIComponent(accountId)}`);
+      setSavedAudiences([...(res.data ?? []), ...readLocalAudiences(accountId)]);
     } catch {
-      setSavedAudiences([]);
+      setSavedAudiences(readLocalAudiences(accountId));
     }
   }
 
@@ -179,7 +198,7 @@ export function AudienceLibraryClient() {
   async function saveAudience(row: AudienceRow) {
     if (!selectedAccountId) return;
     try {
-      await readJson("/api/saved-audiences", {
+      const payload = await readJson<{ data: SavedAudience; storage?: string }>("/api/saved-audiences", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -195,10 +214,33 @@ export function AudienceLibraryClient() {
           }
         })
       });
-      toast.success("Đã lưu tệp khách hàng. Bạn có thể dùng lại khi tạo campaign.");
+      if (payload.storage === "local") {
+        saveLocalAudience(selectedAccountId, payload.data);
+        toast.success("Đã lưu tệp khách hàng trên trình duyệt. Khi DB được cập nhật, app sẽ lưu lên Supabase.");
+      } else {
+        toast.success("Đã lưu tệp khách hàng. Bạn có thể dùng lại khi tạo campaign.");
+      }
       await loadSavedAudiences(selectedAccountId);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể lưu tệp.");
+      const localAudience: SavedAudience = {
+        id: `local-${Date.now()}`,
+        user_id: "local",
+        account_id: null,
+        code: row.code,
+        name: row.name,
+        payload: {
+          ageRange: row.ageRange,
+          gender: row.gender,
+          locations: row.locations,
+          interests: row.interests,
+          behaviors: row.behaviors
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      saveLocalAudience(selectedAccountId, localAudience);
+      setSavedAudiences((current) => [localAudience, ...current]);
+      toast.success("Đã lưu tệp khách hàng trên trình duyệt.");
     }
   }
 

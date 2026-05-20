@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { getAppSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+function isMissingTable(error: { message?: string; code?: string } | null) {
+  const message = error?.message?.toLowerCase() || "";
+  return error?.code === "42P01" || message.includes("saved_audiences") || message.includes("schema cache");
+}
+
 export async function GET(request: Request) {
   const session = await getAppSession();
   if (!session) return NextResponse.json({ error: "Bạn cần đăng nhập." }, { status: 401 });
@@ -21,7 +26,10 @@ export async function GET(request: Request) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (isMissingTable(error)) return NextResponse.json({ data: [], storage: "local" });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ data: data ?? [] });
 }
 
@@ -63,6 +71,23 @@ export async function POST(request: Request) {
     .select("id,user_id,account_id,code,name,payload,created_at,updated_at")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (isMissingTable(error)) {
+      return NextResponse.json({
+        data: {
+          id: `local-${Date.now()}`,
+          user_id: session.userId,
+          account_id: body.account_id || null,
+          code: body.code.trim(),
+          name: body.name.trim(),
+          payload: body.payload,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        storage: "local"
+      });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ data });
 }

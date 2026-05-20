@@ -49,6 +49,38 @@ async function readJson<T>(url: string, init?: RequestInit) {
   return payload;
 }
 
+function localTemplateKey(accountId: string) {
+  return `adplanner_campaign_templates_${accountId || "global"}`;
+}
+
+function readLocalTemplates(accountId: string) {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(localTemplateKey(accountId)) || "[]") as CampaignTemplate[];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalTemplate(accountId: string, template: CampaignTemplate) {
+  if (typeof window === "undefined") return;
+  const current = readLocalTemplates(accountId).filter((item) => item.id !== template.id);
+  window.localStorage.setItem(localTemplateKey(accountId), JSON.stringify([template, ...current].slice(0, 50)));
+}
+
+function localAudienceKey(accountId: string) {
+  return `adplanner_saved_audiences_${accountId || "global"}`;
+}
+
+function readLocalAudiences(accountId: string) {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(window.localStorage.getItem(localAudienceKey(accountId)) || "[]") as SavedAudience[];
+  } catch {
+    return [];
+  }
+}
+
 export function CampaignBuilderClient() {
   const [accounts, setAccounts] = useState<AdAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -61,7 +93,10 @@ export function CampaignBuilderClient() {
   const [interests, setInterests] = useState<AudienceSuggestion[]>([]);
   const [selectedInterestIds, setSelectedInterestIds] = useState<string[]>([]);
   const [interestNotice, setInterestNotice] = useState("");
+  const [fanpageUrl, setFanpageUrl] = useState("");
+  const [pageCheckNotice, setPageCheckNotice] = useState("");
   const [searching, setSearching] = useState(false);
+  const [checkingPage, setCheckingPage] = useState(false);
   const [draft, setDraft] = useState<CampaignDraft | null>(null);
   const [loadingPages, setLoadingPages] = useState(false);
   const [loadingPosts, setLoadingPosts] = useState(false);
@@ -109,19 +144,20 @@ export function CampaignBuilderClient() {
 
   async function loadTemplates(accountId: string) {
     try {
-      const payload = await readJson<{ data: CampaignTemplate[] }>(`/api/campaign-templates?account_id=${encodeURIComponent(accountId)}`);
-      setTemplates(payload.data ?? []);
+      const payload = await readJson<{ data: CampaignTemplate[]; storage?: string }>(`/api/campaign-templates?account_id=${encodeURIComponent(accountId)}`);
+      const localTemplates = readLocalTemplates(accountId);
+      setTemplates([...(payload.data ?? []), ...localTemplates]);
     } catch {
-      setTemplates([]);
+      setTemplates(readLocalTemplates(accountId));
     }
   }
 
   async function loadSavedAudiences(accountId: string) {
     try {
-      const payload = await readJson<{ data: SavedAudience[] }>(`/api/saved-audiences?account_id=${encodeURIComponent(accountId)}`);
-      setSavedAudiences(payload.data ?? []);
+      const payload = await readJson<{ data: SavedAudience[]; storage?: string }>(`/api/saved-audiences?account_id=${encodeURIComponent(accountId)}`);
+      setSavedAudiences([...(payload.data ?? []), ...readLocalAudiences(accountId)]);
     } catch {
-      setSavedAudiences([]);
+      setSavedAudiences(readLocalAudiences(accountId));
     }
   }
 
@@ -135,6 +171,43 @@ export function CampaignBuilderClient() {
       setInterestNotice(err instanceof Error ? err.message : "Không thể tải danh sách fanpage.");
     } finally {
       setLoadingPages(false);
+    }
+  }
+
+  async function checkFanpagePermission() {
+    if (!fanpageUrl.trim()) {
+      toast.error("Nhập link fanpage trước.");
+      return;
+    }
+
+    setCheckingPage(true);
+    setPageCheckNotice("");
+    try {
+      const payload = await readJson<{
+        data: { ok: boolean; message: string; page?: FacebookPage };
+      }>(`/api/meta/page-check?url=${encodeURIComponent(fanpageUrl.trim())}`);
+
+      setPageCheckNotice(payload.data.message);
+      if (payload.data.ok && payload.data.page) {
+        const page = payload.data.page;
+        setPages((current) => (current.some((item) => item.id === page.id) ? current : [...current, page]));
+        setForm((current) => ({
+          ...current,
+          pageId: page.id,
+          pageName: page.name,
+          fanpage: page.name,
+          postId: "",
+          postMessage: ""
+        }));
+        setPosts([]);
+        toast.success("Đã xác nhận quyền Fanpage.");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Không thể kiểm tra quyền Fanpage.";
+      setPageCheckNotice(message);
+      toast.error(message);
+    } finally {
+      setCheckingPage(false);
     }
   }
 
@@ -258,11 +331,30 @@ export function CampaignBuilderClient() {
           objective: form.objective,
           payload: { ...form, adAccountId: selectedAccountId }
         })
+      }).then((payload) => {
+        const result = payload as { data?: CampaignTemplate; storage?: string };
+        if (result.storage === "local" && result.data) {
+          saveLocalTemplate(selectedAccountId, result.data);
+          toast.success("Đã lưu lại chiến dịch trên trình duyệt. Khi DB được cập nhật, app sẽ lưu lên Supabase.");
+          return;
+        }
+        toast.success("Đã lưu lại chiến dịch.");
       });
-      toast.success("Đã lưu lại chiến dịch.");
       if (selectedAccountId) await loadTemplates(selectedAccountId);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Không thể lưu template.");
+      const localTemplate: CampaignTemplate = {
+        id: `local-${Date.now()}`,
+        user_id: "local",
+        account_id: selectedAccountId || null,
+        name,
+        objective: form.objective,
+        payload: { ...form, adAccountId: selectedAccountId },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      saveLocalTemplate(selectedAccountId, localTemplate);
+      setTemplates((current) => [localTemplate, ...current]);
+      toast.success("Đã lưu lại chiến dịch trên trình duyệt.");
     }
   }
 
@@ -387,6 +479,16 @@ export function CampaignBuilderClient() {
                   </option>
                 ))}
               </select>
+            </Field>
+
+            <Field label="Kiểm tra quyền bằng link Fanpage">
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <Input value={fanpageUrl} onChange={(event) => setFanpageUrl(event.target.value)} placeholder="https://facebook.com/tenfanpage" />
+                <Button onClick={() => void checkFanpagePermission()} disabled={checkingPage}>
+                  {checkingPage ? "Đang kiểm tra..." : "Kiểm tra"}
+                </Button>
+              </div>
+              {pageCheckNotice ? <p className="text-xs font-semibold text-on-surface-variant">{pageCheckNotice}</p> : null}
             </Field>
 
             <Field label={needsPost ? "Bài viết có sẵn trên page" : "Bài viết có sẵn (không bắt buộc)"}>

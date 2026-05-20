@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
-import { getMetaPagePosts, metaErrorResponse } from "@/lib/meta/facebook";
+import { getMetaManagedPageAccessToken, getMetaPagePosts, metaErrorResponse } from "@/lib/meta/facebook";
 
 export async function GET(request: Request) {
   try {
@@ -11,7 +11,15 @@ export async function GET(request: Request) {
     }
 
     const accessToken = await requireFacebookProviderToken();
-    const posts = await getMetaPagePosts({ pageId, accessToken });
+    const pageAccessToken = await getMetaManagedPageAccessToken(pageId, accessToken);
+    if (!pageAccessToken) {
+      return NextResponse.json(
+        { error: "Bạn chưa có quyền quản trị Page này hoặc Facebook chưa cấp quyền pages_show_list/pages_read_engagement." },
+        { status: 403 }
+      );
+    }
+
+    const posts = await getMetaPagePosts({ pageId, accessToken: pageAccessToken });
     return NextResponse.json({ data: posts });
   } catch (error) {
     const response = metaErrorResponse(error);

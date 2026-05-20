@@ -65,6 +65,9 @@ export function AdsReportClient() {
   const [breakdown, setBreakdown] = useState<BreakdownType>("age");
   const [breakdownRows, setBreakdownRows] = useState<BreakdownRow[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("spend");
+  const [campaignKeyword, setCampaignKeyword] = useState("");
+  const [campaignStatus, setCampaignStatus] = useState("ALL");
+  const [campaignObjective, setCampaignObjective] = useState("ALL");
   const [primaryMetric, setPrimaryMetric] = useState<ChartMetric>("spend");
   const [compareMetric, setCompareMetric] = useState<ChartMetric>("ctr");
   const [chartType, setChartType] = useState<ChartType>("line");
@@ -152,7 +155,17 @@ export function AdsReportClient() {
 
   const selectedAccount = accounts.find((item) => item.id === selectedAccountId);
   const currency = selectedAccount?.currency || "VND";
-  const sortedCampaigns = useMemo(() => [...(report?.campaigns ?? [])].sort((a, b) => b[sortKey] - a[sortKey]), [report, sortKey]);
+  const sortedCampaigns = useMemo(() => {
+    const keyword = campaignKeyword.trim().toLowerCase();
+    return [...(report?.campaigns ?? [])]
+      .filter((campaign) => {
+        if (campaignStatus !== "ALL" && (campaign.status || "UNKNOWN") !== campaignStatus) return false;
+        if (campaignObjective !== "ALL" && (campaign.objective || "UNKNOWN") !== campaignObjective) return false;
+        if (!keyword) return true;
+        return campaign.campaignName.toLowerCase().includes(keyword) || campaign.campaignId.toLowerCase().includes(keyword);
+      })
+      .sort((a, b) => b[sortKey] - a[sortKey]);
+  }, [campaignKeyword, campaignObjective, campaignStatus, report, sortKey]);
 
   return (
     <div className="space-y-6">
@@ -295,7 +308,7 @@ export function AdsReportClient() {
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-            <Card className="overflow-hidden rounded-3xl p-0">
+            <Card className="hidden overflow-hidden rounded-3xl p-0">
               <div className="flex flex-col gap-3 border-b border-outline-variant/70 px-6 py-5 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h3 className="text-lg font-extrabold">Campaign Performance</h3>
@@ -328,6 +341,43 @@ export function AdsReportClient() {
               </div>
             </Card>
           </div>
+
+          <Card className="overflow-hidden rounded-3xl p-0">
+            <div className="border-b border-outline-variant/70 px-6 py-5">
+              <h3 className="text-lg font-extrabold">Campaign Performance</h3>
+              <p className="text-sm text-on-surface-variant">Bảng báo cáo đầy đủ chỉ số, đặt dưới biểu đồ để có đủ chiều ngang.</p>
+            </div>
+            <div className="grid gap-2 border-b border-outline-variant/70 px-6 py-4 md:grid-cols-4">
+              <input
+                className="dashboard-input"
+                placeholder="Tìm campaign hoặc ID..."
+                value={campaignKeyword}
+                onChange={(event) => setCampaignKeyword(event.target.value)}
+              />
+              <select className="dashboard-input" value={campaignStatus} onChange={(event) => setCampaignStatus(event.target.value)}>
+                <option value="ALL">Tất cả trạng thái</option>
+                {Array.from(new Set((report?.campaigns ?? []).map((campaign) => campaign.status || "UNKNOWN"))).map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+              <select className="dashboard-input" value={campaignObjective} onChange={(event) => setCampaignObjective(event.target.value)}>
+                <option value="ALL">Tất cả objective</option>
+                {Array.from(new Set((report?.campaigns ?? []).map((campaign) => campaign.objective || "UNKNOWN"))).map((objective) => (
+                  <option key={objective} value={objective}>
+                    {objective}
+                  </option>
+                ))}
+              </select>
+              <select className="dashboard-input" value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}>
+                <option value="spend">Sắp xếp theo chi tiêu</option>
+                <option value="ctr">Sắp xếp theo CTR</option>
+                <option value="cpc">Sắp xếp theo CPC</option>
+              </select>
+            </div>
+            <CampaignTable rows={sortedCampaigns} currency={currency} />
+          </Card>
 
           <Card className="rounded-3xl p-6">
             <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
