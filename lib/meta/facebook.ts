@@ -169,7 +169,7 @@ export async function getMetaAdAccounts(accessToken?: string | null) {
   const payload = await metaFetch<{ data: AdAccount[] }>("me/adaccounts", {
     accessToken,
     params: {
-      fields: "id,account_id,name,currency,timezone_name,account_status,amount_spent,balance,spend_cap,created_time,disable_reason,business{name,id},funding_source_details"
+      fields: "id,account_id,name,currency,timezone_name,account_status"
     }
   });
 
@@ -191,7 +191,7 @@ export async function getMetaAdAccountDetails(adAccountIdInput?: string | null, 
       return metaFetch<AdAccount>(adAccountId, {
         accessToken,
         params: {
-          fields: "id,account_id,name,currency,timezone_name,account_status,business{name,id}"
+          fields: "id,account_id,name,currency,timezone_name,account_status"
         }
       });
     }

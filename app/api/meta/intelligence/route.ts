@@ -68,9 +68,9 @@ export async function GET(request: Request) {
     const previousRange = getPreviousDateRange(dateRange);
     const selectedAccount = accountRows.find((account) => account.id === selectedId || account.account_id === selectedId.replace(/^act_/, "")) ?? null;
     const [campaigns, campaignInsights, daily, previousInsights, ads] = await Promise.all([
-      getMetaCampaigns(selectedId, accessToken),
-      getMetaCampaignInsights(selectedId, dateRange, accessToken),
-      getMetaDailyInsights(selectedId, dateRange, accessToken),
+      getMetaCampaigns(selectedId, accessToken).catch(() => []),
+      getMetaCampaignInsights(selectedId, dateRange, accessToken).catch(() => []),
+      getMetaDailyInsights(selectedId, dateRange, accessToken).catch(() => []),
       getMetaCampaignInsights(selectedId, previousRange, accessToken).catch(() => []),
       getMetaAdsWithCreatives(selectedId, dateRange, accessToken).catch(() => [])
     ]);
