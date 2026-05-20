@@ -3,6 +3,8 @@ import { requireAdminRole } from "@/lib/admin/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AdminUserPermission, UserRole } from "@/lib/meta/types";
 
+export const dynamic = "force-dynamic";
+
 type AdminUserRow = {
   id: string;
   email: string;

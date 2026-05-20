@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client-cache";
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type { AdAccount, AdsReport, BreakdownRow, BreakdownType, DailyInsight } from "@/lib/meta/types";
 import { exportReportToCSV, formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
@@ -32,11 +33,10 @@ function getPresetRange(preset: DatePreset) {
   return { startDate: isoDate(start), endDate: isoDate(end) };
 }
 
-async function readJson<T>(url: string) {
-  const response = await fetch(url, { cache: "no-store" });
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
-  return payload;
+const REPORT_CACHE_KEY = "reports:ads";
+
+async function readJson<T>(url: string, options?: { force?: boolean }) {
+  return getCachedJson<T>(url, options);
 }
 
 function metricValue(row: DailyInsight, metric: ChartMetric) {
@@ -77,6 +77,28 @@ export function AdsReportClient() {
   const [technicalError, setTechnicalError] = useState("");
 
   useEffect(() => {
+    const cached = getCachedState<{
+      accounts: AdAccount[];
+      selectedAccountId: string;
+      preset: DatePreset;
+      range: { startDate: string; endDate: string };
+      report: AdsReport | null;
+      breakdownRows: BreakdownRow[];
+      breakdown: BreakdownType;
+    }>(REPORT_CACHE_KEY);
+    if (cached) {
+      queueMicrotask(() => {
+              setAccounts(cached.accounts);
+              setSelectedAccountId(cached.selectedAccountId);
+              setPreset(cached.preset);
+              setRange(cached.range);
+              setReport(cached.report);
+              setBreakdownRows(cached.breakdownRows);
+              setBreakdown(cached.breakdown);
+      });
+      return;
+    }
+
     readJson<{ data: AdAccount[] }>("/api/meta/adaccounts")
       .then((payload) => {
         const rows = payload.data ?? [];
@@ -108,8 +130,17 @@ export function AdsReportClient() {
         start_date: range.startDate,
         end_date: range.endDate
       });
-      const payload = await readJson<{ data: AdsReport }>(`/api/meta/report?${query.toString()}`);
+      const payload = await readJson<{ data: AdsReport }>(`/api/meta/report?${query.toString()}`, { force: true });
       setReport(payload.data);
+      setCachedState(REPORT_CACHE_KEY, {
+        accounts,
+        selectedAccountId,
+        preset,
+        range,
+        report: payload.data,
+        breakdownRows: [],
+        breakdown
+      });
       if (!payload.data.campaigns.length) setError("Không có dữ liệu trong khoảng thời gian này.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể lấy báo cáo.");
@@ -131,8 +162,17 @@ export function AdsReportClient() {
         end_date: range.endDate,
         breakdown: nextBreakdown
       });
-      const payload = await readJson<{ data: BreakdownRow[] }>(`/api/meta/breakdown?${query.toString()}`);
+      const payload = await readJson<{ data: BreakdownRow[] }>(`/api/meta/breakdown?${query.toString()}`, { force: true });
       setBreakdownRows(payload.data ?? []);
+      setCachedState(REPORT_CACHE_KEY, {
+        accounts,
+        selectedAccountId,
+        preset,
+        range,
+        report,
+        breakdownRows: payload.data ?? [],
+        breakdown: nextBreakdown
+      });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Breakdown chưa khả dụng.");
     } finally {

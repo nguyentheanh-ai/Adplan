@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client-cache";
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type { AdAccount, CreativePerformance, MetaIntelligenceDashboardData } from "@/lib/meta/types";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
@@ -25,11 +26,10 @@ function presetRange(preset: DatePreset) {
   return { startDate: isoDate(start), endDate: isoDate(end) };
 }
 
-async function readJson<T>(url: string) {
-  const response = await fetch(url, { cache: "no-store" });
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
-  return payload;
+const CREATIVE_CACHE_KEY = "creative:intelligence";
+
+async function readJson<T>(url: string, options?: { force?: boolean }) {
+  return getCachedJson<T>(url, options);
 }
 
 function splitCreativeName(rawName: string, creativeId: string, adId: string) {
@@ -86,6 +86,24 @@ export function CreativeIntelligenceClient() {
   }, [creatives]);
 
   useEffect(() => {
+    const cached = getCachedState<{
+      accounts: AdAccount[];
+      selectedAccountId: string;
+      preset: DatePreset;
+      range: { startDate: string; endDate: string };
+      payload: MetaIntelligenceDashboardData | null;
+    }>(CREATIVE_CACHE_KEY);
+    if (cached) {
+      queueMicrotask(() => {
+              setAccounts(cached.accounts);
+              setSelectedAccountId(cached.selectedAccountId);
+              setPreset(cached.preset);
+              setRange(cached.range);
+              setPayload(cached.payload);
+      });
+      return;
+    }
+
     readJson<{ data: AdAccount[] }>("/api/meta/adaccounts")
       .then((res) => {
         const rows = res.data ?? [];
@@ -103,10 +121,11 @@ export function CreativeIntelligenceClient() {
       const accountId = nextAccountId || selectedAccountId || getDefaultAdAccountId();
       if (!accountId) throw new Error("Chưa có tài khoản quảng cáo.");
       const query = new URLSearchParams({ ad_account_id: accountId, start_date: range.startDate, end_date: range.endDate });
-      const response = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${query.toString()}`);
+      const response = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${query.toString()}`, { force: true });
       setPayload(response.data);
       setSelectedAccountId(accountId);
       setDefaultAdAccountId(accountId);
+      setCachedState(CREATIVE_CACHE_KEY, { accounts, selectedAccountId: accountId, preset, range, payload: response.data });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải dữ liệu creative.");
     } finally {

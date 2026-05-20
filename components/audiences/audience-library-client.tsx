@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client-cache";
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type { AdAccount, CreativePerformance, MetaIntelligenceDashboardData, SavedAudience } from "@/lib/meta/types";
 import { formatMoney, formatNumber } from "@/lib/reports/ads-report";
@@ -43,7 +44,12 @@ function presetRange(preset: DatePreset) {
   return { startDate: isoDate(start), endDate: isoDate(end) };
 }
 
-async function readJson<T>(url: string, init?: RequestInit) {
+const AUDIENCE_CACHE_KEY = "audiences:library";
+
+async function readJson<T>(url: string, init?: RequestInit & { force?: boolean }) {
+  if (!init || !init.method || init.method === "GET") {
+    return getCachedJson<T>(url, { force: init?.force });
+  }
   const response = await fetch(url, { cache: "no-store", ...init });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
@@ -153,6 +159,26 @@ export function AudienceLibraryClient() {
   }, [audienceRows, keyword]);
 
   useEffect(() => {
+    const cached = getCachedState<{
+      accounts: AdAccount[];
+      selectedAccountId: string;
+      preset: DatePreset;
+      range: { startDate: string; endDate: string };
+      payload: MetaIntelligenceDashboardData | null;
+      savedAudiences: SavedAudience[];
+    }>(AUDIENCE_CACHE_KEY);
+    if (cached) {
+      queueMicrotask(() => {
+              setAccounts(cached.accounts);
+              setSelectedAccountId(cached.selectedAccountId);
+              setPreset(cached.preset);
+              setRange(cached.range);
+              setPayload(cached.payload);
+              setSavedAudiences(cached.savedAudiences);
+      });
+      return;
+    }
+
     void loadAccounts();
   }, []);
 
@@ -168,9 +194,13 @@ export function AudienceLibraryClient() {
   async function loadSavedAudiences(accountId: string) {
     try {
       const res = await readJson<{ data: SavedAudience[]; storage?: string }>(`/api/saved-audiences?account_id=${encodeURIComponent(accountId)}`);
-      setSavedAudiences([...(res.data ?? []), ...readLocalAudiences(accountId)]);
+      const combined = [...(res.data ?? []), ...readLocalAudiences(accountId)];
+      setSavedAudiences(combined);
+      return combined;
     } catch {
-      setSavedAudiences(readLocalAudiences(accountId));
+      const localRows = readLocalAudiences(accountId);
+      setSavedAudiences(localRows);
+      return localRows;
     }
   }
 
@@ -182,11 +212,19 @@ export function AudienceLibraryClient() {
       const accountId = nextAccountId || selectedAccountId || (await loadAccounts());
       if (!accountId) throw new Error("Chưa có tài khoản quảng cáo để tải tệp khách hàng.");
       const query = new URLSearchParams({ ad_account_id: accountId, start_date: range.startDate, end_date: range.endDate });
-      const response = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${query.toString()}`);
+      const response = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${query.toString()}`, { force: true });
       setPayload(response.data);
       setSelectedAccountId(accountId);
       setDefaultAdAccountId(accountId);
-      await loadSavedAudiences(accountId);
+      const savedRows = await loadSavedAudiences(accountId);
+      setCachedState(AUDIENCE_CACHE_KEY, {
+        accounts,
+        selectedAccountId: accountId,
+        preset,
+        range,
+        payload: response.data,
+        savedAudiences: savedRows
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải tệp khách hàng.");
       setDetail(err instanceof Error ? err.stack || err.message : "");

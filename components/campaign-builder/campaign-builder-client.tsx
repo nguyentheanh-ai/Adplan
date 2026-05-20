@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { buildCampaignValidation, buildInternalAudienceSuggestions, generateCampaignDraft } from "@/lib/campaign-builder";
+import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client-cache";
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type {
   AdAccount,
@@ -42,7 +43,12 @@ const defaultInput: CampaignBuilderInput = {
   mediaFiles: []
 };
 
-async function readJson<T>(url: string, init?: RequestInit) {
+const CAMPAIGN_BUILDER_CACHE_KEY = "campaign-builder:state";
+
+async function readJson<T>(url: string, init?: RequestInit & { force?: boolean }) {
+  if (!init || !init.method || init.method === "GET") {
+    return getCachedJson<T>(url, { force: init?.force });
+  }
   const response = await fetch(url, { cache: "no-store", ...init });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
@@ -105,6 +111,34 @@ export function CampaignBuilderClient() {
   const needsLanding = form.objective === "Chuyển đổi" || form.objective === "Traffic" || form.objective === "Sales";
 
   useEffect(() => {
+    const cached = getCachedState<{
+      accounts: AdAccount[];
+      selectedAccountId: string;
+      pages: FacebookPage[];
+      posts: FacebookPagePost[];
+      templates: CampaignTemplate[];
+      savedAudiences: SavedAudience[];
+      form: CampaignBuilderInput;
+      interests: AudienceSuggestion[];
+      selectedInterestIds: string[];
+      draft: CampaignDraft | null;
+    }>(CAMPAIGN_BUILDER_CACHE_KEY);
+    if (cached) {
+      queueMicrotask(() => {
+              setAccounts(cached.accounts);
+              setSelectedAccountId(cached.selectedAccountId);
+              setPages(cached.pages);
+              setPosts(cached.posts);
+              setTemplates(cached.templates);
+              setSavedAudiences(cached.savedAudiences);
+              setForm(cached.form);
+              setInterests(cached.interests);
+              setSelectedInterestIds(cached.selectedInterestIds);
+              setDraft(cached.draft);
+      });
+      return;
+    }
+
     readJson<{ data: AdAccount[] }>("/api/meta/adaccounts")
       .then(async (payload) => {
         const rows = payload.data ?? [];
@@ -118,6 +152,22 @@ export function CampaignBuilderClient() {
       })
       .catch((err: Error) => setInterestNotice(err.message));
   }, []);
+
+  useEffect(() => {
+    if (!selectedAccountId && !form.productName && !draft) return;
+    setCachedState(CAMPAIGN_BUILDER_CACHE_KEY, {
+      accounts,
+      selectedAccountId,
+      pages,
+      posts,
+      templates,
+      savedAudiences,
+      form,
+      interests,
+      selectedInterestIds,
+      draft
+    });
+  }, [accounts, selectedAccountId, pages, posts, templates, savedAudiences, form, interests, selectedInterestIds, draft]);
 
   useEffect(() => {
     if (!form.pageId || !needsPost) return;

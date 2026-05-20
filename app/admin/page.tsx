@@ -4,6 +4,8 @@ import { AdminConsoleClient } from "@/components/admin/admin-console-client";
 import { getCurrentPermission } from "@/lib/admin/permissions";
 import { getAppSession } from "@/lib/auth/session";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
   const session = await getAppSession();
   if (!session) redirect("/login");

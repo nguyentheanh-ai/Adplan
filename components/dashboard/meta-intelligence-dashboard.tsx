@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client-cache";
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type { MetaIntelligenceDashboardData, NormalizedCampaignPerformance } from "@/lib/meta/types";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
@@ -43,12 +44,7 @@ function splitCreativeName(rawName: string, creativeId: string, adId: string) {
   return { title: normalized, code: creativeId || adId };
 }
 
-async function readJson<T>(url: string) {
-  const response = await fetch(url, { cache: "no-store" });
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
-  return payload;
-}
+const DASHBOARD_CACHE_KEY = "dashboard:intelligence";
 
 function metricLabel(metric: MetricKey) {
   if (metric === "ctr") return "CTR";
@@ -75,17 +71,18 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
   const [campaignStatusFilter, setCampaignStatusFilter] = useState("ALL");
   const [keyword, setKeyword] = useState("");
 
-  async function load(nextAccountId = selectedAccountId) {
+  async function load(nextAccountId = selectedAccountId, force = false) {
     setLoading(true);
     setError("");
     setTechnicalError("");
     try {
       const params = new URLSearchParams({ start_date: range.startDate, end_date: range.endDate });
       if (nextAccountId) params.set("ad_account_id", nextAccountId);
-      const payload = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${params.toString()}`);
+      const payload = await getCachedJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${params.toString()}`, { force });
       setData(payload.data);
       const picked = applyDefaultAdAccount(payload.data.accounts, nextAccountId || payload.data.selectedAccount?.id || payload.data.accounts[0]?.id);
       setSelectedAccountId(picked);
+      setCachedState(DASHBOARD_CACHE_KEY, { data: payload.data, selectedAccountId: picked, preset, range });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải dashboard.");
       setTechnicalError(err instanceof Error ? err.stack || err.message : "");
@@ -95,15 +92,33 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
   }
 
   useEffect(() => {
+    const cached = getCachedState<{
+      data: MetaIntelligenceDashboardData;
+      selectedAccountId: string;
+      preset: DatePreset;
+      range: { startDate: string; endDate: string };
+    }>(DASHBOARD_CACHE_KEY);
+    if (cached?.data) {
+      queueMicrotask(() => {
+              setData(cached.data);
+              setSelectedAccountId(applyDefaultAdAccount(cached.data.accounts, cached.selectedAccountId));
+              setPreset(cached.preset);
+              setRange(cached.range);
+              setLoading(false);
+      });
+      return;
+    }
+
     const initialRange = presetRange("7d");
     const params = new URLSearchParams({ start_date: initialRange.startDate, end_date: initialRange.endDate });
     const defaultId = getDefaultAdAccountId();
     if (defaultId) params.set("ad_account_id", defaultId);
-    readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${params.toString()}`)
+    getCachedJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${params.toString()}`)
       .then((payload) => {
         setData(payload.data);
         const picked = applyDefaultAdAccount(payload.data.accounts, defaultId || payload.data.selectedAccount?.id || payload.data.accounts[0]?.id);
         setSelectedAccountId(picked);
+        setCachedState(DASHBOARD_CACHE_KEY, { data: payload.data, selectedAccountId: picked, preset: "7d", range: initialRange });
       })
       .catch((err: Error) => {
         setError(err.message);
@@ -202,7 +217,7 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => void load(selectedAccountId)} disabled={loading}>
+            <Button onClick={() => void load(selectedAccountId, true)} disabled={loading}>
               <MaterialIcon name="refresh" />
               {loading ? "Đang tải..." : "Làm mới"}
             </Button>

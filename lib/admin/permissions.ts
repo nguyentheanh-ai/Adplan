@@ -5,6 +5,7 @@ import type { AdminUserPermission, UserRole } from "@/lib/meta/types";
 
 const defaultLockedSections = ["admin", "meta_api"];
 const fixedAdminFacebookUsernames = new Set(["theanh.marketing"]);
+const fixedAdminFacebookIds = new Set(["622569270580836"]);
 const fixedAdminUserIds = new Set(["48972846-facd-4170-9c40-95fb4fafd4d3"]);
 
 function parseAdminUserIds() {
@@ -90,6 +91,7 @@ function isConfiguredAdmin(session: { userId: string; facebookId: string; profil
   return (
     fixedAdminUserIds.has(session.userId) ||
     adminUserIds.has(session.userId) ||
+    fixedAdminFacebookIds.has(session.facebookId) ||
     adminFacebookIds.has(session.facebookId) ||
     (normalizedProfileUrl && adminProfileUrls.has(normalizedProfileUrl)) ||
     matchedByUsername
