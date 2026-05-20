@@ -7,6 +7,8 @@ const defaultLockedSections = ["admin", "meta_api"];
 const fixedAdminFacebookUsernames = new Set(["theanh.marketing"]);
 const fixedAdminFacebookIds = new Set(["622569270580836"]);
 const fixedAdminUserIds = new Set(["48972846-facd-4170-9c40-95fb4fafd4d3"]);
+const permissionFields =
+  "id,user_id,facebook_id,facebook_user_id,facebook_name,facebook_email,role,permissions,ad_account_ids,page_ids,locked_sections,created_at,updated_at";
 
 function parseAdminUserIds() {
   const raw = process.env.ADMIN_USER_IDS || "";
@@ -106,12 +108,16 @@ async function assignOwnerPermission(userId: string, facebookId: string) {
       {
         user_id: userId,
         facebook_id: facebookId,
+        facebook_user_id: facebookId,
         role: "owner",
-        locked_sections: []
+        locked_sections: [],
+        permissions: { all: true },
+        ad_account_ids: [],
+        page_ids: []
       },
       { onConflict: "user_id" }
     )
-    .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
+    .select(permissionFields)
     .single<AdminUserPermission>();
 
   if (error) {
@@ -128,7 +134,7 @@ export async function getCurrentPermission() {
   const admin = createAdminClient();
   const permissionByUser = await admin
     .from("admin_user_permissions")
-    .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
+    .select(permissionFields)
     .eq("user_id", session.userId)
     .maybeSingle<AdminUserPermission>();
 
@@ -153,8 +159,8 @@ export async function getCurrentPermission() {
   if (session.facebookId) {
     const byFacebook = await admin
       .from("admin_user_permissions")
-      .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
-      .eq("facebook_id", session.facebookId)
+      .select(permissionFields)
+      .or(`facebook_id.eq.${session.facebookId},facebook_user_id.eq.${session.facebookId}`)
       .maybeSingle<AdminUserPermission>();
 
     if (byFacebook.data) {
@@ -163,7 +169,7 @@ export async function getCurrentPermission() {
           .from("admin_user_permissions")
           .update({ user_id: session.userId })
           .eq("id", byFacebook.data.id)
-          .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
+          .select(permissionFields)
           .maybeSingle<AdminUserPermission>();
 
         return reassigned ?? { ...byFacebook.data, user_id: session.userId };

@@ -15,7 +15,8 @@ type AdminUserRow = {
 };
 
 function isMissingTableError(message: string) {
-  return message.toLowerCase().includes("could not find the table");
+  const lower = message.toLowerCase();
+  return lower.includes("could not find the table") || lower.includes("schema cache") || lower.includes("admin_user_permissions");
 }
 
 async function listFacebookAuthUsers() {
@@ -64,7 +65,7 @@ export async function GET() {
 
     const permissionsResult = await admin
       .from("admin_user_permissions")
-      .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
+      .select("id,user_id,facebook_id,facebook_user_id,facebook_name,facebook_email,role,permissions,ad_account_ids,page_ids,locked_sections,created_at,updated_at")
       .order("updated_at", { ascending: false })
       .limit(1000);
 
@@ -81,11 +82,13 @@ export async function GET() {
     const permissionMap = new Map<string, AdminUserPermission>();
     for (const item of (permissionsResult.data ?? []) as AdminUserPermission[]) {
       permissionMap.set(item.user_id, item);
+      if (item.facebook_user_id) permissionMap.set(`fb:${item.facebook_user_id}`, item);
+      if (item.facebook_id) permissionMap.set(`fb:${item.facebook_id}`, item);
     }
 
     const rows: AdminUserRow[] = users.map((user) => ({
       ...user,
-      permission: permissionMap.get(user.id) ?? null
+      permission: permissionMap.get(user.id) ?? (user.facebook_id ? permissionMap.get(`fb:${user.facebook_id}`) : null) ?? null
     }));
 
     return NextResponse.json({ data: rows, warning });
@@ -102,6 +105,9 @@ export async function PATCH(request: Request) {
       facebook_id?: string;
       role?: UserRole;
       locked_sections?: string[];
+      permissions?: Record<string, unknown>;
+      ad_account_ids?: string[];
+      page_ids?: string[];
     };
 
     if (!body.user_id || !body.role) {
@@ -112,14 +118,18 @@ export async function PATCH(request: Request) {
     const payload = {
       user_id: body.user_id,
       facebook_id: body.facebook_id || null,
+      facebook_user_id: body.facebook_id || null,
       role: body.role,
-      locked_sections: body.locked_sections ?? []
+      locked_sections: body.locked_sections ?? [],
+      permissions: body.permissions ?? {},
+      ad_account_ids: body.ad_account_ids ?? [],
+      page_ids: body.page_ids ?? []
     };
 
     const { data, error } = await admin
       .from("admin_user_permissions")
       .upsert(payload, { onConflict: "user_id" })
-      .select("id,user_id,facebook_id,role,locked_sections,created_at,updated_at")
+      .select("id,user_id,facebook_id,facebook_user_id,facebook_name,facebook_email,role,permissions,ad_account_ids,page_ids,locked_sections,created_at,updated_at")
       .single();
 
     if (error) {

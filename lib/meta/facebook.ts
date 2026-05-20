@@ -1,6 +1,7 @@
 import type {
   AdAccount,
   AccountInsight,
+  AdSet,
   AudienceSuggestion,
   BreakdownRow,
   BreakdownType,
@@ -8,6 +9,7 @@ import type {
   CampaignInsight,
   DailyInsight,
   DateRange,
+  MetaAd,
   MetaAdWithCreative
 } from "@/lib/meta/types";
 
@@ -212,6 +214,127 @@ export async function getMetaCampaigns(adAccountIdInput?: string | null, accessT
 
   return payload.data ?? [];
 }
+
+export const listAdAccounts = getMetaAdAccounts;
+
+export async function listCampaignsByDateRange(
+  adAccountIdInput: string | null | undefined,
+  dateRange: DateRange,
+  accessToken?: string | null
+) {
+  const [campaigns, insights] = await Promise.all([
+    getMetaCampaigns(adAccountIdInput, accessToken),
+    getMetaCampaignInsights(adAccountIdInput, dateRange, accessToken).catch(() => [])
+  ]);
+  const insightMap = new Map(insights.map((item) => [item.campaign_id, item]));
+
+  return campaigns.map((campaign) => ({
+    ...campaign,
+    insight: insightMap.get(campaign.id) ?? null
+  }));
+}
+
+export async function getMetaAdsets(
+  adAccountIdInput: string | null | undefined,
+  accessToken?: string | null,
+  campaignId?: string | null
+) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const payload = await metaFetch<{ data: AdSet[] }>(`${adAccountId}/adsets`, {
+    accessToken,
+    params: {
+      fields: "id,name,campaign_id,status,daily_budget,lifetime_budget,optimization_goal,billing_event,targeting,created_time",
+      filtering: campaignId ? JSON.stringify([{ field: "campaign.id", operator: "EQUAL", value: campaignId }]) : "[]",
+      limit: "100"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function getMetaAds(adAccountIdInput: string | null | undefined, accessToken?: string | null, adsetId?: string | null) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const payload = await metaFetch<{ data: MetaAd[] }>(`${adAccountId}/ads`, {
+    accessToken,
+    params: {
+      fields: "id,name,status,campaign_id,adset_id,creative{id,name,title,body,thumbnail_url,effective_object_story_id},created_time",
+      filtering: adsetId ? JSON.stringify([{ field: "adset.id", operator: "EQUAL", value: adsetId }]) : "[]",
+      limit: "100"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function cloneMetaObject({
+  sourceId,
+  sourceType,
+  quantity,
+  accessToken
+}: {
+  sourceId: string;
+  sourceType: "campaign" | "adset";
+  quantity: number;
+  accessToken?: string | null;
+}) {
+  const safeQuantity = Math.max(1, Math.min(Number(quantity || 1), 20));
+  const results: Array<{ id?: string; copied_campaign_id?: string; copied_adset_id?: string }> = [];
+
+  for (let index = 0; index < safeQuantity; index += 1) {
+    const body = new URLSearchParams({
+      deep_copy: sourceType === "campaign" ? "true" : "false",
+      status_option: "PAUSED",
+      rename_options: JSON.stringify({
+        rename_strategy: "DEEP_RENAME",
+        append_copy_number: true
+      })
+    });
+    const result = await metaFetch<{ id?: string; copied_campaign_id?: string; copied_adset_id?: string }>(`${sourceId}/copies`, {
+      accessToken,
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+    results.push(result);
+  }
+
+  return results;
+}
+
+export async function updateMetaBudget({
+  objectId,
+  dailyBudget,
+  accessToken
+}: {
+  objectId: string;
+  dailyBudget: string;
+  accessToken?: string | null;
+}) {
+  const numericBudget = String(dailyBudget).replace(/[^\d]/g, "");
+  if (!numericBudget) {
+    throw new MetaApiError({
+      status: 400,
+      message: "Missing budget",
+      userMessage: "Vui long nhap ngan sach moi."
+    });
+  }
+
+  return metaFetch<{ success?: boolean; id?: string }>(objectId, {
+    accessToken,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ daily_budget: numericBudget })
+  });
+}
+
+export const listAdsets = getMetaAdsets;
+export const listAds = getMetaAds;
+export const listCreatives = getMetaAdsWithCreatives;
+export const cloneCampaign = (sourceId: string, quantity: number, accessToken?: string | null) =>
+  cloneMetaObject({ sourceId, sourceType: "campaign", quantity, accessToken });
+export const cloneAdset = (sourceId: string, quantity: number, accessToken?: string | null) =>
+  cloneMetaObject({ sourceId, sourceType: "adset", quantity, accessToken });
+export const updateBudget = updateMetaBudget;
 
 const insightFields = [
   "campaign_id",
@@ -442,7 +565,7 @@ export async function createPausedMetaCampaign({
   accessToken
 }: {
   name: string;
-  objective: "OUTCOME_TRAFFIC";
+  objective: string;
   adAccountId?: string;
   accessToken?: string | null;
 }) {
@@ -462,6 +585,32 @@ export async function createPausedMetaCampaign({
       "Content-Type": "application/x-www-form-urlencoded"
     },
     body
+  });
+}
+
+export const createCampaignOnMeta = createPausedMetaCampaign;
+
+export async function createAdsetOnMeta() {
+  throw new MetaApiError({
+    status: 501,
+    message: "Ad set creation is not enabled yet",
+    userMessage: "Tao ad set that chua duoc bat. Hay dung preview va bo sung trong Ads Manager."
+  });
+}
+
+export async function createAdOnMeta() {
+  throw new MetaApiError({
+    status: 501,
+    message: "Ad creation is not enabled yet",
+    userMessage: "Tao ads that chua duoc bat. Hay dung preview va bo sung trong Ads Manager."
+  });
+}
+
+export async function createABTestOnMeta() {
+  throw new MetaApiError({
+    status: 501,
+    message: "A/B test launch is not enabled yet",
+    userMessage: "A/B test hien chi luu ban nhap. Chua tu tao experiment tren Meta."
   });
 }
 

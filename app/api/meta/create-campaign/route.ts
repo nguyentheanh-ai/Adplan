@@ -6,7 +6,7 @@ import { createPausedMetaCampaign, metaErrorResponse } from "@/lib/meta/facebook
 const createCampaignSchema = z.object({
   ad_account_id: z.string().trim().min(3, "Vui lòng chọn tài khoản quảng cáo."),
   name: z.string().trim().min(3, "Tên campaign phải có ít nhất 3 ký tự."),
-  objective: z.literal("OUTCOME_TRAFFIC").default("OUTCOME_TRAFFIC")
+  objective: z.enum(["OUTCOME_TRAFFIC", "OUTCOME_ENGAGEMENT", "OUTCOME_LEADS", "OUTCOME_SALES", "OUTCOME_AWARENESS"]).default("OUTCOME_TRAFFIC")
 });
 
 export async function POST(request: Request) {

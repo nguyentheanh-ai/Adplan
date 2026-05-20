@@ -1,7 +1,11 @@
 import type {
   AudienceSuggestion,
+  ABTestDraft,
+  ABTestVariantDraft,
   CampaignBuilderInput,
+  CampaignPlannerDraft,
   CampaignDraft,
+  ScaleCampaignInput,
   CampaignValidationItem,
   CreativeAsset
 } from "@/lib/meta/types";
@@ -185,5 +189,98 @@ export function generateCampaignDraft(input: CampaignBuilderInput, interests: Au
       adsetNameFormat: "[Audience] - [Age] - [Location]",
       adNameFormat: "[CreativeType] - [Hook] - [Date]"
     }
+  };
+}
+
+export function generateScalePreview(input: ScaleCampaignInput): CampaignPlannerDraft {
+  const quantity = Math.max(1, Math.min(Number(input.quantity || 1), 20));
+  const actionLabel =
+    input.action === "clone_campaign"
+      ? "Nhan ban chien dich"
+      : input.action === "clone_adset"
+        ? "Nhan ban nhom quang cao"
+        : "Nang ngan sach";
+
+  const warnings = [
+    input.action === "increase_budget"
+      ? "Thay doi ngan sach can duoc kiem tra truoc khi ap dung len Meta."
+      : "Campaign clone se duoc tao o trang thai PAUSED."
+  ];
+
+  if (!input.sourceCampaignId && input.action !== "clone_adset") {
+    warnings.push("Chua chon campaign nguon.");
+  }
+  if (!input.sourceAdsetId && input.action === "clone_adset") {
+    warnings.push("Chua chon nhom quang cao nguon.");
+  }
+
+  return {
+    mode: "scale_existing",
+    accountId: input.adAccountId,
+    title: `${actionLabel} x${quantity}`,
+    scale: { ...input, quantity },
+    warnings,
+    metaPayload: {
+      action: input.action,
+      source_campaign_id: input.sourceCampaignId,
+      source_adset_id: input.sourceAdsetId,
+      quantity,
+      new_budget: input.newBudget,
+      status: "PAUSED"
+    }
+  };
+}
+
+export function validateABTestConfig(draft: ABTestDraft) {
+  const errors: string[] = [];
+  if (!draft.name.trim()) errors.push("Can dat ten bai test A/B.");
+  if (!draft.hypothesis.trim()) errors.push("Can co gia thuyet test.");
+  if (!draft.schedule.startDate || !draft.schedule.endDate) errors.push("Can chon lich chay test.");
+  if (draft.variants.length < 2) errors.push("Can it nhat 2 bien the de test A/B.");
+
+  const totalSplit = Object.values(draft.budgetSplit).reduce((sum, value) => sum + Number(value || 0), 0);
+  if (draft.variants.length >= 2 && Math.abs(totalSplit - 100) > 0.01) {
+    errors.push("Tong phan bo ngan sach phai bang 100%.");
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+export function createABTestDraft(input: {
+  name: string;
+  hypothesis: string;
+  testVariable: ABTestDraft["testVariable"];
+  schedule: ABTestDraft["schedule"];
+  minimumSpend: string;
+  variants: string[];
+}): ABTestDraft {
+  const names = input.variants.map((item) => item.trim()).filter(Boolean);
+  const split = names.length ? Math.floor((100 / names.length) * 100) / 100 : 0;
+  const budgetSplit = names.reduce<Record<string, number>>((acc, name, index) => {
+    acc[name] = index === names.length - 1 ? Math.round((100 - split * (names.length - 1)) * 100) / 100 : split;
+    return acc;
+  }, {});
+
+  const variants: ABTestVariantDraft[] = names.map((name, index) => ({
+    id: `variant-${index + 1}`,
+    name,
+    variable: input.testVariable,
+    payload: {
+      label: name,
+      status: "PAUSED"
+    }
+  }));
+
+  return {
+    name: input.name,
+    hypothesis: input.hypothesis,
+    testVariable: input.testVariable,
+    budgetSplit,
+    schedule: input.schedule,
+    winnerRule: {
+      metric: input.testVariable === "creative" ? "ctr" : "results",
+      minimumSpend: input.minimumSpend
+    },
+    variants
   };
 }

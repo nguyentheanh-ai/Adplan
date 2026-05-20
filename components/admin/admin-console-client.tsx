@@ -174,6 +174,7 @@ function UserPermissionRow({
           <option value="owner">Owner</option>
           <option value="manager">Manager</option>
           <option value="member">Member</option>
+          <option value="viewer">Viewer</option>
         </select>
       </label>
 

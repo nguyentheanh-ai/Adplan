@@ -247,3 +247,113 @@ on public.campaign_templates for update
 to authenticated
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
+
+-- Production planner/admin additions. Kept additive so existing projects can run this file safely.
+alter table public.admin_user_permissions
+  add column if not exists facebook_user_id text,
+  add column if not exists facebook_name text,
+  add column if not exists facebook_email text,
+  add column if not exists permissions jsonb not null default '{}'::jsonb,
+  add column if not exists ad_account_ids jsonb not null default '[]'::jsonb,
+  add column if not exists page_ids jsonb not null default '[]'::jsonb;
+
+alter table public.admin_user_permissions
+  drop constraint if exists admin_user_permissions_role_check;
+
+alter table public.admin_user_permissions
+  add constraint admin_user_permissions_role_check
+  check (role in ('owner', 'manager', 'member', 'viewer'));
+
+update public.admin_user_permissions
+set facebook_user_id = coalesce(facebook_user_id, facebook_id)
+where facebook_user_id is null;
+
+create table if not exists public.campaign_drafts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id text,
+  page_id text,
+  mode text not null default 'new_campaign',
+  name text not null,
+  status text not null default 'draft',
+  input_json jsonb not null default '{}'::jsonb,
+  preview_json jsonb not null default '{}'::jsonb,
+  meta_payload_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.campaign_sequences (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id text,
+  name text not null,
+  mode text not null,
+  template_id uuid,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.campaign_scale_jobs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id text not null,
+  source_campaign_id text,
+  source_adset_id text,
+  action text not null,
+  quantity integer not null default 1,
+  budget_amount numeric,
+  status text not null default 'draft',
+  request_json jsonb not null default '{}'::jsonb,
+  result_json jsonb not null default '{}'::jsonb,
+  error_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.campaign_clone_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id text not null,
+  source_type text not null,
+  source_id text not null,
+  cloned_ids jsonb not null default '[]'::jsonb,
+  status text not null default 'pending',
+  request_json jsonb not null default '{}'::jsonb,
+  response_json jsonb not null default '{}'::jsonb,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.campaign_ab_tests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id text not null,
+  name text not null,
+  hypothesis text,
+  test_variable text not null default 'creative',
+  status text not null default 'draft',
+  budget_split jsonb not null default '{}'::jsonb,
+  schedule_json jsonb not null default '{}'::jsonb,
+  winner_rule_json jsonb not null default '{}'::jsonb,
+  preview_json jsonb not null default '{}'::jsonb,
+  meta_experiment_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.campaign_ab_test_variants (
+  id uuid primary key default gen_random_uuid(),
+  ab_test_id uuid not null references public.campaign_ab_tests(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  name text not null,
+  variant_type text not null default 'creative',
+  campaign_id text,
+  adset_id text,
+  ad_id text,
+  payload jsonb not null default '{}'::jsonb,
+  metrics_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);

@@ -28,6 +28,49 @@ export type Campaign = {
   status?: string;
   objective?: string;
   created_time?: string;
+  daily_budget?: string;
+  lifetime_budget?: string;
+  budget_remaining?: string;
+};
+
+export type MetaTargeting = {
+  age_min?: number;
+  age_max?: number;
+  genders?: number[];
+  geo_locations?: {
+    countries?: string[];
+    cities?: Array<{ name?: string; key?: string }>;
+    regions?: Array<{ name?: string; key?: string }>;
+  };
+  flexible_spec?: Array<{
+    interests?: Array<{ id?: string; name?: string }>;
+    behaviors?: Array<{ id?: string; name?: string }>;
+  }>;
+  interests?: Array<{ id?: string; name?: string }>;
+  behaviors?: Array<{ id?: string; name?: string }>;
+};
+
+export type AdSet = {
+  id: string;
+  name: string;
+  campaign_id?: string;
+  status?: string;
+  daily_budget?: string;
+  lifetime_budget?: string;
+  optimization_goal?: string;
+  billing_event?: string;
+  targeting?: MetaTargeting;
+  created_time?: string;
+};
+
+export type MetaAd = {
+  id: string;
+  name?: string;
+  status?: string;
+  campaign_id?: string;
+  adset_id?: string;
+  creative?: MetaCreative;
+  created_time?: string;
 };
 
 export type DateRange = {
@@ -196,22 +239,7 @@ export type MetaAdWithCreative = {
   adset?: {
     id?: string;
     name?: string;
-    targeting?: {
-      age_min?: number;
-      age_max?: number;
-      genders?: number[];
-      geo_locations?: {
-        countries?: string[];
-        cities?: Array<{ name?: string; key?: string }>;
-        regions?: Array<{ name?: string; key?: string }>;
-      };
-      flexible_spec?: Array<{
-        interests?: Array<{ id?: string; name?: string }>;
-        behaviors?: Array<{ id?: string; name?: string }>;
-      }>;
-      interests?: Array<{ id?: string; name?: string }>;
-      behaviors?: Array<{ id?: string; name?: string }>;
-    };
+    targeting?: MetaTargeting;
   };
   creative?: MetaCreative;
   insights?: {
@@ -338,6 +366,51 @@ export type CampaignBuilderInput = {
   mediaFiles?: string[];
 };
 
+export type CampaignBuilderMode = "scale_existing" | "new_campaign" | "ab_test";
+
+export type ScaleAction = "clone_adset" | "clone_campaign" | "increase_budget";
+
+export type ScaleCampaignInput = {
+  adAccountId: string;
+  action: ScaleAction;
+  dateRange: DateRange;
+  sourceCampaignId?: string;
+  sourceAdsetId?: string;
+  quantity: number;
+  newBudget?: string;
+};
+
+export type ABTestVariantDraft = {
+  id: string;
+  name: string;
+  variable: "creative" | "audience" | "placement" | "copy";
+  payload: Record<string, unknown>;
+};
+
+export type ABTestDraft = {
+  name: string;
+  hypothesis: string;
+  testVariable: "creative" | "audience" | "placement" | "copy";
+  budgetSplit: Record<string, number>;
+  schedule: DateRange;
+  winnerRule: {
+    metric: "cpl" | "cost_per_message" | "ctr" | "cpc" | "results";
+    minimumSpend: string;
+  };
+  variants: ABTestVariantDraft[];
+};
+
+export type CampaignPlannerDraft = {
+  mode: CampaignBuilderMode;
+  accountId: string;
+  title: string;
+  campaignDraft?: CampaignDraft;
+  scale?: ScaleCampaignInput;
+  abTest?: ABTestDraft;
+  warnings: string[];
+  metaPayload: Record<string, unknown>;
+};
+
 export type CampaignDraft = {
   campaign: {
     name: string;
@@ -409,13 +482,19 @@ export type CampaignTemplate = {
   updated_at: string;
 };
 
-export type UserRole = "owner" | "manager" | "member";
+export type UserRole = "owner" | "manager" | "member" | "viewer";
 
 export type AdminUserPermission = {
   id: string;
   user_id: string;
   facebook_id?: string | null;
-  role: UserRole;
+  facebook_user_id?: string | null;
+  facebook_name?: string | null;
+  facebook_email?: string | null;
+  role: UserRole | "viewer";
+  permissions?: Record<string, unknown>;
+  ad_account_ids?: string[] | null;
+  page_ids?: string[] | null;
   locked_sections: string[];
   created_at: string;
   updated_at: string;
