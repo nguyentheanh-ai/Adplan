@@ -55,7 +55,13 @@ export function AdminConsoleClient() {
   }
 
   useEffect(() => {
-    void loadUsers();
+    const timer = window.setTimeout(() => {
+      void loadUsers();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, []);
 
   async function updateUser(row: AdminUserRow, role: UserRole, lockedSections: string[]) {

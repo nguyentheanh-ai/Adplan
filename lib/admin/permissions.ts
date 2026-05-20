@@ -5,6 +5,17 @@ import type { AdminUserPermission, UserRole } from "@/lib/meta/types";
 
 const defaultLockedSections = ["admin", "meta_api"];
 const fixedAdminFacebookUsernames = new Set(["theanh.marketing"]);
+const fixedAdminUserIds = new Set(["48972846-facd-4170-9c40-95fb4fafd4d3"]);
+
+function parseAdminUserIds() {
+  const raw = process.env.ADMIN_USER_IDS || "";
+  return new Set(
+    raw
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+}
 
 function parseAdminFacebookIds() {
   const raw = process.env.ADMIN_FACEBOOK_IDS || "";
@@ -65,7 +76,8 @@ function buildMemberPermission(userId: string, facebookId: string): AdminUserPer
   };
 }
 
-function isConfiguredAdmin(session: { facebookId: string; profileUrl?: string }) {
+function isConfiguredAdmin(session: { userId: string; facebookId: string; profileUrl?: string }) {
+  const adminUserIds = parseAdminUserIds();
   const adminFacebookIds = parseAdminFacebookIds();
   const adminProfileUrls = parseAdminFacebookProfileUrls();
   const adminUsernames = parseAdminFacebookUsernames();
@@ -75,7 +87,13 @@ function isConfiguredAdmin(session: { facebookId: string; profileUrl?: string })
     (Array.from(adminUsernames).some((username) => normalizedProfileUrl.includes(`/${username}`)) ||
       Array.from(fixedAdminFacebookUsernames).some((username) => normalizedProfileUrl.includes(`/${username}`)));
 
-  return adminFacebookIds.has(session.facebookId) || (normalizedProfileUrl && adminProfileUrls.has(normalizedProfileUrl)) || matchedByUsername;
+  return (
+    fixedAdminUserIds.has(session.userId) ||
+    adminUserIds.has(session.userId) ||
+    adminFacebookIds.has(session.facebookId) ||
+    (normalizedProfileUrl && adminProfileUrls.has(normalizedProfileUrl)) ||
+    matchedByUsername
+  );
 }
 
 async function assignOwnerPermission(userId: string, facebookId: string) {
@@ -112,11 +130,23 @@ export async function getCurrentPermission() {
     .eq("user_id", session.userId)
     .maybeSingle<AdminUserPermission>();
 
+  const configuredAdmin = isConfiguredAdmin(session);
+
   if (permissionByUser.error && isMissingTableError(permissionByUser.error.message)) {
-    return isConfiguredAdmin(session) ? buildOwnerPermission(session.userId, session.facebookId) : buildMemberPermission(session.userId, session.facebookId);
+    return configuredAdmin ? buildOwnerPermission(session.userId, session.facebookId) : buildMemberPermission(session.userId, session.facebookId);
   }
 
-  if (permissionByUser.data) return permissionByUser.data;
+  if (permissionByUser.data) {
+    const current = permissionByUser.data;
+    if (configuredAdmin && current.role !== "owner" && current.role !== "manager") {
+      try {
+        return await assignOwnerPermission(session.userId, session.facebookId);
+      } catch {
+        return { ...current, role: "owner" as UserRole, locked_sections: [] };
+      }
+    }
+    return current;
+  }
 
   if (session.facebookId) {
     const byFacebook = await admin
@@ -140,7 +170,7 @@ export async function getCurrentPermission() {
     }
   }
 
-  if (isConfiguredAdmin(session)) {
+  if (configuredAdmin) {
     try {
       return await assignOwnerPermission(session.userId, session.facebookId);
     } catch (error) {
@@ -148,15 +178,6 @@ export async function getCurrentPermission() {
       if (isMissingTableError(message)) {
         return buildOwnerPermission(session.userId, session.facebookId);
       }
-      return buildMemberPermission(session.userId, session.facebookId);
-    }
-  }
-
-  const countResult = await admin.from("admin_user_permissions").select("id", { head: true, count: "exact" });
-  if (!countResult.error && (countResult.count ?? 0) === 0) {
-    try {
-      return await assignOwnerPermission(session.userId, session.facebookId);
-    } catch {
       return buildMemberPermission(session.userId, session.facebookId);
     }
   }
