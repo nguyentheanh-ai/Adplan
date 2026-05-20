@@ -34,18 +34,18 @@ const defaultInput: CampaignBuilderInput = {
   runContinuously: true,
   fanpage: "",
   website: "",
-  location: "Viá»‡t Nam",
+  location: "Việt Nam",
   targetCustomer: "",
   offer: "",
   notes: "",
-  mediaNote: "Chá»n media sau",
+  mediaNote: "Chọn media sau",
   mediaFiles: []
 };
 
 async function readJson<T>(url: string, init?: RequestInit) {
   const response = await fetch(url, { cache: "no-store", ...init });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ láº¥y dá»¯ liá»‡u.");
+  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
   return payload;
 }
 
@@ -168,7 +168,7 @@ export function CampaignBuilderClient() {
       setPages(payload.data ?? []);
     } catch (err) {
       setPages([]);
-      setInterestNotice(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i danh sÃ¡ch fanpage.");
+      setInterestNotice(err instanceof Error ? err.message : "Không thể tải danh sách fanpage.");
     } finally {
       setLoadingPages(false);
     }
@@ -176,7 +176,7 @@ export function CampaignBuilderClient() {
 
   async function checkFanpagePermission() {
     if (!fanpageUrl.trim()) {
-      toast.error("Nháº­p link fanpage trÆ°á»›c.");
+      toast.error("Nhập link fanpage trước.");
       return;
     }
 
@@ -200,10 +200,10 @@ export function CampaignBuilderClient() {
           postMessage: ""
         }));
         setPosts([]);
-        toast.success("ÄÃ£ xÃ¡c nháº­n quyá»n Fanpage.");
+        toast.success("Đã xác nhận quyền Fanpage.");
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "KhÃ´ng thá»ƒ kiá»ƒm tra quyá»n Fanpage.";
+      const message = err instanceof Error ? err.message : "Không thể kiểm tra quyền Fanpage.";
       setPageCheckNotice(message);
       toast.error(message);
     } finally {
@@ -217,11 +217,11 @@ export function CampaignBuilderClient() {
       const payload = await readJson<{ data: FacebookPagePost[] }>(`/api/meta/page-posts?page_id=${encodeURIComponent(pageId)}`);
       setPosts(payload.data ?? []);
       if (!(payload.data ?? []).length) {
-        setInterestNotice("Fanpage chÆ°a cÃ³ bÃ i viáº¿t phÃ¹ há»£p hoáº·c thiáº¿u quyá»n pages_read_engagement/pages_show_list.");
+        setInterestNotice("Fanpage chưa có bài viết phù hợp hoặc thiếu quyền pages_read_engagement/pages_show_list.");
       }
     } catch (err) {
       setPosts([]);
-      setInterestNotice(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i bÃ i viáº¿t tá»« fanpage.");
+      setInterestNotice(err instanceof Error ? err.message : "Không thể tải bài viết từ fanpage.");
     } finally {
       setLoadingPosts(false);
     }
@@ -237,7 +237,7 @@ export function CampaignBuilderClient() {
   async function searchInterests() {
     const query = [form.industry, form.productName, form.targetCustomer].filter(Boolean).join(" ");
     if (!query.trim()) {
-      toast.error("Nháº­p ngÃ nh hÃ ng, sáº£n pháº©m hoáº·c mÃ´ táº£ khÃ¡ch hÃ ng trÆ°á»›c.");
+      toast.error("Nhập ngành hàng, sản phẩm hoặc mô tả khách hàng trước.");
       return;
     }
 
@@ -248,16 +248,16 @@ export function CampaignBuilderClient() {
       const payload = await readJson<{ data: AudienceSuggestion[] }>(`/api/meta/targeting-search?${params.toString()}`);
       const facebookInterests = payload.data ?? [];
       if (!facebookInterests.length) {
-        throw new Error("Facebook chÆ°a tráº£ vá» interest phÃ¹ há»£p.");
+        throw new Error("Facebook chưa trả về interest phù hợp.");
       }
       setInterests(facebookInterests);
       setSelectedInterestIds(facebookInterests.slice(0, 5).map((item) => item.id));
-      setInterestNotice("Interest Ä‘Ã£ Ä‘Æ°á»£c láº¥y tá»« Facebook Targeting Search.");
+      setInterestNotice("Interest đã được lấy từ Facebook Targeting Search.");
     } catch (err) {
       const fallback = buildInternalAudienceSuggestions(form);
       setInterests(fallback);
       setSelectedInterestIds(fallback.slice(0, 4).map((item) => item.id));
-      setInterestNotice(`${err instanceof Error ? err.message : "KhÃ´ng gá»i Ä‘Æ°á»£c Facebook Targeting Search."} Gá»£i Ã½ ná»™i bá»™, chÆ°a xÃ¡c minh tá»« Facebook.`);
+      setInterestNotice(`${err instanceof Error ? err.message : "Không gọi được Facebook Targeting Search."} Gợi ý nội bộ, chưa xác minh từ Facebook.`);
     } finally {
       setSearching(false);
     }
@@ -270,7 +270,7 @@ export function CampaignBuilderClient() {
     setForm((current) => ({
       ...current,
       location: row.payload.locations || current.location,
-      targetCustomer: [row.payload.ageRange, row.payload.gender, row.payload.behaviors].filter(Boolean).join(" Â· ")
+      targetCustomer: [row.payload.ageRange, row.payload.gender, row.payload.behaviors].filter(Boolean).join(" · ")
     }));
 
     if (row.payload.interests) {
@@ -311,7 +311,7 @@ export function CampaignBuilderClient() {
 
   function generateDraft() {
     if (!form.productName.trim() || !form.industry.trim() || !form.dailyBudget.trim()) {
-      toast.error("Vui lÃ²ng nháº­p tÃªn sáº£n pháº©m, ngÃ nh hÃ ng vÃ  ngÃ¢n sÃ¡ch.");
+      toast.error("Vui lòng nhập tên sản phẩm, ngành hàng và ngân sách.");
       return;
     }
     const nextDraft = generateCampaignDraft({ ...form, adAccountId: selectedAccountId }, selectedInterests);
@@ -320,8 +320,8 @@ export function CampaignBuilderClient() {
 
   async function saveTemplate() {
     const templateName = window.prompt(
-      "TÃªn máº«u chiáº¿n dá»‹ch (Ä‘á»ƒ dÃ¹ng láº¡i):",
-      `${form.objective} - ${form.productName || "Máº«u má»›i"}`
+      "Tên mẫu chiến dịch (để dùng lại):",
+      `${form.objective} - ${form.productName || "Mẫu mới"}`
     );
     if (!templateName) return;
 
@@ -339,10 +339,10 @@ export function CampaignBuilderClient() {
         const result = payload as { data?: CampaignTemplate; storage?: string };
         if (result.storage === "local" && result.data) {
           saveLocalTemplate(selectedAccountId, result.data);
-          toast.success("ÄÃ£ lÆ°u láº¡i chiáº¿n dá»‹ch trÃªn trÃ¬nh duyá»‡t. Khi DB Ä‘Æ°á»£c cáº­p nháº­t, app sáº½ lÆ°u lÃªn Supabase.");
+          toast.success("Đã lưu lại chiến dịch trên trình duyệt. Khi DB được cập nhật, app sẽ lưu lên Supabase.");
           return;
         }
-        toast.success("ÄÃ£ lÆ°u láº¡i chiáº¿n dá»‹ch.");
+        toast.success("Đã lưu lại chiến dịch.");
       });
       if (selectedAccountId) await loadTemplates(selectedAccountId);
     } catch (err) {
@@ -358,7 +358,7 @@ export function CampaignBuilderClient() {
       };
       saveLocalTemplate(selectedAccountId, localTemplate);
       setTemplates((current) => [localTemplate, ...current]);
-      toast.success("ÄÃ£ lÆ°u láº¡i chiáº¿n dá»‹ch trÃªn trÃ¬nh duyá»‡t.");
+      toast.success("Đã lưu lại chiến dịch trên trình duyệt.");
     }
   }
 
@@ -367,7 +367,7 @@ export function CampaignBuilderClient() {
     if (!template) return;
     setForm(template.payload);
     setDraft(null);
-    toast.success("ÄÃ£ náº¡p máº«u chiáº¿n dá»‹ch.");
+    toast.success("Đã nạp mẫu chiến dịch.");
   }
 
   function exportJson() {
@@ -384,7 +384,7 @@ export function CampaignBuilderClient() {
   async function copyConfig() {
     const nextDraft = draft ?? generateCampaignDraft({ ...form, adAccountId: selectedAccountId }, selectedInterests);
     await navigator.clipboard.writeText(JSON.stringify(nextDraft, null, 2));
-    toast.success("ÄÃ£ copy cáº¥u hÃ¬nh campaign.");
+    toast.success("Đã copy cấu hình campaign.");
   }
 
   return (
@@ -392,7 +392,7 @@ export function CampaignBuilderClient() {
       <div className="space-y-6">
         <Card className="rounded-lg p-6">
           <div className="mb-4 grid gap-3 md:grid-cols-3">
-            <Field label="TÃ i khoáº£n quáº£ng cÃ¡o">
+            <Field label="Tài khoản quảng cáo">
               <select className="dashboard-input" value={selectedAccountId} onChange={(event) => void onAccountChange(event.target.value)}>
                 {accounts.length
                   ? accounts.map((account) => (
@@ -400,12 +400,12 @@ export function CampaignBuilderClient() {
                         {account.name || account.id} - {account.id}
                       </option>
                     ))
-                  : <option value="">ChÆ°a cÃ³ tÃ i khoáº£n</option>}
+                  : <option value="">Chưa có tài khoản</option>}
               </select>
             </Field>
-            <Field label="Máº«u chiáº¿n dá»‹ch Ä‘Ã£ lÆ°u">
+            <Field label="Mẫu chiến dịch đã lưu">
               <select className="dashboard-input" defaultValue="" onChange={(event) => applyTemplate(event.target.value)}>
-                <option value="">Chá»n máº«u Ä‘á»ƒ náº¡p</option>
+                <option value="">Chọn mẫu để nạp</option>
                 {templates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name}
@@ -413,12 +413,12 @@ export function CampaignBuilderClient() {
                 ))}
               </select>
             </Field>
-            <Field label="Tá»‡p khÃ¡ch hÃ ng Ä‘Ã£ lÆ°u">
+            <Field label="Tệp khách hàng đã lưu">
               <select className="dashboard-input" value={selectedSavedAudienceId} onChange={(event) => applySavedAudience(event.target.value)}>
-                <option value="">Chá»n tá»‡p Ä‘Ã£ lÆ°u</option>
+                <option value="">Chọn tệp đã lưu</option>
                 {savedAudiences.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.code} Â· {item.name}
+                    {item.code} · {item.name}
                   </option>
                 ))}
               </select>
@@ -428,18 +428,18 @@ export function CampaignBuilderClient() {
 
         <Card className="rounded-lg p-6">
           <div className="mb-5">
-            <h3 className="text-lg font-extrabold">ThÃ´ng tin campaign</h3>
-            <p className="mt-1 text-sm text-on-surface-variant">Nháº­p dá»¯ liá»‡u Ä‘á»ƒ táº¡o preview campaign trÆ°á»›c khi launch tháº­t trÃªn Meta.</p>
+            <h3 className="text-lg font-extrabold">Thông tin campaign</h3>
+            <p className="mt-1 text-sm text-on-surface-variant">Nhập dữ liệu để tạo preview campaign trước khi launch thật trên Meta.</p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="TÃªn sáº£n pháº©m/dá»‹ch vá»¥">
-              <Input value={form.productName} onChange={(event) => updateField("productName", event.target.value)} placeholder="VÃ­ dá»¥: KhÃ³a há»c AI Marketing" />
+            <Field label="Tên sản phẩm/dịch vụ">
+              <Input value={form.productName} onChange={(event) => updateField("productName", event.target.value)} placeholder="Ví dụ: Khóa học AI Marketing" />
             </Field>
-            <Field label="NgÃ nh hÃ ng">
-              <Input value={form.industry} onChange={(event) => updateField("industry", event.target.value)} placeholder="GiÃ¡o dá»¥c, spa, báº¥t Ä‘á»™ng sáº£n..." />
+            <Field label="Ngành hàng">
+              <Input value={form.industry} onChange={(event) => updateField("industry", event.target.value)} placeholder="Giáo dục, spa, bất động sản..." />
             </Field>
-            <Field label="Má»¥c tiÃªu quáº£ng cÃ¡o">
+            <Field label="Mục tiêu quảng cáo">
               <select
                 className="dashboard-input"
                 value={form.objective}
@@ -460,23 +460,23 @@ export function CampaignBuilderClient() {
                 <option>Sales</option>
               </select>
             </Field>
-            <Field label="NgÃ¢n sÃ¡ch má»—i ngÃ y">
-              <Input value={form.dailyBudget} onChange={(event) => updateField("dailyBudget", event.target.value)} placeholder="VÃ­ dá»¥: 500.000Ä‘" />
+            <Field label="Ngân sách mỗi ngày">
+              <Input value={form.dailyBudget} onChange={(event) => updateField("dailyBudget", event.target.value)} placeholder="Ví dụ: 500.000đ" />
             </Field>
-            <Field label="NgÃ y báº¯t Ä‘áº§u">
+            <Field label="Ngày bắt đầu">
               <Input type="date" value={form.startDate} onChange={(event) => updateField("startDate", event.target.value)} />
             </Field>
-            <Field label="NgÃ y káº¿t thÃºc">
+            <Field label="Ngày kết thúc">
               <Input type="date" value={form.endDate} disabled={form.runContinuously} onChange={(event) => updateField("endDate", event.target.value)} />
             </Field>
             <label className="flex items-center gap-3 rounded-md bg-surface-container-low p-4 text-sm font-bold md:col-span-2">
               <input type="checkbox" checked={form.runContinuously} onChange={(event) => updateField("runContinuously", event.target.checked)} />
-              Cháº¡y liÃªn tá»¥c, chÆ°a Ä‘áº·t ngÃ y káº¿t thÃºc
+              Chạy liên tục, chưa đặt ngày kết thúc
             </label>
 
-            <Field label="Fanpage (chá»n tá»« tÃ i khoáº£n)">
+            <Field label="Fanpage (chọn từ tài khoản)">
               <select className="dashboard-input" value={form.pageId || ""} onChange={(event) => onPageChange(event.target.value)}>
-                <option value="">{loadingPages ? "Äang táº£i fanpage..." : "Chá»n fanpage"}</option>
+                <option value="">{loadingPages ? "Đang tải fanpage..." : "Chọn fanpage"}</option>
                 {pages.map((page) => (
                   <option key={page.id} value={page.id}>
                     {page.name}
@@ -485,39 +485,39 @@ export function CampaignBuilderClient() {
               </select>
             </Field>
 
-            <Field label="Kiá»ƒm tra quyá»n báº±ng link Fanpage">
+            <Field label="Kiểm tra quyền bằng link Fanpage">
               <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                 <Input value={fanpageUrl} onChange={(event) => setFanpageUrl(event.target.value)} placeholder="https://facebook.com/tenfanpage" />
                 <Button onClick={() => void checkFanpagePermission()} disabled={checkingPage}>
-                  {checkingPage ? "Äang kiá»ƒm tra..." : "Kiá»ƒm tra"}
+                  {checkingPage ? "Đang kiểm tra..." : "Kiểm tra"}
                 </Button>
               </div>
               {pageCheckNotice ? <p className="text-xs font-semibold text-on-surface-variant">{pageCheckNotice}</p> : null}
             </Field>
 
-            <Field label={needsPost ? "BÃ i viáº¿t cÃ³ sáºµn trÃªn page" : "BÃ i viáº¿t cÃ³ sáºµn (khÃ´ng báº¯t buá»™c)"}>
+            <Field label={needsPost ? "Bài viết có sẵn trên page" : "Bài viết có sẵn (không bắt buộc)"}>
               <select className="dashboard-input" value={form.postId || ""} onChange={(event) => onPostChange(event.target.value)} disabled={!form.pageId || !needsPost}>
                 <option value="">
-                  {!needsPost ? "KhÃ´ng báº¯t buá»™c vá»›i má»¥c tiÃªu nÃ y" : loadingPosts ? "Äang táº£i bÃ i viáº¿t..." : "Chá»n bÃ i viáº¿t"}
+                  {!needsPost ? "Không bắt buộc với mục tiêu này" : loadingPosts ? "Đang tải bài viết..." : "Chọn bài viết"}
                 </option>
                 {posts.map((post) => (
                   <option key={post.id} value={post.id}>
-                    {(post.message || "BÃ i viáº¿t khÃ´ng cÃ³ text").slice(0, 70)}
+                    {(post.message || "Bài viết không có text").slice(0, 70)}
                   </option>
                 ))}
               </select>
             </Field>
 
             <Field label="Website/Landing page">
-              <Input value={form.website} onChange={(event) => updateField("website", event.target.value)} placeholder={needsLanding ? "Báº¯t buá»™c cho chuyá»ƒn Ä‘á»•i/traffic/sales" : "https://..."} />
+              <Input value={form.website} onChange={(event) => updateField("website", event.target.value)} placeholder={needsLanding ? "Bắt buộc cho chuyển đổi/traffic/sales" : "https://..."} />
             </Field>
-            <Field label="Khu vá»±c cháº¡y">
-              <Input value={form.location} onChange={(event) => updateField("location", event.target.value)} placeholder="TP.HCM, HÃ  Ná»™i, toÃ n quá»‘c..." />
+            <Field label="Khu vực chạy">
+              <Input value={form.location} onChange={(event) => updateField("location", event.target.value)} placeholder="TP.HCM, Hà Nội, toàn quốc..." />
             </Field>
-            <Field label="Media (Ä‘Æ°á»ng dáº«n hoáº·c ghi chÃº)" className="md:col-span-2">
-              <Textarea value={form.mediaNote} onChange={(event) => updateField("mediaNote", event.target.value)} placeholder="VÃ­ dá»¥: video testimonial, áº£nh Æ°u Ä‘Ã£i..." />
+            <Field label="Media (đường dẫn hoặc ghi chú)" className="md:col-span-2">
+              <Textarea value={form.mediaNote} onChange={(event) => updateField("mediaNote", event.target.value)} placeholder="Ví dụ: video testimonial, ảnh ưu đãi..." />
             </Field>
-            <Field label="ThÃªm hÃ¬nh áº£nh/video" className="md:col-span-2">
+            <Field label="Thêm hình ảnh/video" className="md:col-span-2">
               <input
                 className="dashboard-input"
                 type="file"
@@ -529,14 +529,14 @@ export function CampaignBuilderClient() {
                 }}
               />
             </Field>
-            <Field label="MÃ´ táº£ khÃ¡ch hÃ ng má»¥c tiÃªu" className="md:col-span-2">
-              <Textarea value={form.targetCustomer} onChange={(event) => updateField("targetCustomer", event.target.value)} placeholder="Ai lÃ  ngÆ°á»i mua chÃ­nh, Ä‘á»™ tuá»•i, nhu cáº§u, bá»‘i cáº£nh..." />
+            <Field label="Mô tả khách hàng mục tiêu" className="md:col-span-2">
+              <Textarea value={form.targetCustomer} onChange={(event) => updateField("targetCustomer", event.target.value)} placeholder="Ai là người mua chính, độ tuổi, nhu cầu, bối cảnh..." />
             </Field>
-            <Field label="Offer/Æ°u Ä‘Ã£i" className="md:col-span-2">
-              <Textarea value={form.offer} onChange={(event) => updateField("offer", event.target.value)} placeholder="Æ¯u Ä‘Ã£i, cam káº¿t, lá»£i Ã­ch ná»•i báº­t..." />
+            <Field label="Offer/ưu đãi" className="md:col-span-2">
+              <Textarea value={form.offer} onChange={(event) => updateField("offer", event.target.value)} placeholder="Ưu đãi, cam kết, lợi ích nổi bật..." />
             </Field>
-            <Field label="Ghi chÃº thÃªm" className="md:col-span-2">
-              <Textarea value={form.notes} onChange={(event) => updateField("notes", event.target.value)} placeholder="LÆ°u Ã½ vá» sáº£n pháº©m, Ä‘iá»u kiá»‡n, báº±ng chá»©ng, rÃ ng buá»™c..." />
+            <Field label="Ghi chú thêm" className="md:col-span-2">
+              <Textarea value={form.notes} onChange={(event) => updateField("notes", event.target.value)} placeholder="Lưu ý về sản phẩm, điều kiện, bằng chứng, ràng buộc..." />
             </Field>
           </div>
         </Card>
@@ -544,12 +544,12 @@ export function CampaignBuilderClient() {
         <Card className="rounded-lg p-6">
           <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h3 className="text-lg font-extrabold">Tá»‡p sá»Ÿ thÃ­ch/hÃ nh vi</h3>
-              <p className="mt-1 text-sm text-on-surface-variant">Æ¯u tiÃªn tÃ¬m tá»« Facebook Targeting Search. Náº¿u lá»—i sáº½ dÃ¹ng gá»£i Ã½ ná»™i bá»™.</p>
+              <h3 className="text-lg font-extrabold">Tệp sở thích/hành vi</h3>
+              <p className="mt-1 text-sm text-on-surface-variant">Ưu tiên tìm từ Facebook Targeting Search. Nếu lỗi sẽ dùng gợi ý nội bộ.</p>
             </div>
             <Button onClick={() => void searchInterests()} disabled={searching || !selectedAccountId}>
               <MaterialIcon name="search" />
-              {searching ? "Äang tÃ¬m..." : "TÃ¬m tá»« Facebook"}
+              {searching ? "Đang tìm..." : "Tìm từ Facebook"}
             </Button>
           </div>
 
@@ -568,8 +568,8 @@ export function CampaignBuilderClient() {
                 <span>
                   <span className="block font-bold text-on-surface">{interest.name}</span>
                   <span className="text-xs text-on-surface-variant">
-                    {interest.source === "facebook" ? `Facebook ID: ${interest.id}` : "Gá»£i Ã½ ná»™i bá»™, chÆ°a xÃ¡c minh tá»« Facebook"}
-                    {interest.audience_size ? ` Â· Quy mÃ´: ${interest.audience_size.toLocaleString("vi-VN")}` : ""}
+                    {interest.source === "facebook" ? `Facebook ID: ${interest.id}` : "Gợi ý nội bộ, chưa xác minh từ Facebook"}
+                    {interest.audience_size ? ` · Quy mô: ${interest.audience_size.toLocaleString("vi-VN")}` : ""}
                   </span>
                 </span>
               </label>
@@ -578,9 +578,9 @@ export function CampaignBuilderClient() {
         </Card>
 
         <Card className="rounded-lg p-6">
-          <h3 className="text-lg font-extrabold">Checklist trÆ°á»›c khi táº¡o preview</h3>
+          <h3 className="text-lg font-extrabold">Checklist trước khi tạo preview</h3>
           <p className="mt-1 text-sm text-on-surface-variant">
-            CÃ²n thiáº¿u {missingCount} má»¥c. Váº«n cÃ³ thá»ƒ táº¡o báº£n nhÃ¡p, pháº§n thiáº¿u sáº½ bá»• sung á»Ÿ Ads Manager Facebook.
+            Còn thiếu {missingCount} mục. Vẫn có thể tạo bản nháp, phần thiếu sẽ bổ sung ở Ads Manager Facebook.
           </p>
           <div className="mt-4 space-y-2">
             {validation.map((item) => (
@@ -598,23 +598,23 @@ export function CampaignBuilderClient() {
         <div className="flex flex-wrap gap-3">
           <Button variant="ai" onClick={generateDraft}>
             <MaterialIcon filled name="auto_awesome" />
-            Táº¡o báº£n nhÃ¡p campaign
+            Tạo bản nháp campaign
           </Button>
           <Button variant="secondary" onClick={() => void saveTemplate()}>
             <MaterialIcon name="save" />
-            LÆ°u láº¡i chiáº¿n dá»‹ch
+            Lưu lại chiến dịch
           </Button>
           <Button variant="secondary" onClick={exportJson}>
             <MaterialIcon name="data_object" />
-            Xuáº¥t JSON
+            Xuất JSON
           </Button>
           <Button variant="secondary" onClick={() => void copyConfig()}>
             <MaterialIcon name="content_copy" />
-            Copy cáº¥u hÃ¬nh
+            Copy cấu hình
           </Button>
           <Button disabled>
             <MaterialIcon name="rocket_launch" />
-            Launch lÃªn Meta - Sáº¯p ra máº¯t
+            Launch lên Meta - Sắp ra mắt
           </Button>
         </div>
       </div>
@@ -643,8 +643,8 @@ function CampaignPreview({ draft, fallbackDraft }: { draft: CampaignDraft | null
             <MaterialIcon filled name="preview" />
           </div>
           <div>
-            <h3 className="text-lg font-extrabold">Preview cáº¥u hÃ¬nh</h3>
-            <p className="text-sm text-on-surface-variant">Chá»‰ lÃ  báº£n nhÃ¡p. KhÃ´ng tá»± launch campaign tháº­t.</p>
+            <h3 className="text-lg font-extrabold">Preview cấu hình</h3>
+            <p className="text-sm text-on-surface-variant">Chỉ là bản nháp. Không tự launch campaign thật.</p>
           </div>
         </div>
         <PreviewSection title="1. Campaign" rows={data.campaign} />
@@ -663,7 +663,7 @@ function CampaignPreview({ draft, fallbackDraft }: { draft: CampaignDraft | null
           }}
         />
         <PreviewSection title="3. Ads" rows={data.ads} />
-        <PreviewSection title="4. Cáº¥u trÃºc naming" rows={data.naming} />
+        <PreviewSection title="4. Cấu trúc naming" rows={data.naming} />
       </Card>
     </div>
   );
@@ -678,7 +678,7 @@ function PreviewSection({ title, rows }: { title: string; rows: Record<string, u
           <div key={key} className="rounded-md bg-surface-container-low p-3">
             <p className="text-[11px] font-bold uppercase tracking-wide text-outline">{key}</p>
             <p className="mt-1 break-words text-sm font-semibold leading-6 text-on-surface">
-              {typeof value === "object" && value !== null ? JSON.stringify(value, null, 2) : String(value || "ChÆ°a cÃ³")}
+              {typeof value === "object" && value !== null ? JSON.stringify(value, null, 2) : String(value || "Chưa có")}
             </p>
           </div>
         ))}

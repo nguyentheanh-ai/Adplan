@@ -28,7 +28,7 @@ function presetRange(preset: DatePreset) {
 async function readJson<T>(url: string) {
   const response = await fetch(url, { cache: "no-store" });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ láº¥y dá»¯ liá»‡u.");
+  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
   return payload;
 }
 
@@ -101,14 +101,14 @@ export function CreativeIntelligenceClient() {
     setError("");
     try {
       const accountId = nextAccountId || selectedAccountId || getDefaultAdAccountId();
-      if (!accountId) throw new Error("ChÆ°a cÃ³ tÃ i khoáº£n quáº£ng cÃ¡o.");
+      if (!accountId) throw new Error("Chưa có tài khoản quảng cáo.");
       const query = new URLSearchParams({ ad_account_id: accountId, start_date: range.startDate, end_date: range.endDate });
       const response = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${query.toString()}`);
       setPayload(response.data);
       setSelectedAccountId(accountId);
       setDefaultAdAccountId(accountId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i dá»¯ liá»‡u creative.");
+      setError(err instanceof Error ? err.message : "Không thể tải dữ liệu creative.");
     } finally {
       setLoading(false);
     }
@@ -124,7 +124,7 @@ export function CreativeIntelligenceClient() {
       <Card className="rounded-lg p-5">
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <label className="space-y-2">
-            <span className="text-xs font-extrabold uppercase tracking-wide text-outline">TÃ i khoáº£n quáº£ng cÃ¡o</span>
+            <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Tài khoản quảng cáo</span>
             <select
               className="dashboard-input"
               value={selectedAccountId}
@@ -139,21 +139,21 @@ export function CreativeIntelligenceClient() {
                       {account.name || account.id}
                     </option>
                   ))
-                : <option value="">ChÆ°a cÃ³ tÃ i khoáº£n</option>}
+                : <option value="">Chưa có tài khoản</option>}
             </select>
           </label>
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="space-y-2">
-              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Khoáº£ng thá»i gian</span>
+              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Khoảng thời gian</span>
               <select className="dashboard-input" value={preset} onChange={(event) => updatePreset(event.target.value as DatePreset)}>
-                <option value="7d">7 ngÃ y qua</option>
-                <option value="30d">30 ngÃ y qua</option>
-                <option value="month">ThÃ¡ng nÃ y</option>
-                <option value="custom">TÃ¹y chá»‰nh</option>
+                <option value="7d">7 ngày qua</option>
+                <option value="30d">30 ngày qua</option>
+                <option value="month">Tháng này</option>
+                <option value="custom">Tùy chỉnh</option>
               </select>
             </label>
             <label className="space-y-2">
-              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Tá»« ngÃ y</span>
+              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Từ ngày</span>
               <input
                 className="dashboard-input"
                 type="date"
@@ -165,7 +165,7 @@ export function CreativeIntelligenceClient() {
               />
             </label>
             <label className="space-y-2">
-              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Äáº¿n ngÃ y</span>
+              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Đến ngày</span>
               <input
                 className="dashboard-input"
                 type="date"
@@ -180,7 +180,7 @@ export function CreativeIntelligenceClient() {
           <div>
             <Button disabled={loading} onClick={() => void loadData()}>
               <MaterialIcon name="refresh" />
-              {loading ? "Äang táº£i..." : "Láº¥y bÃ¡o cÃ¡o creative"}
+              {loading ? "Đang tải..." : "Lấy báo cáo creative"}
             </Button>
           </div>
         </div>
@@ -199,31 +199,31 @@ export function CreativeIntelligenceClient() {
       {!loading && payload ? (
         <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <StatCard label="Tá»•ng sá»‘ creative" value={formatNumber(stats.total)} />
-            <StatCard label="Tá»•ng lead" value={formatNumber(stats.totalLeads)} />
-            <StatCard label="Tá»•ng tin nháº¯n" value={formatNumber(stats.totalMessages)} />
-            <StatCard label="Tá»•ng tÆ°Æ¡ng tÃ¡c" value={formatNumber(stats.totalEngagements)} />
-            <StatCard label="Tá»•ng chi tiÃªu creative" value={formatMoney(stats.totalSpend, currency)} />
+            <StatCard label="Tổng số creative" value={formatNumber(stats.total)} />
+            <StatCard label="Tổng lead" value={formatNumber(stats.totalLeads)} />
+            <StatCard label="Tổng tin nhắn" value={formatNumber(stats.totalMessages)} />
+            <StatCard label="Tổng tương tác" value={formatNumber(stats.totalEngagements)} />
+            <StatCard label="Tổng chi tiêu creative" value={formatMoney(stats.totalSpend, currency)} />
           </section>
 
           <Card className="rounded-lg p-6">
-            <h3 className="text-lg font-extrabold">Phá»…u hiá»‡u suáº¥t creative</h3>
-            <p className="mt-1 text-sm text-on-surface-variant">Theo dÃµi tá»« creative cÃ³ chi tiÃªu Ä‘áº¿n creative cÃ³ káº¿t quáº£.</p>
+            <h3 className="text-lg font-extrabold">Phễu hiệu suất creative</h3>
+            <p className="mt-1 text-sm text-on-surface-variant">Theo dõi từ creative có chi tiêu đến creative có kết quả.</p>
             <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <FunnelCell label="Creative cÃ³ chi tiÃªu" value={stats.withSpend} total={Math.max(stats.total, 1)} />
-              <FunnelCell label="Creative cÃ³ tÆ°Æ¡ng tÃ¡c" value={stats.withEngagement} total={Math.max(stats.total, 1)} />
-              <FunnelCell label="Creative cÃ³ lead/tin nháº¯n" value={stats.withResult} total={Math.max(stats.total, 1)} />
+              <FunnelCell label="Creative có chi tiêu" value={stats.withSpend} total={Math.max(stats.total, 1)} />
+              <FunnelCell label="Creative có tương tác" value={stats.withEngagement} total={Math.max(stats.total, 1)} />
+              <FunnelCell label="Creative có lead/tin nhắn" value={stats.withResult} total={Math.max(stats.total, 1)} />
             </div>
           </Card>
 
           <Card className="overflow-hidden rounded-lg p-0">
             <div className="border-b border-outline-variant/70 px-6 py-5">
-              <h3 className="text-lg font-extrabold">Báº£ng creative</h3>
-              <p className="text-sm text-on-surface-variant">Báº¡n cÃ³ thá»ƒ lá»c campaign vÃ  sáº¯p xáº¿p theo nhiá»u Ä‘á»‹nh dáº¡ng hiá»‡u suáº¥t.</p>
+              <h3 className="text-lg font-extrabold">Bảng creative</h3>
+              <p className="text-sm text-on-surface-variant">Bạn có thể lọc campaign và sắp xếp theo nhiều định dạng hiệu suất.</p>
             </div>
             <div className="flex flex-wrap gap-2 border-b border-outline-variant/70 px-6 py-4">
               <select className="dashboard-input" value={campaignFilter} onChange={(event) => setCampaignFilter(event.target.value)}>
-                <option value="ALL">Táº¥t cáº£ campaign</option>
+                <option value="ALL">Tất cả campaign</option>
                 {Array.from(new Set(creatives.map((item) => item.campaignName))).map((name) => (
                   <option key={name} value={name}>
                     {name}
@@ -231,18 +231,18 @@ export function CreativeIntelligenceClient() {
                 ))}
               </select>
               <select className="dashboard-input" value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}>
-                <option value="spend">Sáº¯p xáº¿p theo chi tiÃªu</option>
-                <option value="lead">Sáº¯p xáº¿p theo lead</option>
-                <option value="message">Sáº¯p xáº¿p theo tin nháº¯n</option>
-                <option value="engagement">Sáº¯p xáº¿p theo tÆ°Æ¡ng tÃ¡c</option>
-                <option value="ctr">Sáº¯p xáº¿p theo CTR</option>
+                <option value="spend">Sắp xếp theo chi tiêu</option>
+                <option value="lead">Sắp xếp theo lead</option>
+                <option value="message">Sắp xếp theo tin nhắn</option>
+                <option value="engagement">Sắp xếp theo tương tác</option>
+                <option value="ctr">Sắp xếp theo CTR</option>
               </select>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1120px] text-left text-sm">
                 <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
                   <tr>
-                    {["Creative", "Campaign", "NhÃ³m quáº£ng cÃ¡o", "Spend", "Lead", "Tin nháº¯n", "TÆ°Æ¡ng tÃ¡c", "CTR", "CPM", "CPC"].map((head) => (
+                    {["Creative", "Campaign", "Nhóm quảng cáo", "Spend", "Lead", "Tin nhắn", "Tương tác", "CTR", "CPM", "CPC"].map((head) => (
                       <th key={head} className="px-4 py-3 font-extrabold">
                         {head}
                       </th>
@@ -259,7 +259,7 @@ export function CreativeIntelligenceClient() {
                           <p className="font-mono text-[11px] text-outline">{parsed.code}</p>
                           {creative.postUrl ? (
                             <a className="mt-1 inline-flex text-xs font-bold text-primary hover:underline" href={creative.postUrl} rel="noreferrer" target="_blank">
-                              Link bÃ i post
+                              Link bài post
                             </a>
                           ) : null}
                         </td>
@@ -303,7 +303,7 @@ function FunnelCell({ label, value, total }: { label: string; value: number; tot
       <div className="mt-3 h-2 rounded-full bg-white">
         <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
       </div>
-      <p className="mt-2 text-xs font-semibold text-outline">{percent}% trÃªn tá»•ng creative</p>
+      <p className="mt-2 text-xs font-semibold text-outline">{percent}% trên tổng creative</p>
     </div>
   );
 }

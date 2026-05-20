@@ -18,9 +18,9 @@ type AdminUserRow = {
 };
 
 const lockOptions = [
-  { key: "reports", label: "BÃ¡o cÃ¡o Ads" },
-  { key: "campaign_builder", label: "Táº¡o Campaign AI" },
-  { key: "audiences", label: "Tá»‡p khÃ¡ch hÃ ng" },
+  { key: "reports", label: "Báo cáo Ads" },
+  { key: "campaign_builder", label: "Tạo Campaign AI" },
+  { key: "audiences", label: "Tệp khách hàng" },
   { key: "creative", label: "Creative" },
   { key: "meta_api", label: "Meta API" }
 ];
@@ -28,7 +28,7 @@ const lockOptions = [
 async function readJson<T>(url: string, init?: RequestInit) {
   const response = await fetch(url, { cache: "no-store", ...init });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ táº£i dá»¯ liá»‡u.");
+  if (!response.ok) throw new Error(payload.error || "Không thể tải dữ liệu.");
   return payload;
 }
 
@@ -48,7 +48,7 @@ export function AdminConsoleClient() {
       setRows(payload.data ?? []);
       setWarning(payload.warning ?? "");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i danh sÃ¡ch user.");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách user.");
     } finally {
       setLoading(false);
     }
@@ -77,10 +77,10 @@ export function AdminConsoleClient() {
           locked_sections: lockedSections
         })
       });
-      toast.success("ÄÃ£ cáº­p nháº­t quyá»n.");
+      toast.success("Đã cập nhật quyền.");
       await loadUsers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ cáº­p nháº­t quyá»n.");
+      toast.error(err instanceof Error ? err.message : "Không thể cập nhật quyền.");
     } finally {
       setSavingId("");
     }
@@ -90,7 +90,7 @@ export function AdminConsoleClient() {
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-3">
         <Card className="rounded-lg p-5">
-          <p className="text-sm font-bold text-on-surface-variant">Tá»•ng ngÆ°á»i dÃ¹ng Facebook</p>
+          <p className="text-sm font-bold text-on-surface-variant">Tổng người dùng Facebook</p>
           <p className="mt-2 text-3xl font-extrabold">{rows.length}</p>
         </Card>
         <Card className="rounded-lg p-5">
@@ -100,7 +100,7 @@ export function AdminConsoleClient() {
           </p>
         </Card>
         <Card className="rounded-lg p-5">
-          <p className="text-sm font-bold text-on-surface-variant">TÃ i khoáº£n bá»‹ khÃ³a má»¥c</p>
+          <p className="text-sm font-bold text-on-surface-variant">Tài khoản bị khóa mục</p>
           <p className="mt-2 text-3xl font-extrabold">{rows.filter((item) => (item.permission?.locked_sections ?? []).length > 0).length}</p>
         </Card>
       </section>
@@ -108,18 +108,18 @@ export function AdminConsoleClient() {
       <Card className="overflow-hidden rounded-lg p-0">
         <div className="flex items-center justify-between border-b border-outline-variant/70 px-6 py-5">
           <div>
-            <h3 className="text-lg font-extrabold">Quáº£n lÃ½ phÃ¢n quyá»n</h3>
-            <p className="text-sm text-on-surface-variant">Má»i user Ä‘Äƒng nháº­p báº±ng Facebook Ä‘á»u hiá»‡n á»Ÿ Ä‘Ã¢y Ä‘á»ƒ cáº¥p quyá»n tá»«ng tÃ­nh nÄƒng.</p>
+            <h3 className="text-lg font-extrabold">Quản lý phân quyền</h3>
+            <p className="text-sm text-on-surface-variant">Mọi user đăng nhập bằng Facebook đều hiện ở đây để cấp quyền từng tính năng.</p>
           </div>
           <Button variant="secondary" onClick={() => void loadUsers()} disabled={loading}>
             <MaterialIcon name="refresh" />
-            LÃ m má»›i
+            Làm mới
           </Button>
         </div>
 
         {error ? <p className="px-6 py-4 text-sm font-bold text-error">{error}</p> : null}
         {warning ? <p className="px-6 py-4 text-sm font-bold text-warning">{warning}</p> : null}
-        {loading ? <p className="px-6 py-5 text-sm text-on-surface-variant">Äang táº£i danh sÃ¡ch user...</p> : null}
+        {loading ? <p className="px-6 py-5 text-sm text-on-surface-variant">Đang tải danh sách user...</p> : null}
 
         {!loading ? (
           <div className="divide-y divide-outline-variant/70">
@@ -137,8 +137,8 @@ export function AdminConsoleClient() {
 
       <Card className="rounded-lg p-0">
         <div className="border-b border-outline-variant/70 px-6 py-5">
-          <h3 className="text-lg font-extrabold">Meta API ná»™i bá»™</h3>
-          <p className="text-sm text-on-surface-variant">Khu test tÃ i khoáº£n/campaign dÃ nh cho admin.</p>
+          <h3 className="text-lg font-extrabold">Meta API nội bộ</h3>
+          <p className="text-sm text-on-surface-variant">Khu test tài khoản/campaign dành cho admin.</p>
         </div>
         <div className="p-6">
           <MetaDashboard />
@@ -163,13 +163,13 @@ function UserPermissionRow({
   return (
     <div className="grid gap-4 px-6 py-5 lg:grid-cols-[1.2fr_0.8fr_1fr_auto] lg:items-center">
       <div>
-        <p className="font-bold text-on-surface">{row.full_name || "ChÆ°a cáº­p nháº­t tÃªn"}</p>
+        <p className="font-bold text-on-surface">{row.full_name || "Chưa cập nhật tên"}</p>
         <p className="text-sm text-on-surface-variant">{row.email}</p>
         {row.facebook_id ? <p className="text-xs text-outline">Facebook ID: {row.facebook_id}</p> : null}
       </div>
 
       <label className="space-y-2">
-        <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Quyá»n</span>
+        <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Quyền</span>
         <select className="dashboard-input" value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
           <option value="owner">Owner</option>
           <option value="manager">Manager</option>
@@ -178,7 +178,7 @@ function UserPermissionRow({
       </label>
 
       <div className="space-y-2">
-        <p className="text-xs font-extrabold uppercase tracking-wide text-outline">Má»¥c khÃ³a</p>
+        <p className="text-xs font-extrabold uppercase tracking-wide text-outline">Mục khóa</p>
         <div className="flex flex-wrap gap-2">
           {lockOptions.map((option) => {
             const active = lockedSections.includes(option.key);
@@ -202,7 +202,7 @@ function UserPermissionRow({
 
       <div className="flex justify-end">
         <Button onClick={() => onSave(role, lockedSections)} disabled={saving}>
-          {saving ? "Äang lÆ°u..." : "LÆ°u quyá»n"}
+          {saving ? "Đang lưu..." : "Lưu quyền"}
         </Button>
       </div>
     </div>

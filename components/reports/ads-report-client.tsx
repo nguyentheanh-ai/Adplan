@@ -35,7 +35,7 @@ function getPresetRange(preset: DatePreset) {
 async function readJson<T>(url: string) {
   const response = await fetch(url, { cache: "no-store" });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ láº¥y dá»¯ liá»‡u.");
+  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
   return payload;
 }
 
@@ -48,7 +48,7 @@ function metricValue(row: DailyInsight, metric: ChartMetric) {
 function metricLabel(metric: ChartMetric) {
   if (metric === "ctr") return "CTR";
   if (metric === "cpc") return "CPC";
-  return "Chi tiÃªu";
+  return "Chi tiêu";
 }
 
 function formatMetricValue(value: number, metric: ChartMetric, currency: string) {
@@ -94,7 +94,7 @@ export function AdsReportClient() {
 
   async function loadReport() {
     if (!selectedAccountId) {
-      setError("ChÆ°a chá»n tÃ i khoáº£n quáº£ng cÃ¡o.");
+      setError("Chưa chọn tài khoản quảng cáo.");
       return;
     }
     setLoading(true);
@@ -110,9 +110,9 @@ export function AdsReportClient() {
       });
       const payload = await readJson<{ data: AdsReport }>(`/api/meta/report?${query.toString()}`);
       setReport(payload.data);
-      if (!payload.data.campaigns.length) setError("KhÃ´ng cÃ³ dá»¯ liá»‡u trong khoáº£ng thá»i gian nÃ y.");
+      if (!payload.data.campaigns.length) setError("Không có dữ liệu trong khoảng thời gian này.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ láº¥y bÃ¡o cÃ¡o.");
+      setError(err instanceof Error ? err.message : "Không thể lấy báo cáo.");
       setTechnicalError(err instanceof Error ? err.stack || err.message : "");
     } finally {
       setLoading(false);
@@ -134,7 +134,7 @@ export function AdsReportClient() {
       const payload = await readJson<{ data: BreakdownRow[] }>(`/api/meta/breakdown?${query.toString()}`);
       setBreakdownRows(payload.data ?? []);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Breakdown chÆ°a kháº£ dá»¥ng.");
+      toast.error(err instanceof Error ? err.message : "Breakdown chưa khả dụng.");
     } finally {
       setBreakdownLoading(false);
     }
@@ -172,7 +172,7 @@ export function AdsReportClient() {
       <Card className="rounded-lg p-5">
         <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr_auto] lg:items-end">
           <label className="space-y-2">
-            <span className="text-sm font-bold text-on-surface">TÃ i khoáº£n quáº£ng cÃ¡o</span>
+            <span className="text-sm font-bold text-on-surface">Tài khoản quảng cáo</span>
             <select
               className="h-12 w-full rounded-md border border-outline-variant bg-white px-4 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
               value={selectedAccountId}
@@ -187,28 +187,28 @@ export function AdsReportClient() {
                       {account.name || account.id} - {account.id}
                     </option>
                   ))
-                : <option>ChÆ°a cÃ³ tÃ i khoáº£n quáº£ng cÃ¡o</option>}
+                : <option>Chưa có tài khoản quảng cáo</option>}
             </select>
           </label>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="space-y-2 sm:col-span-1">
-              <span className="text-sm font-bold text-on-surface">Khoáº£ng thá»i gian</span>
+              <span className="text-sm font-bold text-on-surface">Khoảng thời gian</span>
               <select
                 className="h-12 w-full rounded-md border border-outline-variant bg-white px-4 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
                 value={preset}
                 onChange={(event) => updatePreset(event.target.value as DatePreset)}
               >
-                <option value="today">HÃ´m nay</option>
-                <option value="yesterday">HÃ´m qua</option>
-                <option value="7d">7 ngÃ y qua</option>
-                <option value="30d">30 ngÃ y qua</option>
-                <option value="month">ThÃ¡ng nÃ y</option>
-                <option value="custom">TÃ¹y chá»‰nh</option>
+                <option value="today">Hôm nay</option>
+                <option value="yesterday">Hôm qua</option>
+                <option value="7d">7 ngày qua</option>
+                <option value="30d">30 ngày qua</option>
+                <option value="month">Tháng này</option>
+                <option value="custom">Tùy chỉnh</option>
               </select>
             </label>
             <label className="space-y-2">
-              <span className="text-sm font-bold text-on-surface">NgÃ y báº¯t Ä‘áº§u</span>
+              <span className="text-sm font-bold text-on-surface">Ngày bắt đầu</span>
               <input
                 className="h-12 w-full rounded-md border border-outline-variant bg-white px-4 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
                 type="date"
@@ -220,7 +220,7 @@ export function AdsReportClient() {
               />
             </label>
             <label className="space-y-2">
-              <span className="text-sm font-bold text-on-surface">NgÃ y káº¿t thÃºc</span>
+              <span className="text-sm font-bold text-on-surface">Ngày kết thúc</span>
               <input
                 className="h-12 w-full rounded-md border border-outline-variant bg-white px-4 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
                 type="date"
@@ -236,11 +236,11 @@ export function AdsReportClient() {
           <div className="flex flex-wrap gap-2">
             <Button onClick={loadReport} disabled={loading || !selectedAccountId}>
               <MaterialIcon name="refresh" />
-              {loading ? "Äang láº¥y..." : "Láº¥y bÃ¡o cÃ¡o"}
+              {loading ? "Đang lấy..." : "Lấy báo cáo"}
             </Button>
             <Button variant="secondary" onClick={downloadCsv} disabled={!report}>
               <MaterialIcon name="download" />
-              Xuáº¥t CSV
+              Xuất CSV
             </Button>
           </div>
         </div>
@@ -254,7 +254,7 @@ export function AdsReportClient() {
               <p className="font-bold text-error">{error}</p>
               {technicalError ? (
                 <details className="mt-2 text-xs text-on-surface-variant">
-                  <summary className="cursor-pointer font-bold">Xem chi tiáº¿t ká»¹ thuáº­t</summary>
+                  <summary className="cursor-pointer font-bold">Xem chi tiết kỹ thuật</summary>
                   <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3">{technicalError}</pre>
                 </details>
               ) : null}
@@ -273,18 +273,18 @@ export function AdsReportClient() {
             <Card className="rounded-lg p-6">
               <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div>
-                  <h3 className="text-lg font-extrabold">Biá»ƒu Ä‘á»“ theo ngÃ y</h3>
-                  <p className="text-sm text-on-surface-variant">Chá»n chá»‰ sá»‘ vÃ  kiá»ƒu biá»ƒu Ä‘á»“ Ä‘á»ƒ xem theo tá»«ng ngÃ y.</p>
+                  <h3 className="text-lg font-extrabold">Biểu đồ theo ngày</h3>
+                  <p className="text-sm text-on-surface-variant">Chọn chỉ số và kiểu biểu đồ để xem theo từng ngày.</p>
                 </div>
                 <div className="flex gap-2">
                   <select className="dashboard-input" value={primaryMetric} onChange={(event) => setPrimaryMetric(event.target.value as ChartMetric)}>
-                    <option value="spend">Chi tiÃªu</option>
+                    <option value="spend">Chi tiêu</option>
                     <option value="ctr">CTR</option>
                     <option value="cpc">CPC</option>
                   </select>
                   <select className="dashboard-input" value={chartType} onChange={(event) => setChartType(event.target.value as ChartType)}>
-                    <option value="line">ÄÆ°á»ng</option>
-                    <option value="bar">Cá»™t</option>
+                    <option value="line">Đường</option>
+                    <option value="bar">Cột</option>
                   </select>
                 </div>
               </div>
@@ -294,11 +294,11 @@ export function AdsReportClient() {
             <Card className="rounded-lg p-6">
               <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div>
-                  <h3 className="text-lg font-extrabold">Biá»ƒu Ä‘á»“ Ä‘á»‘i sÃ¡nh cÃ¹ng ká»³</h3>
-                  <p className="text-sm text-on-surface-variant">Äá»‘i sÃ¡nh thÃªm má»™t chá»‰ sá»‘ khÃ¡c trong cÃ¹ng khoáº£ng thá»i gian.</p>
+                  <h3 className="text-lg font-extrabold">Biểu đồ đối sánh cùng kỳ</h3>
+                  <p className="text-sm text-on-surface-variant">Đối sánh thêm một chỉ số khác trong cùng khoảng thời gian.</p>
                 </div>
                 <select className="dashboard-input" value={compareMetric} onChange={(event) => setCompareMetric(event.target.value as ChartMetric)}>
-                  <option value="spend">Chi tiÃªu</option>
+                  <option value="spend">Chi tiêu</option>
                   <option value="ctr">CTR</option>
                   <option value="cpc">CPC</option>
                 </select>
@@ -312,14 +312,14 @@ export function AdsReportClient() {
               <div className="flex flex-col gap-3 border-b border-outline-variant/70 px-6 py-5 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h3 className="text-lg font-extrabold">Campaign Performance</h3>
-                  <p className="text-sm text-on-surface-variant">Sáº¯p xáº¿p nhanh theo chi tiÃªu, CTR hoáº·c CPC.</p>
+                  <p className="text-sm text-on-surface-variant">Sắp xếp nhanh theo chi tiêu, CTR hoặc CPC.</p>
                 </div>
                 <select
                   className="h-11 rounded-md border border-outline-variant bg-white px-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary"
                   value={sortKey}
                   onChange={(event) => setSortKey(event.target.value as SortKey)}
                 >
-                  <option value="spend">Sort theo chi tiÃªu</option>
+                  <option value="spend">Sort theo chi tiêu</option>
                   <option value="ctr">Sort theo CTR</option>
                   <option value="cpc">Sort theo CPC</option>
                 </select>
@@ -330,7 +330,7 @@ export function AdsReportClient() {
             <Card className="rounded-lg p-6">
               <div className="mb-5 flex items-center gap-2">
                 <MaterialIcon className="text-primary" filled name="auto_awesome" />
-                <h3 className="text-lg font-extrabold">Nháº­n Ä‘á»‹nh AI</h3>
+                <h3 className="text-lg font-extrabold">Nhận định AI</h3>
               </div>
               <div className="space-y-3">
                 {report.insights.map((item) => (
@@ -345,17 +345,17 @@ export function AdsReportClient() {
           <Card className="overflow-hidden rounded-lg p-0">
             <div className="border-b border-outline-variant/70 px-6 py-5">
               <h3 className="text-lg font-extrabold">Campaign Performance</h3>
-              <p className="text-sm text-on-surface-variant">Báº£ng bÃ¡o cÃ¡o Ä‘áº§y Ä‘á»§ chá»‰ sá»‘, Ä‘áº·t dÆ°á»›i biá»ƒu Ä‘á»“ Ä‘á»ƒ cÃ³ Ä‘á»§ chiá»u ngang.</p>
+              <p className="text-sm text-on-surface-variant">Bảng báo cáo đầy đủ chỉ số, đặt dưới biểu đồ để có đủ chiều ngang.</p>
             </div>
             <div className="grid gap-2 border-b border-outline-variant/70 px-6 py-4 md:grid-cols-4">
               <input
                 className="dashboard-input"
-                placeholder="TÃ¬m campaign hoáº·c ID..."
+                placeholder="Tìm campaign hoặc ID..."
                 value={campaignKeyword}
                 onChange={(event) => setCampaignKeyword(event.target.value)}
               />
               <select className="dashboard-input" value={campaignStatus} onChange={(event) => setCampaignStatus(event.target.value)}>
-                <option value="ALL">Táº¥t cáº£ tráº¡ng thÃ¡i</option>
+                <option value="ALL">Tất cả trạng thái</option>
                 {Array.from(new Set((report?.campaigns ?? []).map((campaign) => campaign.status || "UNKNOWN"))).map((status) => (
                   <option key={status} value={status}>
                     {status}
@@ -363,7 +363,7 @@ export function AdsReportClient() {
                 ))}
               </select>
               <select className="dashboard-input" value={campaignObjective} onChange={(event) => setCampaignObjective(event.target.value)}>
-                <option value="ALL">Táº¥t cáº£ objective</option>
+                <option value="ALL">Tất cả objective</option>
                 {Array.from(new Set((report?.campaigns ?? []).map((campaign) => campaign.objective || "UNKNOWN"))).map((objective) => (
                   <option key={objective} value={objective}>
                     {objective}
@@ -371,9 +371,9 @@ export function AdsReportClient() {
                 ))}
               </select>
               <select className="dashboard-input" value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}>
-                <option value="spend">Sáº¯p xáº¿p theo chi tiÃªu</option>
-                <option value="ctr">Sáº¯p xáº¿p theo CTR</option>
-                <option value="cpc">Sáº¯p xáº¿p theo CPC</option>
+                <option value="spend">Sắp xếp theo chi tiêu</option>
+                <option value="ctr">Sắp xếp theo CTR</option>
+                <option value="cpc">Sắp xếp theo CPC</option>
               </select>
             </div>
             <CampaignTable rows={sortedCampaigns} currency={currency} />
@@ -383,7 +383,7 @@ export function AdsReportClient() {
             <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h3 className="text-lg font-extrabold">Breakdown</h3>
-                <p className="text-sm text-on-surface-variant">Xem nhanh theo tuá»•i, giá»›i tÃ­nh hoáº·c placement náº¿u Meta há»— trá»£.</p>
+                <p className="text-sm text-on-surface-variant">Xem nhanh theo tuổi, giới tính hoặc placement nếu Meta hỗ trợ.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {(["age", "gender", "placement"] as BreakdownType[]).map((item) => (
@@ -399,9 +399,9 @@ export function AdsReportClient() {
       ) : !loading ? (
         <Card className="rounded-lg p-8 text-center">
           <MaterialIcon className="mx-auto mb-3 text-4xl text-primary" name="monitoring" />
-          <h3 className="text-xl font-extrabold">Chá»n tÃ i khoáº£n vÃ  láº¥y bÃ¡o cÃ¡o</h3>
+          <h3 className="text-xl font-extrabold">Chọn tài khoản và lấy báo cáo</h3>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-on-surface-variant">
-            BÃ¡o cÃ¡o sáº½ hiá»ƒn thá»‹ KPI, biá»ƒu Ä‘á»“ theo ngÃ y, báº£ng campaign, breakdown vÃ  nháº­n Ä‘á»‹nh tá»± Ä‘á»™ng.
+            Báo cáo sẽ hiển thị KPI, biểu đồ theo ngày, bảng campaign, breakdown và nhận định tự động.
           </p>
         </Card>
       ) : null}
@@ -411,14 +411,14 @@ export function AdsReportClient() {
 
 function KpiGrid({ report, currency }: { report: AdsReport; currency: string }) {
   const items = [
-    ["Tá»•ng chi tiÃªu", formatMoney(report.summary.spend, currency), "payments"],
-    ["Tá»•ng lÆ°á»£t hiá»ƒn thá»‹", formatNumber(report.summary.impressions), "visibility"],
-    ["CTR trung bÃ¬nh", formatPercent(report.summary.averageCtr), "ads_click"],
-    ["CPC trung bÃ¬nh", formatMoney(report.summary.averageCpc, currency), "mouse"],
-    ["CPM trung bÃ¬nh", formatMoney(report.summary.averageCpm, currency), "speed"],
-    ["Tá»•ng káº¿t quáº£", formatNumber(report.summary.totalResults), "flag"],
-    ["Chi phÃ­ má»—i káº¿t quáº£", formatMoney(report.summary.costPerResult, currency), "target"],
-    ["ROAS", report.summary.roas ? `${report.summary.roas.toFixed(2)}x` : "ChÆ°a cÃ³", "trending_up"]
+    ["Tổng chi tiêu", formatMoney(report.summary.spend, currency), "payments"],
+    ["Tổng lượt hiển thị", formatNumber(report.summary.impressions), "visibility"],
+    ["CTR trung bình", formatPercent(report.summary.averageCtr), "ads_click"],
+    ["CPC trung bình", formatMoney(report.summary.averageCpc, currency), "mouse"],
+    ["CPM trung bình", formatMoney(report.summary.averageCpm, currency), "speed"],
+    ["Tổng kết quả", formatNumber(report.summary.totalResults), "flag"],
+    ["Chi phí mỗi kết quả", formatMoney(report.summary.costPerResult, currency), "target"],
+    ["ROAS", report.summary.roas ? `${report.summary.roas.toFixed(2)}x` : "Chưa có", "trending_up"]
   ];
 
   return (
@@ -450,7 +450,7 @@ function DailyMetricChart({
   compact?: boolean;
 }) {
   if (!rows.length) {
-    return <div className="rounded-md bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">ChÆ°a cÃ³ dá»¯ liá»‡u theo ngÃ y.</div>;
+    return <div className="rounded-md bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">Chưa có dữ liệu theo ngày.</div>;
   }
   const values = rows.map((row) => metricValue(row, metric));
   const max = Math.max(...values, 1);
@@ -509,7 +509,7 @@ function DailyMetricChart({
 
 function CampaignTable({ rows, currency }: { rows: AdsReport["campaigns"]; currency: string }) {
   if (!rows.length) {
-    return <div className="p-8 text-center text-sm text-on-surface-variant">KhÃ´ng cÃ³ campaign nÃ o trong khoáº£ng thá»i gian nÃ y.</div>;
+    return <div className="p-8 text-center text-sm text-on-surface-variant">Không có campaign nào trong khoảng thời gian này.</div>;
   }
 
   return (
@@ -530,8 +530,8 @@ function CampaignTable({ rows, currency }: { rows: AdsReport["campaigns"]; curre
           {rows.map((row) => (
             <tr key={row.campaignId} className="hover:bg-surface-container-lowest">
               <td className="max-w-[260px] px-5 py-4 font-bold text-on-surface">{row.campaignName}</td>
-              <td className="px-5 py-4">{row.status || "ChÆ°a rÃµ"}</td>
-              <td className="px-5 py-4">{row.objective || "ChÆ°a rÃµ"}</td>
+              <td className="px-5 py-4">{row.status || "Chưa rõ"}</td>
+              <td className="px-5 py-4">{row.objective || "Chưa rõ"}</td>
               <td className="px-5 py-4">{formatMoney(row.spend, currency)}</td>
               <td className="px-5 py-4">{formatNumber(row.impressions)}</td>
               <td className="px-5 py-4">{formatNumber(row.reach)}</td>
@@ -560,8 +560,8 @@ function BreakdownTable({
   breakdown: BreakdownType;
   currency: string;
 }) {
-  if (loading) return <div className="rounded-md bg-surface-container-low p-6 text-sm font-bold text-on-surface-variant">Äang láº¥y breakdown...</div>;
-  if (!rows.length) return <div className="rounded-md bg-surface-container-low p-6 text-sm text-on-surface-variant">ChÆ°a cÃ³ dá»¯ liá»‡u breakdown hoáº·c breakdown nÃ y chÆ°a Ä‘Æ°á»£c Meta há»— trá»£.</div>;
+  if (loading) return <div className="rounded-md bg-surface-container-low p-6 text-sm font-bold text-on-surface-variant">Đang lấy breakdown...</div>;
+  if (!rows.length) return <div className="rounded-md bg-surface-container-low p-6 text-sm text-on-surface-variant">Chưa có dữ liệu breakdown hoặc breakdown này chưa được Meta hỗ trợ.</div>;
 
   return (
     <div className="overflow-x-auto">
@@ -570,8 +570,8 @@ function BreakdownTable({
           <tr>
             <th className="px-4 py-3">{breakdown === "placement" ? "Placement" : breakdown}</th>
             <th className="px-4 py-3">Campaign</th>
-            <th className="px-4 py-3">Chi tiÃªu</th>
-            <th className="px-4 py-3">LÆ°á»£t hiá»ƒn thá»‹</th>
+            <th className="px-4 py-3">Chi tiêu</th>
+            <th className="px-4 py-3">Lượt hiển thị</th>
             <th className="px-4 py-3">CTR</th>
             <th className="px-4 py-3">CPC</th>
           </tr>
@@ -579,7 +579,7 @@ function BreakdownTable({
         <tbody className="divide-y divide-outline-variant/70">
           {rows.map((row, index) => (
             <tr key={`${row.campaign_id}-${index}`}>
-              <td className="px-4 py-3 font-bold">{row.age || row.gender || row.publisher_platform || row.platform_position || "KhÃ¡c"}</td>
+              <td className="px-4 py-3 font-bold">{row.age || row.gender || row.publisher_platform || row.platform_position || "Khác"}</td>
               <td className="px-4 py-3">{row.campaign_name || "Campaign"}</td>
               <td className="px-4 py-3">{formatMoney(Number(row.spend ?? 0), currency)}</td>
               <td className="px-4 py-3">{formatNumber(Number(row.impressions ?? 0))}</td>
