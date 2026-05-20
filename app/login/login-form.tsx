@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { MaterialIcon } from "@/components/material-icon";
 import { createClient } from "@/lib/supabase/client";
 
+const productionRedirectTo = "https://adsplan.theanhmarketing.com/dashboard";
+const facebookScopes = "email,public_profile,ads_read,ads_management,read_insights";
+
 export function LoginForm() {
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/dashboard/meta";
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -20,11 +20,8 @@ export function LoginForm() {
       const result = await supabase.auth.signInWithOAuth({
         provider: "facebook",
         options: {
-          redirectTo: `${window.location.origin}${next}`,
-          scopes: "public_profile,email,ads_read,ads_management,business_management",
-          queryParams: {
-            auth_type: "rerequest"
-          }
+          redirectTo: productionRedirectTo,
+          scopes: facebookScopes
         }
       });
 

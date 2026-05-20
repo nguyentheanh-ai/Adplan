@@ -37,6 +37,12 @@ META_APP_ID=
 META_API_VERSION=v23.0
 ```
 
+Production app URL:
+
+```bash
+NEXT_PUBLIC_SITE_URL=https://adsplan.theanhmarketing.com
+```
+
 4. In Supabase SQL editor, run:
 
 ```bash
@@ -203,7 +209,7 @@ https://your-domain.com/**
 In Meta Developer dashboard, set the Facebook OAuth redirect URI to the Supabase callback URL:
 
 ```text
-https://your-supabase-project-ref.supabase.co/auth/v1/callback
+https://pppiqhkectojxbmhqcnx.supabase.co/auth/v1/callback
 ```
 
 Do not deploy `.env.local`. It is ignored by git.
