@@ -63,3 +63,24 @@
 - API mới chỉ sync và tạo recommendation ở trạng thái `draft`.
 - Chưa tự áp dụng thay đổi lên Meta nếu khách chưa ủy quyền.
 - Bảng `optimization_authorizations` đã sẵn sàng cho bước bật ủy quyền theo từng account.
+
+## 2026-05-21 - Optimization Center UI
+
+### Đã bổ sung
+
+- Thêm menu/trang `Tối ưu Ads` tại `/optimization`.
+- Thêm API `GET/PATCH /api/optimization/authorization` để bật/tắt ủy quyền tối ưu theo từng tài khoản quảng cáo.
+- UI cho khách chọn account, chọn khoảng thời gian, đồng bộ dữ liệu Meta và tạo khuyến nghị tối ưu.
+- UI ủy quyền có kiểm soát:
+  - chọn loại hành động được phép,
+  - giới hạn phần trăm thay đổi ngân sách,
+  - tùy chọn luôn cần duyệt thủ công.
+- Danh sách khuyến nghị hiển thị priority, loại hành động, lý do và kỳ vọng tác động.
+- Nút áp dụng vẫn disabled có giải thích; chưa tự chỉnh Meta khi chưa có bước confirm/apply an toàn.
+
+### Kiểm tra đã chạy
+
+- `npm.cmd run typecheck`: pass.
+- `npm.cmd run lint`: pass.
+- `npm.cmd test`: pass.
+- `npm.cmd run build`: pass.

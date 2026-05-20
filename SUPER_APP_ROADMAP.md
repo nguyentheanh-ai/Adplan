@@ -108,9 +108,10 @@ Ngành ưu tiên:
 - [x] Migration `industry_learning_profiles`.
 - [x] API sync dữ liệu Meta: `POST /api/meta/sync-insights`.
 - [x] API tạo recommendation từ dữ liệu đã lưu: `POST /api/optimization/recommendations`.
-- [ ] UI quản lý ủy quyền tối ưu cho từng account.
-- [ ] UI lịch sử sync dữ liệu.
-- [ ] UI danh sách recommendation có nút duyệt/từ chối.
+- [x] UI quản lý ủy quyền tối ưu cho từng account.
+- [x] UI lịch sử sync dữ liệu gần nhất.
+- [x] UI danh sách recommendation ở trạng thái nháp.
+- [ ] Nút duyệt/từ chối recommendation.
 
 ### Phase B - Optimization Action Center
 

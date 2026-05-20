@@ -18,6 +18,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Tổng quan", icon: "dashboard", match: "/dashboard" },
   { href: "/reports", label: "Báo cáo Ads", icon: "monitoring", match: "/reports", section: "reports" },
+  { href: "/optimization", label: "Tối ưu Ads", icon: "trending_up", match: "/optimization", section: "optimization" },
   { href: "/campaign-builder", label: "Tạo Campaign AI", icon: "auto_awesome", match: "/campaign-builder", section: "campaign_builder" },
   { href: "/audiences", label: "Tệp khách hàng", icon: "groups", match: "/audiences", section: "audiences" },
   { href: "/creative", label: "Creative", icon: "palette", match: "/creative", section: "creative" },
