@@ -10,10 +10,7 @@ export default async function CreativePage() {
   if (!(await canCurrentUserAccessSection("creative"))) redirect("/dashboard");
 
   return (
-    <AppShell
-      title="Creative"
-      description="Theo dõi số lượng creative, phễu hiệu suất và bảng so sánh theo lead, tin nhắn, tương tác."
-    >
+    <AppShell title="Creative" description="Theo dõi số lượng creative, phễu hiệu suất và bảng so sánh theo lead, tin nhắn, tương tác.">
       <CreativeIntelligenceClient />
     </AppShell>
   );

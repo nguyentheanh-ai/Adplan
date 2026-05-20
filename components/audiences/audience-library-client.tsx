@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -46,7 +46,7 @@ function presetRange(preset: DatePreset) {
 async function readJson<T>(url: string, init?: RequestInit) {
   const response = await fetch(url, { cache: "no-store", ...init });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
+  if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ láº¥y dá»¯ liá»‡u.");
   return payload;
 }
 
@@ -88,7 +88,7 @@ function buildAudienceRows(creatives: CreativePerformance[]) {
 
     map.set(key, {
       key,
-      name: creative.adsetName || "Nhóm quảng cáo chưa rõ",
+      name: creative.adsetName || "NhÃ³m quáº£ng cÃ¡o chÆ°a rÃµ",
       campaignCount: 0,
       creativeCount: 1,
       leads: creative.leads,
@@ -108,7 +108,7 @@ function buildAudienceRows(creatives: CreativePerformance[]) {
 
   return Array.from(map.values())
     .map((row) => {
-      const topCampaign = Array.from(row.topCampaignCounter.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+      const topCampaign = Array.from(row.topCampaignCounter.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "â€”";
       return {
         key: row.key,
         name: row.name,
@@ -180,7 +180,7 @@ export function AudienceLibraryClient() {
     setDetail("");
     try {
       const accountId = nextAccountId || selectedAccountId || (await loadAccounts());
-      if (!accountId) throw new Error("Chưa có tài khoản quảng cáo để tải tệp khách hàng.");
+      if (!accountId) throw new Error("ChÆ°a cÃ³ tÃ i khoáº£n quáº£ng cÃ¡o Ä‘á»ƒ táº£i tá»‡p khÃ¡ch hÃ ng.");
       const query = new URLSearchParams({ ad_account_id: accountId, start_date: range.startDate, end_date: range.endDate });
       const response = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${query.toString()}`);
       setPayload(response.data);
@@ -188,7 +188,7 @@ export function AudienceLibraryClient() {
       setDefaultAdAccountId(accountId);
       await loadSavedAudiences(accountId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải tệp khách hàng.");
+      setError(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i tá»‡p khÃ¡ch hÃ ng.");
       setDetail(err instanceof Error ? err.stack || err.message : "");
     } finally {
       setLoading(false);
@@ -216,9 +216,9 @@ export function AudienceLibraryClient() {
       });
       if (payload.storage === "local") {
         saveLocalAudience(selectedAccountId, payload.data);
-        toast.success("Đã lưu tệp khách hàng trên trình duyệt. Khi DB được cập nhật, app sẽ lưu lên Supabase.");
+        toast.success("ÄÃ£ lÆ°u tá»‡p khÃ¡ch hÃ ng trÃªn trÃ¬nh duyá»‡t. Khi DB Ä‘Æ°á»£c cáº­p nháº­t, app sáº½ lÆ°u lÃªn Supabase.");
       } else {
-        toast.success("Đã lưu tệp khách hàng. Bạn có thể dùng lại khi tạo campaign.");
+        toast.success("ÄÃ£ lÆ°u tá»‡p khÃ¡ch hÃ ng. Báº¡n cÃ³ thá»ƒ dÃ¹ng láº¡i khi táº¡o campaign.");
       }
       await loadSavedAudiences(selectedAccountId);
     } catch (err) {
@@ -240,7 +240,7 @@ export function AudienceLibraryClient() {
       };
       saveLocalAudience(selectedAccountId, localAudience);
       setSavedAudiences((current) => [localAudience, ...current]);
-      toast.success("Đã lưu tệp khách hàng trên trình duyệt.");
+      toast.success("ÄÃ£ lÆ°u tá»‡p khÃ¡ch hÃ ng trÃªn trÃ¬nh duyá»‡t.");
     }
   }
 
@@ -256,10 +256,10 @@ export function AudienceLibraryClient() {
 
   return (
     <div className="space-y-6">
-      <Card className="rounded-3xl p-5">
+      <Card className="rounded-lg p-5">
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <label className="space-y-2">
-            <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Tài khoản quảng cáo</span>
+            <span className="text-xs font-extrabold uppercase tracking-wide text-outline">TÃ i khoáº£n quáº£ng cÃ¡o</span>
             <select
               className="dashboard-input"
               value={selectedAccountId}
@@ -274,21 +274,21 @@ export function AudienceLibraryClient() {
                       {account.name || account.id}
                     </option>
                   ))
-                : <option value="">Chưa có tài khoản</option>}
+                : <option value="">ChÆ°a cÃ³ tÃ i khoáº£n</option>}
             </select>
           </label>
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="space-y-2">
-              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Khoảng thời gian</span>
+              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Khoáº£ng thá»i gian</span>
               <select className="dashboard-input" value={preset} onChange={(event) => updatePreset(event.target.value as DatePreset)}>
-                <option value="7d">7 ngày qua</option>
-                <option value="30d">30 ngày qua</option>
-                <option value="month">Tháng này</option>
-                <option value="custom">Tùy chỉnh</option>
+                <option value="7d">7 ngÃ y qua</option>
+                <option value="30d">30 ngÃ y qua</option>
+                <option value="month">ThÃ¡ng nÃ y</option>
+                <option value="custom">TÃ¹y chá»‰nh</option>
               </select>
             </label>
             <label className="space-y-2">
-              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Từ ngày</span>
+              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Tá»« ngÃ y</span>
               <input
                 className="dashboard-input"
                 type="date"
@@ -300,7 +300,7 @@ export function AudienceLibraryClient() {
               />
             </label>
             <label className="space-y-2">
-              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Đến ngày</span>
+              <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Äáº¿n ngÃ y</span>
               <input
                 className="dashboard-input"
                 type="date"
@@ -315,24 +315,24 @@ export function AudienceLibraryClient() {
           <div className="flex gap-2">
             <Button disabled={loading} onClick={() => void loadAccounts()} variant="secondary">
               <MaterialIcon name="account_balance_wallet" />
-              Nạp tài khoản
+              Náº¡p tÃ i khoáº£n
             </Button>
             <Button disabled={loading} onClick={() => void loadData()}>
               <MaterialIcon name="refresh" />
-              {loading ? "Đang tải..." : "Lấy tệp khách hàng"}
+              {loading ? "Äang táº£i..." : "Láº¥y tá»‡p khÃ¡ch hÃ ng"}
             </Button>
           </div>
         </div>
       </Card>
 
       {!!savedAudiences.length && (
-        <Card className="rounded-3xl p-5">
-          <h3 className="text-lg font-extrabold">Tệp đã lưu (dùng lại giữa các tài khoản)</h3>
+        <Card className="rounded-lg p-5">
+          <h3 className="text-lg font-extrabold">Tá»‡p Ä‘Ã£ lÆ°u (dÃ¹ng láº¡i giá»¯a cÃ¡c tÃ i khoáº£n)</h3>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             {savedAudiences.slice(0, 8).map((item) => (
-              <div key={item.id} className="rounded-2xl bg-surface-container-low p-3">
-                <p className="font-bold">{item.code} · {item.name}</p>
-                <p className="text-xs text-on-surface-variant">{item.payload.locations || "Không có khu vực"} · {item.payload.ageRange || "Không có độ tuổi"}</p>
+              <div key={item.id} className="rounded-md bg-surface-container-low p-3">
+                <p className="font-bold">{item.code} Â· {item.name}</p>
+                <p className="text-xs text-on-surface-variant">{item.payload.locations || "KhÃ´ng cÃ³ khu vá»±c"} Â· {item.payload.ageRange || "KhÃ´ng cÃ³ Ä‘á»™ tuá»•i"}</p>
               </div>
             ))}
           </div>
@@ -340,12 +340,12 @@ export function AudienceLibraryClient() {
       )}
 
       {error ? (
-        <Card className="rounded-3xl border border-error-container bg-error-container/70 p-5">
+        <Card className="rounded-lg border border-error-container bg-error-container/70 p-5">
           <p className="font-bold text-error">{error}</p>
           {detail ? (
             <details className="mt-2 text-xs text-on-surface-variant">
-              <summary className="cursor-pointer font-bold">Xem chi tiết kỹ thuật</summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3">{detail}</pre>
+              <summary className="cursor-pointer font-bold">Xem chi tiáº¿t ká»¹ thuáº­t</summary>
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3">{detail}</pre>
             </details>
           ) : null}
         </Card>
@@ -354,26 +354,26 @@ export function AudienceLibraryClient() {
       {!loading && filteredRows.length ? (
         <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <StatCard label="Tổng tệp ở nhóm quảng cáo" value={formatNumber(filteredRows.length)} />
-            <StatCard label="Tổng lead" value={formatNumber(totalLeads)} />
-            <StatCard label="Tổng tin nhắn" value={formatNumber(totalMessages)} />
-            <StatCard label="Tổng tương tác" value={formatNumber(totalEngagements)} />
-            <StatCard label="Tổng chi tiêu" value={formatMoney(totalSpend, currency)} />
+            <StatCard label="Tá»•ng tá»‡p á»Ÿ nhÃ³m quáº£ng cÃ¡o" value={formatNumber(filteredRows.length)} />
+            <StatCard label="Tá»•ng lead" value={formatNumber(totalLeads)} />
+            <StatCard label="Tá»•ng tin nháº¯n" value={formatNumber(totalMessages)} />
+            <StatCard label="Tá»•ng tÆ°Æ¡ng tÃ¡c" value={formatNumber(totalEngagements)} />
+            <StatCard label="Tá»•ng chi tiÃªu" value={formatMoney(totalSpend, currency)} />
           </section>
 
-          <Card className="overflow-hidden rounded-3xl p-0">
+          <Card className="overflow-hidden rounded-lg p-0">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/70 px-6 py-5">
               <div>
-                <h3 className="text-lg font-extrabold">Tệp khách hàng ở Nhóm quảng cáo</h3>
-                <p className="text-sm text-on-surface-variant">Lấy sở thích, độ tuổi, hành vi, vị trí địa lý từ dữ liệu ad set/creative.</p>
+                <h3 className="text-lg font-extrabold">Tá»‡p khÃ¡ch hÃ ng á»Ÿ NhÃ³m quáº£ng cÃ¡o</h3>
+                <p className="text-sm text-on-surface-variant">Láº¥y sá»Ÿ thÃ­ch, Ä‘á»™ tuá»•i, hÃ nh vi, vá»‹ trÃ­ Ä‘á»‹a lÃ½ tá»« dá»¯ liá»‡u ad set/creative.</p>
               </div>
-              <input className="dashboard-input" placeholder="Lọc theo tên tệp, mã, campaign..." value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+              <input className="dashboard-input" placeholder="Lá»c theo tÃªn tá»‡p, mÃ£, campaign..." value={keyword} onChange={(e) => setKeyword(e.target.value)} />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1180px] text-left text-sm">
                 <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
                   <tr>
-                    {["Mã tệp", "Tên tệp", "Nguồn", "Tuổi", "Giới tính", "Vị trí địa lý", "Sở thích", "Hành vi", "Campaign", "Creative", "Lead", "Tin nhắn", "Tương tác", "Chi tiêu", "Lưu"].map(
+                    {["MÃ£ tá»‡p", "TÃªn tá»‡p", "Nguá»“n", "Tuá»•i", "Giá»›i tÃ­nh", "Vá»‹ trÃ­ Ä‘á»‹a lÃ½", "Sá»Ÿ thÃ­ch", "HÃ nh vi", "Campaign", "Creative", "Lead", "Tin nháº¯n", "TÆ°Æ¡ng tÃ¡c", "Chi tiÃªu", "LÆ°u"].map(
                       (head) => (
                         <th key={head} className="px-4 py-3 font-extrabold">{head}</th>
                       )
@@ -385,7 +385,7 @@ export function AudienceLibraryClient() {
                     <tr key={row.key}>
                       <td className="px-4 py-3"><span className="rounded-full bg-primary-fixed px-3 py-1 font-mono text-xs font-extrabold text-primary">{row.code}</span></td>
                       <td className="px-4 py-3 font-bold">{row.name}</td>
-                      <td className="px-4 py-3">Nhóm quảng cáo</td>
+                      <td className="px-4 py-3">NhÃ³m quáº£ng cÃ¡o</td>
                       <td className="px-4 py-3">{row.ageRange}</td>
                       <td className="px-4 py-3">{row.gender}</td>
                       <td className="px-4 py-3">{row.locations}</td>
@@ -399,7 +399,7 @@ export function AudienceLibraryClient() {
                       <td className="px-4 py-3">{formatMoney(row.spend, currency)}</td>
                       <td className="px-4 py-3">
                         <Button className="min-h-9 px-3 py-1 text-xs" variant="secondary" onClick={() => void saveAudience(row)}>
-                          Lưu tệp
+                          LÆ°u tá»‡p
                         </Button>
                       </td>
                     </tr>
@@ -412,11 +412,11 @@ export function AudienceLibraryClient() {
       ) : null}
 
       {!loading && payload && !filteredRows.length ? (
-        <Card className="rounded-3xl p-8 text-center">
+        <Card className="rounded-lg p-8 text-center">
           <MaterialIcon className="mx-auto mb-3 text-4xl text-primary" name="groups" />
-          <h3 className="text-xl font-extrabold">Chưa có dữ liệu tệp từ nhóm quảng cáo</h3>
+          <h3 className="text-xl font-extrabold">ChÆ°a cÃ³ dá»¯ liá»‡u tá»‡p tá»« nhÃ³m quáº£ng cÃ¡o</h3>
           <p className="mx-auto mt-2 max-w-xl text-sm text-on-surface-variant">
-            Tài khoản này chưa có ad set/creative trong khoảng thời gian đã chọn hoặc token thiếu quyền đọc dữ liệu.
+            TÃ i khoáº£n nÃ y chÆ°a cÃ³ ad set/creative trong khoáº£ng thá»i gian Ä‘Ã£ chá»n hoáº·c token thiáº¿u quyá»n Ä‘á»c dá»¯ liá»‡u.
           </p>
         </Card>
       ) : null}
@@ -426,9 +426,10 @@ export function AudienceLibraryClient() {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card className="rounded-3xl p-5">
+    <Card className="rounded-lg p-5">
       <p className="text-sm font-bold text-on-surface-variant">{label}</p>
       <p className="mt-2 text-3xl font-extrabold">{value}</p>
     </Card>
   );
 }
+

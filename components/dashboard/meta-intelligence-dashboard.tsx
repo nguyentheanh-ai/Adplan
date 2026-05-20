@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -46,14 +46,14 @@ function splitCreativeName(rawName: string, creativeId: string, adId: string) {
 async function readJson<T>(url: string) {
   const response = await fetch(url, { cache: "no-store" });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
+  if (!response.ok) throw new Error(payload.error || "KhÃ´ng thá»ƒ láº¥y dá»¯ liá»‡u.");
   return payload;
 }
 
 function metricLabel(metric: MetricKey) {
   if (metric === "ctr") return "CTR";
   if (metric === "cpc") return "CPC";
-  return "Chi tiêu";
+  return "Chi tiÃªu";
 }
 
 function formatMetricValue(metric: MetricKey, value: number, currency: string) {
@@ -87,7 +87,7 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
       const picked = applyDefaultAdAccount(payload.data.accounts, nextAccountId || payload.data.selectedAccount?.id || payload.data.accounts[0]?.id);
       setSelectedAccountId(picked);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải dashboard.");
+      setError(err instanceof Error ? err.message : "KhÃ´ng thá»ƒ táº£i dashboard.");
       setTechnicalError(err instanceof Error ? err.stack || err.message : "");
     } finally {
       setLoading(false);
@@ -139,16 +139,16 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
 
   return (
     <div className="space-y-6">
-      <Card className="rounded-3xl p-5">
+      <Card className="rounded-lg p-5">
         <div className="grid gap-4 xl:grid-cols-[1fr_1.1fr_auto] xl:items-end">
           <div>
-            <p className="text-sm font-bold text-outline">Xin chào, {userName}</p>
-            <h2 className="mt-1 text-2xl font-extrabold text-on-surface">Dashboard quảng cáo</h2>
-            <p className="mt-1 text-sm leading-6 text-on-surface-variant">Tổng hợp hiệu suất Meta Ads, creative và cảnh báo tối ưu theo cách dễ hiểu.</p>
+            <p className="text-sm font-bold text-outline">Xin chÃ o, {userName}</p>
+            <h2 className="mt-1 text-2xl font-extrabold text-on-surface">Dashboard quáº£ng cÃ¡o</h2>
+            <p className="mt-1 text-sm leading-6 text-on-surface-variant">Tá»•ng há»£p hiá»‡u suáº¥t Meta Ads, creative vÃ  cáº£nh bÃ¡o tá»‘i Æ°u theo cÃ¡ch dá»… hiá»ƒu.</p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-4">
-            <Field label="Tài khoản">
+            <Field label="TÃ i khoáº£n">
               <select
                 className="dashboard-input"
                 value={selectedAccountId}
@@ -163,21 +163,21 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
                         {account.name || account.id}
                       </option>
                     ))
-                  : <option>Chưa có tài khoản</option>}
+                  : <option>ChÆ°a cÃ³ tÃ i khoáº£n</option>}
               </select>
             </Field>
-            <Field label="Thời gian">
+            <Field label="Thá»i gian">
               <select className="dashboard-input" value={preset} onChange={(event) => updatePreset(event.target.value as DatePreset)}>
-                <option value="today">Hôm nay</option>
-                <option value="yesterday">Hôm qua</option>
-                <option value="7d">7 ngày</option>
-                <option value="30d">30 ngày</option>
-                <option value="month">Tháng này</option>
-                <option value="lastMonth">Tháng trước</option>
-                <option value="custom">Tùy chỉnh</option>
+                <option value="today">HÃ´m nay</option>
+                <option value="yesterday">HÃ´m qua</option>
+                <option value="7d">7 ngÃ y</option>
+                <option value="30d">30 ngÃ y</option>
+                <option value="month">ThÃ¡ng nÃ y</option>
+                <option value="lastMonth">ThÃ¡ng trÆ°á»›c</option>
+                <option value="custom">TÃ¹y chá»‰nh</option>
               </select>
             </Field>
-            <Field label="Từ ngày">
+            <Field label="Tá»« ngÃ y">
               <input
                 className="dashboard-input"
                 type="date"
@@ -188,7 +188,7 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
                 }}
               />
             </Field>
-            <Field label="Đến ngày">
+            <Field label="Äáº¿n ngÃ y">
               <input
                 className="dashboard-input"
                 type="date"
@@ -204,10 +204,10 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => void load(selectedAccountId)} disabled={loading}>
               <MaterialIcon name="refresh" />
-              {loading ? "Đang tải..." : "Làm mới"}
+              {loading ? "Äang táº£i..." : "LÃ m má»›i"}
             </Button>
             <Link href="/reports">
-              <Button variant="secondary">Báo cáo Ads</Button>
+              <Button variant="secondary">BÃ¡o cÃ¡o Ads</Button>
             </Link>
           </div>
         </div>
@@ -219,42 +219,42 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
       {!loading && data ? (
         <>
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Tổng chi tiêu" value={formatMoney(kpi.spend, currency)} icon="payments" />
-            <StatCard label="Tổng lead/message" value={formatNumber(kpi.results)} icon="forum" />
-            <StatCard label="Cảnh báo tài khoản" value={formatNumber(kpi.alerts)} icon="warning" />
-            <StatCard label="Kế hoạch AI" value={formatNumber(planCount)} icon="auto_awesome" />
+            <StatCard label="Tá»•ng chi tiÃªu" value={formatMoney(kpi.spend, currency)} icon="payments" />
+            <StatCard label="Tá»•ng lead/message" value={formatNumber(kpi.results)} icon="forum" />
+            <StatCard label="Cáº£nh bÃ¡o tÃ i khoáº£n" value={formatNumber(kpi.alerts)} icon="warning" />
+            <StatCard label="Káº¿ hoáº¡ch AI" value={formatNumber(planCount)} icon="auto_awesome" />
           </section>
 
           <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <Card className="rounded-3xl p-6">
+            <Card className="rounded-lg p-6">
               <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div>
-                  <h3 className="text-lg font-extrabold">Biểu đồ theo ngày</h3>
-                  <p className="text-sm text-on-surface-variant">Chọn chỉ số và kiểu biểu đồ: chi phí, CTR hoặc CPC.</p>
+                  <h3 className="text-lg font-extrabold">Biá»ƒu Ä‘á»“ theo ngÃ y</h3>
+                  <p className="text-sm text-on-surface-variant">Chá»n chá»‰ sá»‘ vÃ  kiá»ƒu biá»ƒu Ä‘á»“: chi phÃ­, CTR hoáº·c CPC.</p>
                 </div>
                 <div className="flex gap-2">
                   <select className="dashboard-input" value={metric} onChange={(event) => setMetric(event.target.value as MetricKey)}>
-                    <option value="spend">Chi phí quảng cáo</option>
+                    <option value="spend">Chi phÃ­ quáº£ng cÃ¡o</option>
                     <option value="ctr">CTR</option>
                     <option value="cpc">CPC</option>
                   </select>
                   <select className="dashboard-input" value={chartType} onChange={(event) => setChartType(event.target.value as ChartType)}>
-                    <option value="line">Đường</option>
-                    <option value="bar">Cột</option>
+                    <option value="line">ÄÆ°á»ng</option>
+                    <option value="bar">Cá»™t</option>
                   </select>
                 </div>
               </div>
               <DailyChart rows={dailyRows} metric={metric} chartType={chartType} currency={currency} />
             </Card>
 
-            <Card className="rounded-3xl p-6">
+            <Card className="rounded-lg p-6">
               <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div>
-                  <h3 className="text-lg font-extrabold">Đối sánh cùng kỳ</h3>
-                  <p className="text-sm text-on-surface-variant">Biểu đồ đối sánh thêm một chỉ số khác trong cùng khoảng thời gian.</p>
+                  <h3 className="text-lg font-extrabold">Äá»‘i sÃ¡nh cÃ¹ng ká»³</h3>
+                  <p className="text-sm text-on-surface-variant">Biá»ƒu Ä‘á»“ Ä‘á»‘i sÃ¡nh thÃªm má»™t chá»‰ sá»‘ khÃ¡c trong cÃ¹ng khoáº£ng thá»i gian.</p>
                 </div>
                 <select className="dashboard-input" value={compareMetric} onChange={(event) => setCompareMetric(event.target.value as MetricKey)}>
-                  <option value="spend">Chi phí quảng cáo</option>
+                  <option value="spend">Chi phÃ­ quáº£ng cÃ¡o</option>
                   <option value="ctr">CTR</option>
                   <option value="cpc">CPC</option>
                 </select>
@@ -263,21 +263,21 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
             </Card>
           </section>
 
-          <Card className="overflow-hidden rounded-3xl p-0">
+          <Card className="overflow-hidden rounded-lg p-0">
             <div className="flex flex-col gap-3 border-b border-outline-variant/70 px-6 py-5 md:flex-row md:items-center md:justify-between">
               <div>
                 <h3 className="text-lg font-extrabold">Campaign performance</h3>
-                <p className="text-sm text-on-surface-variant">Có bộ lọc trạng thái và từ khóa để xem nhanh theo nhu cầu.</p>
+                <p className="text-sm text-on-surface-variant">CÃ³ bá»™ lá»c tráº¡ng thÃ¡i vÃ  tá»« khÃ³a Ä‘á»ƒ xem nhanh theo nhu cáº§u.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <input
                   className="dashboard-input"
-                  placeholder="Tìm theo tên campaign..."
+                  placeholder="TÃ¬m theo tÃªn campaign..."
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
                 />
                 <select className="dashboard-input" value={campaignStatusFilter} onChange={(event) => setCampaignStatusFilter(event.target.value)}>
-                  <option value="ALL">Tất cả trạng thái</option>
+                  <option value="ALL">Táº¥t cáº£ tráº¡ng thÃ¡i</option>
                   {Array.from(new Set(campaigns.map((item) => item.status || "UNKNOWN"))).map((status) => (
                     <option key={status} value={status}>
                       {status}
@@ -290,19 +290,19 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
           </Card>
 
           {data.creativeAccessWarning ? (
-            <Card className="rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-semibold text-yellow-900">{data.creativeAccessWarning}</Card>
+            <Card className="rounded-lg border border-yellow-300 bg-yellow-50 p-4 text-sm font-semibold text-yellow-900">{data.creativeAccessWarning}</Card>
           ) : null}
 
-          <Card className="overflow-hidden rounded-3xl p-0">
+          <Card className="overflow-hidden rounded-lg p-0">
             <div className="border-b border-outline-variant/70 px-6 py-5">
-              <h3 className="text-lg font-extrabold">Creative nổi bật</h3>
-              <p className="text-sm text-on-surface-variant">Tách rõ tên và mã creative, có link bài post nếu Meta trả về.</p>
+              <h3 className="text-lg font-extrabold">Creative ná»•i báº­t</h3>
+              <p className="text-sm text-on-surface-variant">TÃ¡ch rÃµ tÃªn vÃ  mÃ£ creative, cÃ³ link bÃ i post náº¿u Meta tráº£ vá».</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1080px] text-left text-sm">
                 <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
                   <tr>
-                    {["Creative", "Campaign", "Ad set", "Chi tiêu", "Lead", "Tin nhắn", "CTR", "Bài post"].map((head) => (
+                    {["Creative", "Campaign", "Ad set", "Chi tiÃªu", "Lead", "Tin nháº¯n", "CTR", "BÃ i post"].map((head) => (
                       <th key={head} className="px-4 py-3 font-extrabold">
                         {head}
                       </th>
@@ -327,10 +327,10 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
                         <td className="px-4 py-3">
                           {creative.postUrl ? (
                             <a className="font-bold text-primary hover:underline" href={creative.postUrl} rel="noreferrer" target="_blank">
-                              Mở bài post
+                              Má»Ÿ bÃ i post
                             </a>
                           ) : (
-                            "—"
+                            "â€”"
                           )}
                         </td>
                       </tr>
@@ -357,7 +357,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function StatCard({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <Card className="rounded-3xl p-5">
+    <Card className="rounded-lg p-5">
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm font-bold text-on-surface-variant">{label}</p>
         <MaterialIcon className="text-primary" name={icon} />
@@ -387,7 +387,7 @@ function DailyChart({
   });
 
   if (!rows.length || values.every((value) => value === 0)) {
-    return <div className="rounded-2xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">Không có dữ liệu biểu đồ trong kỳ này.</div>;
+    return <div className="rounded-md bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">KhÃ´ng cÃ³ dá»¯ liá»‡u biá»ƒu Ä‘á»“ trong ká»³ nÃ y.</div>;
   }
 
   const max = Math.max(...values, 1);
@@ -431,7 +431,7 @@ function DailyChart({
         {rows.slice(-3).map((row) => {
           const value = metric === "ctr" ? Number(row.ctr ?? 0) : metric === "cpc" ? Number(row.cpc ?? 0) : Number(row.spend ?? 0);
           return (
-            <div key={`${metric}-${row.date_start}`} className="rounded-2xl bg-surface-container-low p-4 text-sm">
+            <div key={`${metric}-${row.date_start}`} className="rounded-md bg-surface-container-low p-4 text-sm">
               <p className="font-bold text-on-surface">{row.date_start}</p>
               <p className="mt-1 text-on-surface-variant">
                 {metricLabel(metric)}: {formatMetricValue(metric, value, currency)}
@@ -445,14 +445,14 @@ function DailyChart({
 }
 
 function CampaignTable({ campaigns, currency }: { campaigns: NormalizedCampaignPerformance[]; currency: string }) {
-  if (!campaigns.length) return <div className="p-8 text-center text-sm text-on-surface-variant">Không có dữ liệu campaign trong kỳ này.</div>;
+  if (!campaigns.length) return <div className="p-8 text-center text-sm text-on-surface-variant">KhÃ´ng cÃ³ dá»¯ liá»‡u campaign trong ká»³ nÃ y.</div>;
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[980px] text-left text-sm">
         <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
           <tr>
-            {["Campaign", "Status", "Objective", "Spend", "CTR", "CPC", "Kết quả", "Cost/result"].map((head) => (
+            {["Campaign", "Status", "Objective", "Spend", "CTR", "CPC", "Káº¿t quáº£", "Cost/result"].map((head) => (
               <th key={head} className="px-5 py-4 font-extrabold">
                 {head}
               </th>
@@ -463,8 +463,8 @@ function CampaignTable({ campaigns, currency }: { campaigns: NormalizedCampaignP
           {campaigns.map((campaign) => (
             <tr key={campaign.campaignId}>
               <td className="max-w-[280px] px-5 py-4 font-bold">{campaign.campaignName}</td>
-              <td className="px-5 py-4">{campaign.status || "Không có dữ liệu"}</td>
-              <td className="px-5 py-4">{campaign.objective || "Không có dữ liệu"}</td>
+              <td className="px-5 py-4">{campaign.status || "KhÃ´ng cÃ³ dá»¯ liá»‡u"}</td>
+              <td className="px-5 py-4">{campaign.objective || "KhÃ´ng cÃ³ dá»¯ liá»‡u"}</td>
               <td className="px-5 py-4">{formatMoney(campaignMetricValue(campaign, "spend"), currency)}</td>
               <td className="px-5 py-4">{formatPercent(campaignMetricValue(campaign, "ctr"))}</td>
               <td className="px-5 py-4">{formatMoney(campaignMetricValue(campaign, "cpc"), currency)}</td>
@@ -480,19 +480,19 @@ function CampaignTable({ campaigns, currency }: { campaigns: NormalizedCampaignP
 
 function ErrorState({ message, detail }: { message: string; detail: string }) {
   return (
-    <Card className="rounded-3xl border border-error-container bg-error-container/70 p-5">
+    <Card className="rounded-lg border border-error-container bg-error-container/70 p-5">
       <div className="flex items-start gap-3">
         <MaterialIcon className="text-error" name="error" />
         <div>
           <p className="font-extrabold text-error">{message}</p>
-          <p className="mt-1 text-sm text-on-surface-variant">Hãy kiểm tra token, quyền ads_read/pages_read_engagement hoặc quyền với ad account.</p>
-          <a className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-soft" href="/api/auth/facebook/start?force=1">
-            Kết nối lại Facebook và cấp quyền
+          <p className="mt-1 text-sm text-on-surface-variant">HÃ£y kiá»ƒm tra token, quyá»n ads_read/pages_read_engagement hoáº·c quyá»n vá»›i ad account.</p>
+          <a className="mt-4 inline-flex min-h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-bold text-white shadow-soft" href="/api/auth/facebook/start?force=1">
+            Káº¿t ná»‘i láº¡i Facebook vÃ  cáº¥p quyá»n
           </a>
           {detail ? (
             <details className="mt-2 text-xs text-on-surface-variant">
-              <summary className="cursor-pointer font-bold">Xem chi tiết kỹ thuật</summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3">{detail}</pre>
+              <summary className="cursor-pointer font-bold">Xem chi tiáº¿t ká»¹ thuáº­t</summary>
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3">{detail}</pre>
             </details>
           ) : null}
         </div>
@@ -506,13 +506,14 @@ function DashboardSkeleton() {
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="h-32 animate-pulse rounded-3xl bg-white" />
+          <div key={index} className="h-32 animate-pulse rounded-lg bg-white" />
         ))}
       </div>
       <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="h-96 animate-pulse rounded-3xl bg-white" />
-        <div className="h-96 animate-pulse rounded-3xl bg-white" />
+        <div className="h-96 animate-pulse rounded-lg bg-white" />
+        <div className="h-96 animate-pulse rounded-lg bg-white" />
       </div>
     </div>
   );
 }
+
