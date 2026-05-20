@@ -4,11 +4,14 @@ import type {
   Campaign,
   CampaignInsight,
   DailyInsight,
+  MetaAdWithCreative,
   NormalizedCampaignPerformance,
+  NormalizedActions,
+  CreativePerformance,
   ReportSummary
 } from "@/lib/meta/types";
 
-function toNumber(value: unknown) {
+export function toNumber(value: unknown) {
   const number = Number(value ?? 0);
   return Number.isFinite(number) ? number : 0;
 }
@@ -19,6 +22,58 @@ function findActionValue(actions: CampaignInsight["actions"], names: string[]) {
 
 function findCostValue(costs: CampaignInsight["cost_per_action_type"], names: string[]) {
   return toNumber(costs?.find((item) => names.includes(item.action_type))?.value);
+}
+
+const leadActionTypes = ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"];
+const messageActionTypes = [
+  "onsite_conversion.messaging_conversation_started_7d",
+  "messaging_conversation_started_7d",
+  "onsite_conversion.messaging_first_reply",
+  "onsite_conversion.total_messaging_connection",
+  "post_engagement"
+];
+const purchaseActionTypes = ["purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"];
+const clickActionTypes = ["link_click", "landing_page_view"];
+
+export function normalizeMetaActions(
+  actions: CampaignInsight["actions"],
+  costs: CampaignInsight["cost_per_action_type"],
+  spend = 0
+): NormalizedActions {
+  const leads = findActionValue(actions, leadActionTypes);
+  const messages = findActionValue(actions, messageActionTypes);
+  const purchases = findActionValue(actions, purchaseActionTypes);
+  const linkClicks = findActionValue(actions, clickActionTypes);
+  const results = leads || messages || purchases || linkClicks;
+  const costPerLead = findCostValue(costs, leadActionTypes) || (leads > 0 ? spend / leads : 0);
+  const costPerMessage = findCostValue(costs, messageActionTypes) || (messages > 0 ? spend / messages : 0);
+
+  return { leads, messages, purchases, linkClicks, results, costPerLead, costPerMessage };
+}
+
+export function calculateDerivedMetrics({
+  spend,
+  clicks,
+  impressions,
+  leads,
+  messages,
+  results
+}: {
+  spend: number;
+  clicks: number;
+  impressions: number;
+  leads: number;
+  messages: number;
+  results: number;
+}) {
+  return {
+    cpc: clicks > 0 ? spend / clicks : 0,
+    cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+    cpl: leads > 0 ? spend / leads : null,
+    costPerMessage: messages > 0 ? spend / messages : null,
+    costPerResult: results > 0 ? spend / results : 0
+  };
 }
 
 function findRoas(row: CampaignInsight) {
@@ -36,20 +91,23 @@ export function normalizeCampaignInsights(rows: CampaignInsight[], campaigns: Ca
 
   return rows.map<NormalizedCampaignPerformance>((row, index) => {
     const campaign = row.campaign_id ? statusById.get(row.campaign_id) : undefined;
-    const leads = findActionValue(row.actions, ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"]);
-    const messages = findActionValue(row.actions, ["onsite_conversion.messaging_conversation_started_7d", "messaging_conversation_started_7d"]);
-    const purchases = findActionValue(row.actions, ["purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"]);
-    const fallbackResults = leads || messages || purchases || findActionValue(row.actions, ["link_click", "landing_page_view"]);
     const spend = toNumber(row.spend);
+    const actionMetrics = normalizeMetaActions(row.actions, row.cost_per_action_type, spend);
+    const derived = calculateDerivedMetrics({
+      spend,
+      clicks: toNumber(row.clicks),
+      impressions: toNumber(row.impressions),
+      leads: actionMetrics.leads,
+      messages: actionMetrics.messages,
+      results: actionMetrics.results
+    });
     const costPerResult =
       findCostValue(row.cost_per_action_type, [
-        "lead",
-        "onsite_conversion.messaging_conversation_started_7d",
-        "messaging_conversation_started_7d",
-        "purchase",
-        "omni_purchase",
-        "link_click"
-      ]) || (fallbackResults > 0 ? spend / fallbackResults : 0);
+        ...leadActionTypes,
+        ...messageActionTypes,
+        ...purchaseActionTypes,
+        ...clickActionTypes
+      ]) || derived.costPerResult;
 
     return {
       campaignId: row.campaign_id || campaign?.id || `campaign-${index}`,
@@ -60,17 +118,87 @@ export function normalizeCampaignInsights(rows: CampaignInsight[], campaigns: Ca
       impressions: toNumber(row.impressions),
       reach: toNumber(row.reach),
       frequency: toNumber(row.frequency),
-      cpm: toNumber(row.cpm),
-      ctr: toNumber(row.ctr),
-      cpc: toNumber(row.cpc),
+      cpm: toNumber(row.cpm) || derived.cpm,
+      ctr: toNumber(row.ctr) || derived.ctr,
+      cpc: toNumber(row.cpc) || derived.cpc,
       clicks: toNumber(row.clicks),
-      leads,
-      messages,
-      purchases,
-      results: fallbackResults,
+      leads: actionMetrics.leads,
+      messages: actionMetrics.messages,
+      purchases: actionMetrics.purchases,
+      results: actionMetrics.results,
       costPerResult,
       roas: findRoas(row),
       conversionValue: findConversionValue(row)
+    };
+  });
+}
+
+function getCreativeFormat(ad: MetaAdWithCreative): CreativePerformance["format"] {
+  const creative = ad.creative;
+  if (!creative) return "unknown";
+  if (creative.asset_feed_spec) return "dynamic";
+  if (creative.object_story_spec?.link_data?.child_attachments?.length) return "carousel";
+  if (creative.video_id || creative.object_story_spec?.video_data) return "video";
+  if (creative.thumbnail_url || creative.image_url || creative.object_story_spec?.link_data) return "image";
+  return "unknown";
+}
+
+function getCreativeLandingUrl(ad: MetaAdWithCreative) {
+  const creative = ad.creative;
+  return (
+    creative?.object_story_spec?.link_data?.call_to_action?.value?.link ||
+    creative?.object_story_spec?.video_data?.call_to_action?.value?.link ||
+    creative?.object_story_spec?.link_data?.link ||
+    ""
+  );
+}
+
+export function normalizeCreativePerformance(ads: MetaAdWithCreative[]): CreativePerformance[] {
+  return ads.map((ad) => {
+    const insight = ad.insights?.data?.[0] ?? {};
+    const spend = toNumber(insight.spend);
+    const actions = normalizeMetaActions(insight.actions, insight.cost_per_action_type, spend);
+    const derived = calculateDerivedMetrics({
+      spend,
+      clicks: toNumber(insight.clicks),
+      impressions: toNumber(insight.impressions),
+      leads: actions.leads,
+      messages: actions.messages,
+      results: actions.results
+    });
+    const creative = ad.creative;
+    const linkData = creative?.object_story_spec?.link_data;
+    const videoData = creative?.object_story_spec?.video_data;
+
+    return {
+      adId: ad.id,
+      adName: ad.name || "Ad không tên",
+      adStatus: ad.status,
+      campaignId: ad.campaign_id || ad.campaign?.id,
+      campaignName: ad.campaign?.name || "Campaign không tên",
+      adsetId: ad.adset_id || ad.adset?.id,
+      adsetName: ad.adset?.name || "Ad set không tên",
+      creativeId: creative?.id || "Không có dữ liệu",
+      creativeName: creative?.name || ad.name || "Creative không tên",
+      thumbnailUrl: creative?.thumbnail_url || creative?.image_url || linkData?.child_attachments?.[0]?.picture,
+      body: creative?.body || linkData?.message || videoData?.message || "Không có dữ liệu từ Meta API",
+      headline: creative?.title || linkData?.name || videoData?.title || "Không có dữ liệu từ Meta API",
+      description: creative?.description || linkData?.description || "Không có dữ liệu từ Meta API",
+      cta: creative?.call_to_action_type || linkData?.call_to_action?.type || videoData?.call_to_action?.type || "Không có dữ liệu từ Meta API",
+      landingUrl: getCreativeLandingUrl(ad) || "Không có dữ liệu từ Meta API",
+      postId: creative?.effective_object_story_id || "Không có dữ liệu từ Meta API",
+      format: getCreativeFormat(ad),
+      spend,
+      impressions: toNumber(insight.impressions),
+      reach: toNumber(insight.reach),
+      frequency: toNumber(insight.frequency),
+      ctr: toNumber(insight.ctr) || derived.ctr,
+      cpc: toNumber(insight.cpc) || derived.cpc,
+      cpm: toNumber(insight.cpm) || derived.cpm,
+      leads: actions.leads,
+      messages: actions.messages,
+      cpl: actions.leads > 0 ? spend / actions.leads : null,
+      costPerMessage: actions.messages > 0 ? spend / actions.messages : null
     };
   });
 }

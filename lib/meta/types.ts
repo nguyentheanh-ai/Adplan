@@ -6,6 +6,20 @@ export type AdAccount = {
   currency?: string;
   timezone_name?: string;
   business_name?: string;
+  amount_spent?: string;
+  balance?: string;
+  spend_cap?: string;
+  created_time?: string;
+  disable_reason?: number;
+  business?: {
+    id?: string;
+    name?: string;
+  };
+  funding_source_details?: {
+    display_string?: string;
+    type?: string;
+  };
+  user_tasks?: string[];
 };
 
 export type Campaign = {
@@ -41,6 +55,8 @@ export type CampaignInsight = {
   date_start?: string;
   date_stop?: string;
 };
+
+export type AccountInsight = CampaignInsight;
 
 export type DailyInsight = {
   date_start: string;
@@ -106,6 +122,143 @@ export type AdsReport = {
   campaigns: NormalizedCampaignPerformance[];
   daily: DailyInsight[];
   insights: string[];
+};
+
+export type NormalizedActions = {
+  leads: number;
+  messages: number;
+  purchases: number;
+  linkClicks: number;
+  results: number;
+  costPerLead: number;
+  costPerMessage: number;
+};
+
+export type MetaCreative = {
+  id?: string;
+  name?: string;
+  title?: string;
+  body?: string;
+  description?: string;
+  thumbnail_url?: string;
+  image_url?: string;
+  video_id?: string;
+  call_to_action_type?: string;
+  effective_object_story_id?: string;
+  object_story_spec?: {
+    page_id?: string;
+    link_data?: {
+      message?: string;
+      name?: string;
+      description?: string;
+      link?: string;
+      call_to_action?: {
+        type?: string;
+        value?: {
+          link?: string;
+        };
+      };
+      child_attachments?: Array<{
+        link?: string;
+        name?: string;
+        description?: string;
+        picture?: string;
+      }>;
+    };
+    video_data?: {
+      message?: string;
+      title?: string;
+      call_to_action?: {
+        type?: string;
+        value?: {
+          link?: string;
+        };
+      };
+    };
+  };
+  asset_feed_spec?: unknown;
+};
+
+export type MetaAdWithCreative = {
+  id: string;
+  name?: string;
+  status?: string;
+  campaign_id?: string;
+  campaign?: {
+    id?: string;
+    name?: string;
+    status?: string;
+    objective?: string;
+  };
+  adset_id?: string;
+  adset?: {
+    id?: string;
+    name?: string;
+  };
+  creative?: MetaCreative;
+  insights?: {
+    data?: CampaignInsight[];
+  };
+};
+
+export type CreativePerformance = {
+  adId: string;
+  adName: string;
+  adStatus?: string;
+  campaignId?: string;
+  campaignName: string;
+  adsetId?: string;
+  adsetName: string;
+  creativeId: string;
+  creativeName: string;
+  thumbnailUrl?: string;
+  body: string;
+  headline: string;
+  description: string;
+  cta: string;
+  landingUrl: string;
+  postId: string;
+  format: "image" | "video" | "carousel" | "dynamic" | "unknown";
+  spend: number;
+  impressions: number;
+  reach: number;
+  frequency: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  leads: number;
+  messages: number;
+  cpl: number | null;
+  costPerMessage: number | null;
+};
+
+export type AccountOverviewRow = AdAccount & {
+  periodSpend: number;
+  periodLeads: number;
+  periodMessages: number;
+  dataStatus?: string;
+};
+
+export type ComparisonDelta = {
+  spend: number;
+  leads: number;
+  messages: number;
+  cpl: number;
+};
+
+export type IntelligenceInsight = {
+  title: string;
+  type: "scale" | "check" | "winner" | "warning" | "neutral";
+  reason: string;
+};
+
+export type MetaIntelligenceDashboardData = {
+  accounts: AccountOverviewRow[];
+  selectedAccount: AccountOverviewRow | null;
+  report: AdsReport | null;
+  creatives: CreativePerformance[];
+  comparison: ComparisonDelta;
+  intelligence: IntelligenceInsight[];
 };
 
 export type AudienceSuggestion = {

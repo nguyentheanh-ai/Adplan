@@ -1,12 +1,14 @@
 import type {
   AdAccount,
+  AccountInsight,
   AudienceSuggestion,
   BreakdownRow,
   BreakdownType,
   Campaign,
   CampaignInsight,
   DailyInsight,
-  DateRange
+  DateRange,
+  MetaAdWithCreative
 } from "@/lib/meta/types";
 
 export type MetaAdAccount = AdAccount;
@@ -98,6 +100,8 @@ export function classifyMetaError(status: number, payload: MetaApiErrorPayload) 
     userMessage = "Token thiếu quyền ads_read để đọc tài khoản quảng cáo hoặc báo cáo.";
   } else if (lowerMessage.includes("ads_management")) {
     userMessage = "Token thiếu quyền ads_management để tạo campaign.";
+  } else if (lowerMessage.includes("pages_read_engagement")) {
+    userMessage = "Token thiếu quyền pages_read_engagement để đọc một số thông tin creative hoặc bài viết.";
   } else if (metaError?.code === 4 || metaError?.code === 17 || lowerMessage.includes("rate limit")) {
     userMessage = "Meta API đang giới hạn tần suất gọi. Hãy thử lại sau ít phút.";
   } else if (
@@ -165,11 +169,35 @@ export async function getMetaAdAccounts(accessToken?: string | null) {
   const payload = await metaFetch<{ data: AdAccount[] }>("me/adaccounts", {
     accessToken,
     params: {
-      fields: "id,account_id,name,currency,timezone_name,account_status"
+      fields: "id,account_id,name,currency,timezone_name,account_status,amount_spent,balance,spend_cap,created_time,disable_reason,business{name,id},funding_source_details"
     }
   });
 
   return payload.data ?? [];
+}
+
+export async function getMetaAdAccountDetails(adAccountIdInput?: string | null, accessToken?: string | null) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const fields =
+    "id,account_id,name,currency,timezone_name,account_status,amount_spent,balance,spend_cap,created_time,disable_reason,business{name,id},funding_source_details";
+
+  try {
+    return await metaFetch<AdAccount>(adAccountId, {
+      accessToken,
+      params: { fields }
+    });
+  } catch (error) {
+    if (error instanceof MetaApiError) {
+      return metaFetch<AdAccount>(adAccountId, {
+        accessToken,
+        params: {
+          fields: "id,account_id,name,currency,timezone_name,account_status,business{name,id}"
+        }
+      });
+    }
+
+    throw error;
+  }
 }
 
 export async function getMetaCampaigns(adAccountIdInput?: string | null, accessToken?: string | null) {
@@ -243,6 +271,55 @@ export async function getMetaDailyInsights(
       time_increment: "1",
       fields: "date_start,date_stop,spend,impressions,reach,ctr,cpc,cpm,clicks",
       time_range: serializeDateRange(dateRange),
+      limit: "100"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function getMetaAccountInsights(
+  adAccountIdInput: string | null | undefined,
+  dateRange: DateRange,
+  accessToken?: string | null
+) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const payload = await metaFetch<{ data: AccountInsight[] }>(`${adAccountId}/insights`, {
+    accessToken,
+    params: {
+      level: "account",
+      fields: "spend,impressions,reach,frequency,cpm,ctr,cpc,clicks,actions,cost_per_action_type",
+      time_range: serializeDateRange(dateRange),
+      limit: "10"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function getMetaAdsWithCreatives(
+  adAccountIdInput: string | null | undefined,
+  dateRange: DateRange,
+  accessToken?: string | null
+) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const timeRange = serializeDateRange(dateRange);
+  const fields = [
+    "id",
+    "name",
+    "status",
+    "campaign_id",
+    "campaign{id,name,status,objective}",
+    "adset_id",
+    "adset{id,name}",
+    "creative{id,name,title,body,object_story_spec,effective_object_story_id,thumbnail_url,image_url,video_id,call_to_action_type,asset_feed_spec}",
+    `insights.time_range(${timeRange}){spend,impressions,reach,frequency,cpm,ctr,cpc,clicks,actions,cost_per_action_type}`
+  ].join(",");
+
+  const payload = await metaFetch<{ data: MetaAdWithCreative[] }>(`${adAccountId}/ads`, {
+    accessToken,
+    params: {
+      fields,
       limit: "100"
     }
   });
