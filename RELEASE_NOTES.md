@@ -38,3 +38,28 @@
 - Không in token/key ra UI hoặc log.
 - Tất cả campaign/adset/ad tạo thật phải ở trạng thái `PAUSED`.
 - Nếu Meta API lỗi giữa chừng, route trả `partial_success` hoặc error rõ; không fake success.
+
+## 2026-05-21 - Optimization Autopilot foundation
+
+### Đã bổ sung
+
+- Cập nhật heartbeat automation xuống 5 phút/lần trong 10 tiếng.
+- Thêm roadmap super app: `SUPER_APP_ROADMAP.md`.
+- Thêm migration `202605210004_create_meta_optimization_tables.sql` để lưu:
+  - lịch sử sync Meta,
+  - snapshot tài khoản quảng cáo,
+  - snapshot campaign,
+  - snapshot creative/ad,
+  - ủy quyền tối ưu tự động,
+  - khuyến nghị tối ưu,
+  - hồ sơ học theo ngành.
+- Thêm rule engine tối ưu: `lib/optimization/recommendations.ts`.
+- Thêm test rule engine: `lib/optimization/recommendations.test.ts`.
+- Thêm API `POST /api/meta/sync-insights` để quét dữ liệu từ tất cả tài khoản quảng cáo user đăng nhập và lưu Supabase.
+- Thêm API `GET/POST /api/optimization/recommendations` để đọc/tạo khuyến nghị tối ưu từ dữ liệu đã lưu.
+
+### Trạng thái an toàn
+
+- API mới chỉ sync và tạo recommendation ở trạng thái `draft`.
+- Chưa tự áp dụng thay đổi lên Meta nếu khách chưa ủy quyền.
+- Bảng `optimization_authorizations` đã sẵn sàng cho bước bật ủy quyền theo từng account.
