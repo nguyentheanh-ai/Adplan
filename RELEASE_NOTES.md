@@ -85,6 +85,23 @@
 - `npm.cmd test`: pass.
 - `npm.cmd run build`: pass.
 
+## 2026-05-21 - Optimization action audit log
+
+### Đã bổ sung
+
+- Thêm migration `202605210005_create_optimization_action_logs.sql`.
+- Mọi lần apply recommendation đều có thể ghi log vào `optimization_action_logs`.
+- Những lần bị chặn vì chưa duyệt, chưa bật ủy quyền, ngoài phạm vi ủy quyền hoặc vượt giới hạn ngân sách cũng được ghi log dạng `blocked`.
+- API apply chặn thay đổi ngân sách vượt `max_daily_budget_change_percent`.
+- UI thêm confirm trước khi áp dụng khuyến nghị.
+
+### Kiểm tra đã chạy
+
+- `npm.cmd run typecheck`: pass.
+- `npm.cmd run lint`: pass.
+- `npm.cmd test`: pass.
+- `npm.cmd run build`: pass.
+
 ## 2026-05-21 - Recommendation approval gate
 
 ### Đã bổ sung

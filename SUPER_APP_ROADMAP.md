@@ -121,8 +121,8 @@ Ngành ưu tiên:
 - [ ] Confirm modal trước khi áp dụng.
 - [ ] Kiểm tra authorization trước khi gọi Meta.
 - [x] Kiểm tra authorization trước khi gọi Meta.
-- [ ] Log action vào Supabase.
-- [ ] Không áp dụng nếu vượt giới hạn ủy quyền.
+- [x] Log action vào Supabase.
+- [x] Không áp dụng nếu vượt giới hạn ủy quyền.
 
 ### Phase C - Industry Brain
 

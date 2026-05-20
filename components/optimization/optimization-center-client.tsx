@@ -247,6 +247,12 @@ export function OptimizationCenterClient() {
   }
 
   async function applyRecommendation(recommendationId: string) {
+    const row = recommendations.find((item) => item.id === recommendationId);
+    const ok = window.confirm(
+      `Bạn chắc chắn muốn áp dụng khuyến nghị "${row?.title || recommendationId}"?\n\nApp sẽ kiểm tra ủy quyền, giới hạn ngân sách và chỉ thực hiện trong phạm vi được phép.`
+    );
+    if (!ok) return;
+
     await withProgress("Đang kiểm tra ủy quyền và áp dụng an toàn...", async () => {
       const payload = await readJson<{ data: Recommendation; result?: { message?: string; status?: string } }>("/api/optimization/recommendations", {
         method: "PUT",

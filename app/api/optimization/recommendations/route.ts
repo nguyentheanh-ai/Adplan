@@ -74,6 +74,40 @@ function creativeFromSnapshot(row: Record<string, unknown>): CreativePerformance
   };
 }
 
+async function saveOptimizationActionLog(payload: {
+  userId: string;
+  adAccountId: string;
+  recommendationId?: string | null;
+  actionType: string;
+  entityType: string;
+  entityId: string;
+  status: "blocked" | "success" | "failed" | "proposal_only";
+  request: unknown;
+  response?: unknown;
+  errorMessage?: string;
+}) {
+  const admin = createAdminClient();
+  const { error } = await admin.from("optimization_action_logs").insert({
+    user_id: payload.userId,
+    ad_account_id: payload.adAccountId,
+    recommendation_id: payload.recommendationId || null,
+    action_type: payload.actionType,
+    entity_type: payload.entityType,
+    entity_id: payload.entityId,
+    status: payload.status,
+    request_json: payload.request,
+    response_json: payload.response ?? {},
+    error_message: payload.errorMessage || null
+  });
+
+  if (error && !isMissingTable(error)) throw new Error(error.message);
+}
+
+function getPercentValue(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.abs(number) : 0;
+}
+
 export async function GET(request: Request) {
   const session = await getAppSession();
   if (!session) return NextResponse.json({ error: "Bạn cần đăng nhập Facebook." }, { status: 401 });
@@ -218,6 +252,17 @@ export async function PUT(request: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!recommendation) return NextResponse.json({ error: "Không tìm thấy khuyến nghị." }, { status: 404 });
     if (recommendation.status !== "approved") {
+      await saveOptimizationActionLog({
+        userId: session.userId,
+        adAccountId: recommendation.ad_account_id,
+        recommendationId: recommendation.id,
+        actionType: recommendation.recommendation_type,
+        entityType: recommendation.entity_type,
+        entityId: recommendation.entity_id,
+        status: "blocked",
+        request: body,
+        errorMessage: "Khuyến nghị chưa được duyệt."
+      }).catch(() => undefined);
       return NextResponse.json({ error: "Khuyến nghị cần được duyệt trước khi áp dụng." }, { status: 400 });
     }
 
@@ -229,19 +274,67 @@ export async function PUT(request: Request) {
       .maybeSingle();
     if (authError) return NextResponse.json({ error: authError.message }, { status: 500 });
     if (!authorization || authorization.status !== "enabled") {
+      await saveOptimizationActionLog({
+        userId: session.userId,
+        adAccountId: recommendation.ad_account_id,
+        recommendationId: recommendation.id,
+        actionType: recommendation.recommendation_type,
+        entityType: recommendation.entity_type,
+        entityId: recommendation.entity_id,
+        status: "blocked",
+        request: body,
+        errorMessage: "Tài khoản chưa bật ủy quyền tối ưu."
+      }).catch(() => undefined);
       return NextResponse.json({ error: "Tài khoản này chưa bật ủy quyền tối ưu." }, { status: 403 });
     }
 
     const allowedActions = Array.isArray(authorization.allowed_actions) ? authorization.allowed_actions : [];
     if (!allowedActions.includes(recommendation.recommendation_type)) {
+      await saveOptimizationActionLog({
+        userId: session.userId,
+        adAccountId: recommendation.ad_account_id,
+        recommendationId: recommendation.id,
+        actionType: recommendation.recommendation_type,
+        entityType: recommendation.entity_type,
+        entityId: recommendation.entity_id,
+        status: "blocked",
+        request: body,
+        errorMessage: "Hành động ngoài phạm vi ủy quyền."
+      }).catch(() => undefined);
       return NextResponse.json({ error: "Loại hành động này chưa nằm trong phạm vi khách ủy quyền." }, { status: 403 });
     }
 
     const actionPayload = (recommendation.action_payload ?? {}) as Record<string, unknown>;
+    const requestedBudgetChange = getPercentValue(actionPayload.budget_change_percent ?? actionPayload.suggested_budget_increase_percent);
+    const maxBudgetChange = Number(authorization.max_daily_budget_change_percent ?? 0);
+    if (
+      ["scale_budget", "reduce_budget"].includes(String(recommendation.recommendation_type)) &&
+      requestedBudgetChange > 0 &&
+      maxBudgetChange > 0 &&
+      requestedBudgetChange > maxBudgetChange
+    ) {
+      await saveOptimizationActionLog({
+        userId: session.userId,
+        adAccountId: recommendation.ad_account_id,
+        recommendationId: recommendation.id,
+        actionType: recommendation.recommendation_type,
+        entityType: recommendation.entity_type,
+        entityId: recommendation.entity_id,
+        status: "blocked",
+        request: { ...body, requestedBudgetChange, maxBudgetChange },
+        errorMessage: "Vượt giới hạn thay đổi ngân sách đã ủy quyền."
+      }).catch(() => undefined);
+      return NextResponse.json(
+        { error: `Khuyến nghị muốn đổi ${requestedBudgetChange}%, vượt giới hạn ${maxBudgetChange}% đã ủy quyền.` },
+        { status: 403 }
+      );
+    }
+
     let result: unknown = {
       status: "proposal_only",
       message: "Hành động này đã được duyệt nhưng chưa có API apply tự động an toàn. App giữ ở dạng proposal để khách xử lý thủ công."
     };
+    let actionStatus: "success" | "proposal_only" = "proposal_only";
 
     if (recommendation.recommendation_type === "scale_budget" && typeof actionPayload.new_daily_budget === "string") {
       const accessToken = await requireFacebookProviderToken();
@@ -250,7 +343,20 @@ export async function PUT(request: Request) {
         dailyBudget: actionPayload.new_daily_budget,
         accessToken
       });
+      actionStatus = "success";
     }
+
+    await saveOptimizationActionLog({
+      userId: session.userId,
+      adAccountId: recommendation.ad_account_id,
+      recommendationId: recommendation.id,
+      actionType: recommendation.recommendation_type,
+      entityType: recommendation.entity_type,
+      entityId: recommendation.entity_id,
+      status: actionStatus,
+      request: { ...body, actionPayload },
+      response: result
+    });
 
     const { data: updated, error: updateError } = await admin
       .from("optimization_recommendations")
