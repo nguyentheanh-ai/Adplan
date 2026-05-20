@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import {
   ensureFacebookSupabaseProfile,
   exchangeFacebookCode,
+  findMissingFacebookScopes,
+  getFacebookGrantedPermissions,
   getFacebookProfile,
   getSiteUrl
 } from "@/lib/auth/facebook-oauth";
@@ -29,6 +31,15 @@ export async function GET(request: Request) {
 
   try {
     const token = await exchangeFacebookCode(code);
+    const grantedScopes = await getFacebookGrantedPermissions(token.accessToken);
+    const missingScopes = findMissingFacebookScopes(grantedScopes);
+
+    if (missingScopes.length) {
+      return redirectToLogin(
+        `Facebook chưa cấp đủ quyền: ${missingScopes.join(", ")}. Hãy bấm đăng nhập lại và chọn tiếp tục/cấp quyền cho ứng dụng.`
+      );
+    }
+
     const profile = await getFacebookProfile(token.accessToken);
     const userId = await ensureFacebookSupabaseProfile(profile);
     const maxAge = Math.max(60 * 30, Math.min(token.expiresIn, 60 * 60 * 24 * 60));
@@ -42,7 +53,8 @@ export async function GET(request: Request) {
         facebookId: profile.id,
         name: profile.name,
         accessToken: token.accessToken,
-        expiresAt: Date.now() + maxAge * 1000
+        expiresAt: Date.now() + maxAge * 1000,
+        grantedScopes: Array.from(grantedScopes)
       }),
       getAppSessionCookieOptions(maxAge)
     );

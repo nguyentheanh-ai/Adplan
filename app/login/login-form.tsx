@@ -11,7 +11,7 @@ export function LoginForm() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      window.location.href = "/api/auth/facebook/start";
+      window.location.href = "/api/auth/facebook/start?force=1";
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không thể mở đăng nhập Facebook.";
       setErrorMessage(message);

@@ -798,6 +798,12 @@ function ErrorState({ message, detail }: { message: string; detail: string }) {
         <div>
           <p className="font-extrabold text-error">{message}</p>
           <p className="mt-1 text-sm text-on-surface-variant">Hãy kiểm tra token, quyền ads_read/pages_read_engagement hoặc quyền với ad account.</p>
+          <a
+            className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-soft"
+            href="/api/auth/facebook/start?force=1"
+          >
+            Kết nối lại Facebook và cấp quyền
+          </a>
           {detail ? (
             <details className="mt-2 text-xs text-on-surface-variant">
               <summary className="cursor-pointer font-bold">Xem chi tiết kỹ thuật</summary>

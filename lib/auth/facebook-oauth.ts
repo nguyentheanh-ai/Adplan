@@ -1,7 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const facebookApiVersion = process.env.META_API_VERSION || "v23.0";
-const facebookScopes = "public_profile,ads_read,ads_management,read_insights";
+export const REQUIRED_FACEBOOK_SCOPES = ["public_profile", "ads_read", "ads_management", "read_insights"] as const;
+const facebookScopes = REQUIRED_FACEBOOK_SCOPES.join(",");
 
 export function getSiteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL || "https://adsplan.theanhmarketing.com").replace(/\/$/, "");
@@ -22,7 +23,7 @@ function getFacebookAppConfig() {
   return { appId, appSecret };
 }
 
-export function buildFacebookOAuthUrl(state: string) {
+export function buildFacebookOAuthUrl(state: string, options?: { forceRerequest?: boolean }) {
   const { appId } = getFacebookAppConfig();
   const url = new URL(`https://www.facebook.com/${facebookApiVersion}/dialog/oauth`);
   url.searchParams.set("client_id", appId);
@@ -30,6 +31,10 @@ export function buildFacebookOAuthUrl(state: string) {
   url.searchParams.set("state", state);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", facebookScopes);
+  url.searchParams.set("return_scopes", "true");
+  if (options?.forceRerequest) {
+    url.searchParams.set("auth_type", "rerequest");
+  }
   return url.toString();
 }
 
@@ -68,6 +73,17 @@ export async function getFacebookProfile(accessToken: string) {
   url.searchParams.set("fields", "id,name");
   url.searchParams.set("access_token", accessToken);
   return fetchJson<{ id: string; name?: string }>(url);
+}
+
+export async function getFacebookGrantedPermissions(accessToken: string) {
+  const url = new URL(`https://graph.facebook.com/${facebookApiVersion}/me/permissions`);
+  url.searchParams.set("access_token", accessToken);
+  const payload = await fetchJson<{ data?: Array<{ permission: string; status: string }> }>(url);
+  return new Set((payload.data ?? []).filter((item) => item.status === "granted").map((item) => item.permission));
+}
+
+export function findMissingFacebookScopes(grantedScopes: Set<string>) {
+  return REQUIRED_FACEBOOK_SCOPES.filter((scope) => !grantedScopes.has(scope));
 }
 
 export async function ensureFacebookSupabaseProfile(profile: { id: string; name?: string }) {

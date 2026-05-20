@@ -10,6 +10,7 @@ export type AppSession = {
   name?: string;
   accessToken: string;
   expiresAt: number;
+  grantedScopes?: string[];
 };
 
 function getSessionSecret() {
