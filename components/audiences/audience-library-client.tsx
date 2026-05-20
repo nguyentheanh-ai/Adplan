@@ -17,8 +17,14 @@ type AudienceRow = {
   creativeCount: number;
   leads: number;
   messages: number;
+  engagements: number;
   spend: number;
   topCampaign: string;
+  ageRange: string;
+  gender: string;
+  locations: string;
+  interests: string;
+  behaviors: string;
 };
 
 function isoDate(date: Date) {
@@ -54,6 +60,7 @@ function buildAudienceRows(creatives: CreativePerformance[]) {
       existing.creativeCount += 1;
       existing.leads += creative.leads;
       existing.messages += creative.messages;
+      existing.engagements += creative.engagements;
       existing.spend += creative.spend;
       existing.campaignSet.add(creative.campaignName);
       existing.topCampaignCounter.set(creative.campaignName, (existing.topCampaignCounter.get(creative.campaignName) || 0) + 1);
@@ -67,8 +74,14 @@ function buildAudienceRows(creatives: CreativePerformance[]) {
       creativeCount: 1,
       leads: creative.leads,
       messages: creative.messages,
+      engagements: creative.engagements,
       spend: creative.spend,
       topCampaign: "",
+      ageRange: creative.audienceAgeRange,
+      gender: creative.audienceGender,
+      locations: creative.audienceLocations,
+      interests: creative.audienceInterests,
+      behaviors: creative.audienceBehaviors,
       campaignSet: new Set([creative.campaignName]),
       topCampaignCounter: new Map([[creative.campaignName, 1]])
     });
@@ -84,8 +97,14 @@ function buildAudienceRows(creatives: CreativePerformance[]) {
         creativeCount: row.creativeCount,
         leads: row.leads,
         messages: row.messages,
+        engagements: row.engagements,
         spend: row.spend,
-        topCampaign
+        topCampaign,
+        ageRange: row.ageRange,
+        gender: row.gender,
+        locations: row.locations,
+        interests: row.interests,
+        behaviors: row.behaviors
       };
     })
     .sort((a, b) => b.spend - a.spend)
@@ -148,9 +167,10 @@ export function AudienceLibraryClient() {
     if (next !== "custom") setRange(presetRange(next));
   }
 
-  const totalLeads = audienceRows.reduce((sum, row) => sum + row.leads, 0);
-  const totalMessages = audienceRows.reduce((sum, row) => sum + row.messages, 0);
-  const totalSpend = audienceRows.reduce((sum, row) => sum + row.spend, 0);
+const totalLeads = audienceRows.reduce((sum, row) => sum + row.leads, 0);
+const totalMessages = audienceRows.reduce((sum, row) => sum + row.messages, 0);
+const totalEngagements = audienceRows.reduce((sum, row) => sum + row.engagements, 0);
+const totalSpend = audienceRows.reduce((sum, row) => sum + row.spend, 0);
 
   return (
     <div className="space-y-6">
@@ -252,6 +272,10 @@ export function AudienceLibraryClient() {
               <p className="mt-2 text-3xl font-extrabold">{formatNumber(totalMessages)}</p>
             </Card>
             <Card className="rounded-3xl p-5">
+              <p className="text-sm font-bold text-on-surface-variant">Tổng tương tác</p>
+              <p className="mt-2 text-3xl font-extrabold">{formatNumber(totalEngagements)}</p>
+            </Card>
+            <Card className="rounded-3xl p-5">
               <p className="text-sm font-bold text-on-surface-variant">Tổng chi tiêu</p>
               <p className="mt-2 text-3xl font-extrabold">{formatMoney(totalSpend, currency)}</p>
             </Card>
@@ -266,7 +290,23 @@ export function AudienceLibraryClient() {
               <table className="w-full min-w-[920px] text-left text-sm">
                 <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
                   <tr>
-                    {["Mã tệp", "Tên tệp khách hàng", "Nguồn", "Campaign", "Số creative", "Lead", "Tin nhắn", "Chi tiêu", "Campaign chính"].map((head) => (
+                    {[
+                      "Mã tệp",
+                      "Tên tệp khách hàng",
+                      "Nguồn",
+                      "Tuổi",
+                      "Giới tính",
+                      "Vị trí địa lý",
+                      "Sở thích",
+                      "Hành vi",
+                      "Campaign",
+                      "Số creative",
+                      "Lead",
+                      "Tin nhắn",
+                      "Tương tác",
+                      "Chi tiêu",
+                      "Campaign chính"
+                    ].map((head) => (
                       <th key={head} className="px-4 py-3 font-extrabold">
                         {head}
                       </th>
@@ -281,10 +321,16 @@ export function AudienceLibraryClient() {
                       </td>
                       <td className="px-4 py-3 font-bold">{row.name}</td>
                       <td className="px-4 py-3">Nhóm quảng cáo</td>
+                      <td className="px-4 py-3">{row.ageRange}</td>
+                      <td className="px-4 py-3">{row.gender}</td>
+                      <td className="px-4 py-3">{row.locations}</td>
+                      <td className="px-4 py-3">{row.interests}</td>
+                      <td className="px-4 py-3">{row.behaviors}</td>
                       <td className="px-4 py-3">{formatNumber(row.campaignCount)}</td>
                       <td className="px-4 py-3">{formatNumber(row.creativeCount)}</td>
                       <td className="px-4 py-3">{formatNumber(row.leads)}</td>
                       <td className="px-4 py-3">{formatNumber(row.messages)}</td>
+                      <td className="px-4 py-3">{formatNumber(row.engagements)}</td>
                       <td className="px-4 py-3">{formatMoney(row.spend, currency)}</td>
                       <td className="px-4 py-3">{row.topCampaign}</td>
                     </tr>

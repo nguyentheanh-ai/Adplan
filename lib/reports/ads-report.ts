@@ -3,21 +3,27 @@ import type {
   AdsReport,
   Campaign,
   CampaignInsight,
+  CreativePerformance,
   DailyInsight,
   MetaAdWithCreative,
-  NormalizedCampaignPerformance,
   NormalizedActions,
-  CreativePerformance,
+  NormalizedCampaignPerformance,
   ReportSummary
 } from "@/lib/meta/types";
 
 export function toNumber(value: unknown) {
-  const number = Number(value ?? 0);
-  return Number.isFinite(number) ? number : 0;
+  const num = Number(value ?? 0);
+  return Number.isFinite(num) ? num : 0;
 }
 
 function findActionValue(actions: CampaignInsight["actions"], names: string[]) {
   return toNumber(actions?.find((item) => names.includes(item.action_type))?.value);
+}
+
+function sumActionValues(actions: CampaignInsight["actions"], names: string[]) {
+  return (actions ?? [])
+    .filter((item) => names.includes(item.action_type))
+    .reduce((sum, item) => sum + toNumber(item.value), 0);
 }
 
 function findCostValue(costs: CampaignInsight["cost_per_action_type"], names: string[]) {
@@ -30,8 +36,9 @@ const messageActionTypes = [
   "messaging_conversation_started_7d",
   "onsite_conversion.messaging_first_reply",
   "onsite_conversion.total_messaging_connection",
-  "post_engagement"
+  "onsite_conversion.messaging_conversation_started_7d"
 ];
+const engagementActionTypes = ["post_engagement", "page_engagement", "post_reaction", "comment", "video_view"];
 const purchaseActionTypes = ["purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"];
 const clickActionTypes = ["link_click", "landing_page_view"];
 
@@ -40,15 +47,16 @@ export function normalizeMetaActions(
   costs: CampaignInsight["cost_per_action_type"],
   spend = 0
 ): NormalizedActions {
-  const leads = findActionValue(actions, leadActionTypes);
-  const messages = findActionValue(actions, messageActionTypes);
-  const purchases = findActionValue(actions, purchaseActionTypes);
-  const linkClicks = findActionValue(actions, clickActionTypes);
+  const leads = sumActionValues(actions, leadActionTypes);
+  const messages = sumActionValues(actions, messageActionTypes);
+  const engagements = sumActionValues(actions, engagementActionTypes);
+  const purchases = sumActionValues(actions, purchaseActionTypes);
+  const linkClicks = sumActionValues(actions, clickActionTypes);
   const results = leads || messages || purchases || linkClicks;
   const costPerLead = findCostValue(costs, leadActionTypes) || (leads > 0 ? spend / leads : 0);
   const costPerMessage = findCostValue(costs, messageActionTypes) || (messages > 0 ? spend / messages : 0);
 
-  return { leads, messages, purchases, linkClicks, results, costPerLead, costPerMessage };
+  return { leads, messages, engagements, purchases, linkClicks, results, costPerLead, costPerMessage };
 }
 
 export function calculateDerivedMetrics({
@@ -87,10 +95,10 @@ function findConversionValue(row: CampaignInsight) {
 }
 
 export function normalizeCampaignInsights(rows: CampaignInsight[], campaigns: Campaign[] = []) {
-  const statusById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
+  const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
 
   return rows.map<NormalizedCampaignPerformance>((row, index) => {
-    const campaign = row.campaign_id ? statusById.get(row.campaign_id) : undefined;
+    const campaign = row.campaign_id ? campaignById.get(row.campaign_id) : undefined;
     const spend = toNumber(row.spend);
     const actionMetrics = normalizeMetaActions(row.actions, row.cost_per_action_type, spend);
     const derived = calculateDerivedMetrics({
@@ -102,12 +110,8 @@ export function normalizeCampaignInsights(rows: CampaignInsight[], campaigns: Ca
       results: actionMetrics.results
     });
     const costPerResult =
-      findCostValue(row.cost_per_action_type, [
-        ...leadActionTypes,
-        ...messageActionTypes,
-        ...purchaseActionTypes,
-        ...clickActionTypes
-      ]) || derived.costPerResult;
+      findCostValue(row.cost_per_action_type, [...leadActionTypes, ...messageActionTypes, ...purchaseActionTypes, ...clickActionTypes]) ||
+      derived.costPerResult;
 
     return {
       campaignId: row.campaign_id || campaign?.id || `campaign-${index}`,
@@ -124,6 +128,7 @@ export function normalizeCampaignInsights(rows: CampaignInsight[], campaigns: Ca
       clicks: toNumber(row.clicks),
       leads: actionMetrics.leads,
       messages: actionMetrics.messages,
+      engagements: actionMetrics.engagements,
       purchases: actionMetrics.purchases,
       results: actionMetrics.results,
       costPerResult,
@@ -153,6 +158,43 @@ function getCreativeLandingUrl(ad: MetaAdWithCreative) {
   );
 }
 
+function buildFacebookPostUrl(postId: string) {
+  if (!postId || postId === "Không có dữ liệu từ Meta API") return "";
+  if (postId.includes("_")) {
+    const [pageId, postIdOnly] = postId.split("_");
+    if (pageId && postIdOnly) return `https://www.facebook.com/${pageId}/posts/${postIdOnly}`;
+  }
+  return `https://www.facebook.com/${postId}`;
+}
+
+function parseAudienceTargeting(ad: MetaAdWithCreative) {
+  const targeting = ad.adset?.targeting;
+  const ageRange = targeting?.age_min || targeting?.age_max ? `${targeting?.age_min ?? "?"}-${targeting?.age_max ?? "?"}` : "Không có dữ liệu";
+  const genderMap: Record<number, string> = { 1: "Nam", 2: "Nữ" };
+  const gender = targeting?.genders?.length ? targeting.genders.map((item) => genderMap[item] || String(item)).join(", ") : "Tất cả";
+  const locations = [
+    ...(targeting?.geo_locations?.cities?.map((item) => item.name).filter(Boolean) ?? []),
+    ...(targeting?.geo_locations?.regions?.map((item) => item.name).filter(Boolean) ?? []),
+    ...(targeting?.geo_locations?.countries ?? [])
+  ].filter(Boolean) as string[];
+
+  const flex = targeting?.flexible_spec ?? [];
+  const interests = [...(targeting?.interests ?? []), ...flex.flatMap((item) => item.interests ?? [])]
+    .map((item) => item.name)
+    .filter(Boolean) as string[];
+  const behaviors = [...(targeting?.behaviors ?? []), ...flex.flatMap((item) => item.behaviors ?? [])]
+    .map((item) => item.name)
+    .filter(Boolean) as string[];
+
+  return {
+    ageRange,
+    gender,
+    locations: locations.join(", ") || "Không có dữ liệu",
+    interests: interests.slice(0, 8).join(", ") || "Không có dữ liệu",
+    behaviors: behaviors.slice(0, 8).join(", ") || "Không có dữ liệu"
+  };
+}
+
 export function normalizeCreativePerformance(ads: MetaAdWithCreative[]): CreativePerformance[] {
   return ads.map((ad) => {
     const insight = ad.insights?.data?.[0] ?? {};
@@ -169,6 +211,8 @@ export function normalizeCreativePerformance(ads: MetaAdWithCreative[]): Creativ
     const creative = ad.creative;
     const linkData = creative?.object_story_spec?.link_data;
     const videoData = creative?.object_story_spec?.video_data;
+    const postId = creative?.effective_object_story_id || "Không có dữ liệu từ Meta API";
+    const audience = parseAudienceTargeting(ad);
 
     return {
       adId: ad.id,
@@ -186,7 +230,8 @@ export function normalizeCreativePerformance(ads: MetaAdWithCreative[]): Creativ
       description: creative?.description || linkData?.description || "Không có dữ liệu từ Meta API",
       cta: creative?.call_to_action_type || linkData?.call_to_action?.type || videoData?.call_to_action?.type || "Không có dữ liệu từ Meta API",
       landingUrl: getCreativeLandingUrl(ad) || "Không có dữ liệu từ Meta API",
-      postId: creative?.effective_object_story_id || "Không có dữ liệu từ Meta API",
+      postId,
+      postUrl: buildFacebookPostUrl(postId),
       format: getCreativeFormat(ad),
       spend,
       impressions: toNumber(insight.impressions),
@@ -197,8 +242,14 @@ export function normalizeCreativePerformance(ads: MetaAdWithCreative[]): Creativ
       cpm: toNumber(insight.cpm) || derived.cpm,
       leads: actions.leads,
       messages: actions.messages,
+      engagements: actions.engagements,
       cpl: actions.leads > 0 ? spend / actions.leads : null,
-      costPerMessage: actions.messages > 0 ? spend / actions.messages : null
+      costPerMessage: actions.messages > 0 ? spend / actions.messages : null,
+      audienceAgeRange: audience.ageRange,
+      audienceGender: audience.gender,
+      audienceLocations: audience.locations,
+      audienceInterests: audience.interests,
+      audienceBehaviors: audience.behaviors
     };
   });
 }
@@ -333,20 +384,7 @@ export function exportReportToCSV(report: AdsReport) {
     ["ROAS", report.summary.roas ?? ""],
     ["Conversion value", report.summary.conversionValue],
     [],
-    [
-      "Campaign name",
-      "Status",
-      "Objective",
-      "Spend",
-      "Impressions",
-      "Reach",
-      "CTR",
-      "CPC",
-      "CPM",
-      "Results",
-      "Cost/result",
-      "ROAS"
-    ],
+    ["Campaign name", "Status", "Objective", "Spend", "Impressions", "Reach", "CTR", "CPC", "CPM", "Results", "Cost/result", "ROAS"],
     ...report.campaigns.map((campaign) => [
       campaign.campaignName,
       campaign.status ?? "",

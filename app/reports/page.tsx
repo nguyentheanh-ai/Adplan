@@ -10,7 +10,7 @@ export default async function ReportsPage() {
   return (
     <AppShell
       title="Báo cáo Ads"
-      description="Theo dõi hiệu suất Meta Ads theo tài khoản, khoảng thời gian, campaign và breakdown. Báo cáo chỉ đọc dữ liệu, không tạo campaign."
+      description="Theo dõi hiệu suất Meta Ads theo tài khoản, khoảng thời gian, campaign và breakdown. Trang này dùng để xuất báo cáo."
     >
       <AdsReportClient />
     </AppShell>

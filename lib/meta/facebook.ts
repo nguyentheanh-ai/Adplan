@@ -311,7 +311,7 @@ export async function getMetaAdsWithCreatives(
     "campaign_id",
     "campaign{id,name,status,objective}",
     "adset_id",
-    "adset{id,name}",
+    "adset{id,name,targeting}",
     "creative{id,name,title,body,object_story_spec,effective_object_story_id,thumbnail_url,image_url,video_id,call_to_action_type,asset_feed_spec}",
     `insights.time_range(${timeRange}){spend,impressions,reach,frequency,cpm,ctr,cpc,clicks,actions,cost_per_action_type}`
   ].join(",");

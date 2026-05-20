@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   AccountOverviewRow,
   AdsReport,
   ComparisonDelta,
@@ -9,15 +9,8 @@
   NormalizedCampaignPerformance,
   ReportSummary
 } from "@/lib/meta/types";
-import {
-  buildAdsReport,
-  normalizeCampaignInsights,
-  normalizeCreativePerformance,
-  normalizeMetaActions,
-  summarizeCampaigns,
-  toNumber
-} from "@/lib/reports/ads-report";
-import type { AdAccount, AccountInsight, Campaign, CampaignInsight, DailyInsight, MetaAdWithCreative } from "@/lib/meta/types";
+import { buildAdsReport, normalizeCampaignInsights, normalizeCreativePerformance, normalizeMetaActions, summarizeCampaigns, toNumber } from "@/lib/reports/ads-report";
+import type { AccountInsight, AdAccount, Campaign, CampaignInsight, DailyInsight, MetaAdWithCreative } from "@/lib/meta/types";
 
 function percentDelta(current: number, previous: number) {
   if (previous === 0 && current === 0) return 0;
@@ -68,12 +61,9 @@ export function buildAccountOverviewRow(account: AdAccount, rows: AccountInsight
 }
 
 function compareSummaries(current: ReportSummary, previous: ReportSummary): ComparisonDelta {
-  const currentLeads = current.totalResults;
-  const previousLeads = previous.totalResults;
-
   return {
     spend: percentDelta(current.spend, previous.spend),
-    leads: percentDelta(currentLeads, previousLeads),
+    leads: percentDelta(current.totalResults, previous.totalResults),
     messages: 0,
     cpl: percentDelta(current.costPerResult, previous.costPerResult)
   };
@@ -83,16 +73,22 @@ function buildCreativeInsights(creatives: CreativePerformance[]) {
   if (!creatives.length) return [];
   const sortedByLead = [...creatives].sort((a, b) => b.leads - a.leads);
   const sortedByMessage = [...creatives].sort((a, b) => b.messages - a.messages);
-  const sortedByCtr = [...creatives].sort((a, b) => b.ctr - a.ctr);
+  const sortedByEngagement = [...creatives].sort((a, b) => b.engagements - a.engagements);
   const sortedByCpl = [...creatives].filter((item) => item.cpl !== null).sort((a, b) => (a.cpl ?? 0) - (b.cpl ?? 0));
   const insights: IntelligenceInsight[] = [];
 
-  const winner = sortedByLead[0]?.leads > 0 ? sortedByLead[0] : sortedByMessage[0]?.messages > 0 ? sortedByMessage[0] : sortedByCtr[0];
-  if (winner && (winner.leads > 0 || winner.messages > 0 || winner.ctr > 0)) {
+  const winner =
+    sortedByLead[0]?.leads > 0
+      ? sortedByLead[0]
+      : sortedByMessage[0]?.messages > 0
+        ? sortedByMessage[0]
+        : sortedByEngagement[0];
+
+  if (winner && (winner.leads > 0 || winner.messages > 0 || winner.engagements > 0)) {
     insights.push({
       type: "winner",
-      title: "Creative tháº¯ng",
-      reason: `"${winner.creativeName}" Ä‘ang ná»•i báº­t vá»›i ${winner.leads} lead, ${winner.messages} tin nháº¯n vÃ  CTR ${winner.ctr.toFixed(2)}%.`
+      title: "Creative thắng",
+      reason: `"${winner.creativeName}" đang nổi bật với ${winner.leads} lead, ${winner.messages} tin nhắn và ${winner.engagements} tương tác.`
     });
   }
 
@@ -100,16 +96,16 @@ function buildCreativeInsights(creatives: CreativePerformance[]) {
   if (poor) {
     insights.push({
       type: "check",
-      title: "Creative cáº§n test láº¡i",
-      reason: `"${poor.creativeName}" Ä‘Ã£ chi ${poor.spend.toLocaleString("vi-VN")} nhÆ°ng chÆ°a cÃ³ lead hoáº·c tin nháº¯n.`
+      title: "Creative cần test lại",
+      reason: `"${poor.creativeName}" đã chi ${poor.spend.toLocaleString("vi-VN")} nhưng chưa có lead hoặc tin nhắn.`
     });
   }
 
   if (sortedByCpl[0]) {
     insights.push({
       type: "scale",
-      title: "NÃªn tÄƒng ngÃ¢n sÃ¡ch",
-      reason: `"${sortedByCpl[0].creativeName}" cÃ³ CPL tá»‘t nháº¥t (${(sortedByCpl[0].cpl ?? 0).toLocaleString("vi-VN")}). CÃ³ thá»ƒ cÃ¢n nháº¯c tÄƒng ngÃ¢n sÃ¡ch cÃ³ kiá»ƒm soÃ¡t.`
+      title: "Nên tăng ngân sách",
+      reason: `"${sortedByCpl[0].creativeName}" có CPL tốt nhất (${(sortedByCpl[0].cpl ?? 0).toLocaleString("vi-VN")}).`
     });
   }
 
@@ -131,21 +127,15 @@ export function buildIntelligenceInsights({
   const campaigns = report?.campaigns ?? [];
 
   if (!report || (!campaigns.length && !creatives.length)) {
-    return [
-      {
-        type: "neutral",
-        title: "Cáº§n thÃªm dá»¯ liá»‡u",
-        reason: "Cáº§n thÃªm dá»¯ liá»‡u Ä‘á»ƒ phÃ¢n tÃ­ch chÃ­nh xÃ¡c hÆ¡n."
-      }
-    ];
+    return [{ type: "neutral", title: "Cần thêm dữ liệu", reason: "Cần thêm dữ liệu để phân tích chính xác hơn." }];
   }
 
   const wasteCampaign = campaigns.find((item) => item.spend > 0 && item.leads === 0 && item.messages === 0);
   if (wasteCampaign) {
     insights.push({
       type: "warning",
-      title: "Campaign Ä‘ang Ä‘á»‘t tiá»n",
-      reason: `"${wasteCampaign.campaignName}" Ä‘Ã£ chi ${wasteCampaign.spend.toLocaleString("vi-VN")} nhÆ°ng chÆ°a ghi nháº­n lead hoáº·c tin nháº¯n.`
+      title: "Campaign đốt tiền",
+      reason: `"${wasteCampaign.campaignName}" đã chi ${wasteCampaign.spend.toLocaleString("vi-VN")} nhưng chưa có lead hoặc tin nhắn.`
     });
   }
 
@@ -153,8 +143,8 @@ export function buildIntelligenceInsights({
   if (lowCtr) {
     insights.push({
       type: "check",
-      title: "CTR tháº¥p",
-      reason: `"${lowCtr.campaignName}" cÃ³ CTR ${lowCtr.ctr.toFixed(2)}%, nÃªn kiá»ƒm tra hook, hÃ¬nh áº£nh/video vÃ  lá»i chÃ o Ä‘áº§u quáº£ng cÃ¡o.`
+      title: "CTR thấp",
+      reason: `"${lowCtr.campaignName}" có CTR ${lowCtr.ctr.toFixed(2)}%, nên kiểm tra hook và creative.`
     });
   }
 
@@ -162,8 +152,8 @@ export function buildIntelligenceInsights({
   if (bestCpl) {
     insights.push({
       type: "scale",
-      title: "CPL tá»‘t nháº¥t",
-      reason: `"${bestCpl.campaignName}" Ä‘ang cÃ³ CPL ${(bestCpl.spend / bestCpl.leads).toLocaleString("vi-VN")} vá»›i ${bestCpl.leads} lead.`
+      title: "CPL tốt nhất",
+      reason: `"${bestCpl.campaignName}" đang có CPL ${(bestCpl.spend / bestCpl.leads).toLocaleString("vi-VN")} với ${bestCpl.leads} lead.`
     });
   }
 
@@ -171,30 +161,22 @@ export function buildIntelligenceInsights({
   if (abnormalAccount) {
     insights.push({
       type: "warning",
-      title: "Chi tiÃªu tÃ i khoáº£n báº¥t thÆ°á»ng",
-      reason: `${abnormalAccount.name || abnormalAccount.id} cÃ³ chi tiÃªu nhÆ°ng chÆ°a cÃ³ lead/tin nháº¯n trong ká»³ Ä‘ang xem.`
+      title: "Chi tiêu bất thường",
+      reason: `${abnormalAccount.name || abnormalAccount.id} có chi tiêu nhưng chưa có lead/tin nhắn trong kỳ đang xem.`
     });
   }
 
   if (Math.abs(comparison.spend) > 20 || Math.abs(comparison.leads) > 20 || Math.abs(comparison.cpl) > 20) {
     insights.push({
       type: comparison.cpl > 20 ? "warning" : "neutral",
-      title: "So sÃ¡nh ká»³ trÆ°á»›c",
-      reason: `So vá»›i ká»³ trÆ°á»›c: chi tiÃªu ${comparison.spend.toFixed(1)}%, káº¿t quáº£ ${comparison.leads.toFixed(1)}%, chi phÃ­/káº¿t quáº£ ${comparison.cpl.toFixed(1)}%.`
+      title: "So sánh kỳ trước",
+      reason: `Chi tiêu ${comparison.spend.toFixed(1)}%, kết quả ${comparison.leads.toFixed(1)}%, chi phí/kết quả ${comparison.cpl.toFixed(1)}%.`
     });
   }
 
   insights.push(...buildCreativeInsights(creatives));
 
-  return insights.length
-    ? insights
-    : [
-        {
-          type: "neutral",
-          title: "Cáº§n thÃªm dá»¯ liá»‡u",
-          reason: "Cáº§n thÃªm dá»¯ liá»‡u Ä‘á»ƒ phÃ¢n tÃ­ch chÃ­nh xÃ¡c hÆ¡n."
-        }
-      ];
+  return insights.length ? insights : [{ type: "neutral", title: "Cần thêm dữ liệu", reason: "Cần thêm dữ liệu để phân tích chính xác hơn." }];
 }
 
 export function buildMetaIntelligenceDashboardData({
@@ -228,6 +210,7 @@ export function buildMetaIntelligenceDashboardData({
         endDate: dateRange.endDate
       })
     : null;
+
   const previousSummary = summarizeCampaigns(normalizeCampaignInsights(previousInsights, campaigns));
   const comparison = report
     ? compareSummaries(report.summary, previousSummary)
@@ -265,4 +248,3 @@ export function campaignMetricValue(row: NormalizedCampaignPerformance, metric: 
   if (metric === "costPerResult") return row.costPerResult;
   return row.spend;
 }
-

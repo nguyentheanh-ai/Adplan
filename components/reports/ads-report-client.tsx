@@ -10,6 +10,8 @@ import type { AdAccount, AdsReport, BreakdownRow, BreakdownType, DailyInsight } 
 
 type DatePreset = "today" | "yesterday" | "7d" | "30d" | "month" | "custom";
 type SortKey = "spend" | "ctr" | "cpc";
+type ChartMetric = "spend" | "ctr" | "cpc";
+type ChartType = "line" | "bar";
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -24,7 +26,6 @@ function getPresetRange(preset: DatePreset) {
     start.setDate(start.getDate() - 1);
     end.setDate(end.getDate() - 1);
   }
-
   if (preset === "7d") start.setDate(start.getDate() - 6);
   if (preset === "30d") start.setDate(start.getDate() - 29);
   if (preset === "month") start.setDate(1);
@@ -35,12 +36,25 @@ function getPresetRange(preset: DatePreset) {
 async function readJson<T>(url: string) {
   const response = await fetch(url, { cache: "no-store" });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-
-  if (!response.ok) {
-    throw new Error(payload.error || "Không thể lấy dữ liệu.");
-  }
-
+  if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
   return payload;
+}
+
+function chartMetricValue(row: DailyInsight, metric: ChartMetric) {
+  if (metric === "ctr") return Number(row.ctr ?? 0);
+  if (metric === "cpc") return Number(row.cpc ?? 0);
+  return Number(row.spend ?? 0);
+}
+
+function chartMetricLabel(metric: ChartMetric) {
+  if (metric === "ctr") return "CTR";
+  if (metric === "cpc") return "CPC";
+  return "Chi phí quảng cáo";
+}
+
+function formatMetricValue(value: number, metric: ChartMetric, currency: string) {
+  if (metric === "ctr") return formatPercent(value);
+  return formatMoney(value, currency);
 }
 
 export function AdsReportClient() {
@@ -52,6 +66,9 @@ export function AdsReportClient() {
   const [breakdown, setBreakdown] = useState<BreakdownType>("age");
   const [breakdownRows, setBreakdownRows] = useState<BreakdownRow[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>("spend");
+  const [primaryMetric, setPrimaryMetric] = useState<ChartMetric>("spend");
+  const [compareMetric, setCompareMetric] = useState<ChartMetric>("ctr");
+  const [chartType, setChartType] = useState<ChartType>("line");
   const [loading, setLoading] = useState(false);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
   const [error, setError] = useState("");
@@ -135,9 +152,7 @@ export function AdsReportClient() {
   }
 
   const selectedAccount = accounts.find((item) => item.id === selectedAccountId);
-  const sortedCampaigns = useMemo(() => {
-    return [...(report?.campaigns ?? [])].sort((a, b) => b[sortKey] - a[sortKey]);
-  }, [report, sortKey]);
+  const sortedCampaigns = useMemo(() => [...(report?.campaigns ?? [])].sort((a, b) => b[sortKey] - a[sortKey]), [report, sortKey]);
 
   return (
     <div className="space-y-6">
@@ -254,15 +269,67 @@ export function AdsReportClient() {
         <>
           <KpiGrid report={report} currency={selectedAccount?.currency || "VND"} />
 
-          <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <Card className="rounded-3xl p-6">
-              <div className="mb-5 flex items-center justify-between">
+              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div>
                   <h3 className="text-lg font-extrabold">Biểu đồ theo ngày</h3>
-                  <p className="text-sm text-on-surface-variant">Chi tiêu, CTR và CPC theo từng ngày.</p>
+                  <p className="text-sm text-on-surface-variant">Chọn chỉ số và kiểu biểu đồ để xem theo từng ngày.</p>
+                </div>
+                <div className="flex gap-2">
+                  <select className="dashboard-input" value={primaryMetric} onChange={(event) => setPrimaryMetric(event.target.value as ChartMetric)}>
+                    <option value="spend">Chi phí quảng cáo</option>
+                    <option value="ctr">CTR</option>
+                    <option value="cpc">CPC</option>
+                  </select>
+                  <select className="dashboard-input" value={chartType} onChange={(event) => setChartType(event.target.value as ChartType)}>
+                    <option value="line">Đường</option>
+                    <option value="bar">Cột</option>
+                  </select>
                 </div>
               </div>
-              <DailyChart rows={report.daily} currency={selectedAccount?.currency || "VND"} />
+              <DailyMetricChart
+                rows={report.daily}
+                metric={primaryMetric}
+                chartType={chartType}
+                currency={selectedAccount?.currency || "VND"}
+              />
+            </Card>
+
+            <Card className="rounded-3xl p-6">
+              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <h3 className="text-lg font-extrabold">Biểu đồ đối sánh cùng kỳ</h3>
+                  <p className="text-sm text-on-surface-variant">Đối sánh thêm một chỉ số khác trong cùng khoảng thời gian.</p>
+                </div>
+                <select className="dashboard-input" value={compareMetric} onChange={(event) => setCompareMetric(event.target.value as ChartMetric)}>
+                  <option value="spend">Chi phí quảng cáo</option>
+                  <option value="ctr">CTR</option>
+                  <option value="cpc">CPC</option>
+                </select>
+              </div>
+              <DailyMetricChart rows={report.daily} metric={compareMetric} chartType="bar" currency={selectedAccount?.currency || "VND"} compact />
+            </Card>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+            <Card className="overflow-hidden rounded-3xl p-0">
+              <div className="flex flex-col gap-3 border-b border-outline-variant/70 px-6 py-5 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h3 className="text-lg font-extrabold">Campaign Performance</h3>
+                  <p className="text-sm text-on-surface-variant">Sắp xếp nhanh theo chi tiêu, CTR hoặc CPC.</p>
+                </div>
+                <select
+                  className="h-11 rounded-2xl border border-outline-variant bg-white px-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary"
+                  value={sortKey}
+                  onChange={(event) => setSortKey(event.target.value as SortKey)}
+                >
+                  <option value="spend">Sort theo chi tiêu</option>
+                  <option value="ctr">Sort theo CTR</option>
+                  <option value="cpc">Sort theo CPC</option>
+                </select>
+              </div>
+              <CampaignTable rows={sortedCampaigns} currency={selectedAccount?.currency || "VND"} />
             </Card>
 
             <Card className="rounded-3xl p-6">
@@ -280,25 +347,6 @@ export function AdsReportClient() {
             </Card>
           </div>
 
-          <Card className="overflow-hidden rounded-3xl p-0">
-            <div className="flex flex-col gap-3 border-b border-outline-variant/70 px-6 py-5 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h3 className="text-lg font-extrabold">Campaign Performance</h3>
-                <p className="text-sm text-on-surface-variant">Sắp xếp nhanh theo chi tiêu, CTR hoặc CPC.</p>
-              </div>
-              <select
-                className="h-11 rounded-2xl border border-outline-variant bg-white px-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary"
-                value={sortKey}
-                onChange={(event) => setSortKey(event.target.value as SortKey)}
-              >
-                <option value="spend">Sort theo chi tiêu</option>
-                <option value="ctr">Sort theo CTR</option>
-                <option value="cpc">Sort theo CPC</option>
-              </select>
-            </div>
-            <CampaignTable rows={sortedCampaigns} currency={selectedAccount?.currency || "VND"} />
-          </Card>
-
           <Card className="rounded-3xl p-6">
             <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
@@ -307,12 +355,7 @@ export function AdsReportClient() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {(["age", "gender", "placement"] as BreakdownType[]).map((item) => (
-                  <Button
-                    key={item}
-                    variant={breakdown === item ? "primary" : "secondary"}
-                    onClick={() => loadBreakdown(item)}
-                    disabled={breakdownLoading}
-                  >
+                  <Button key={item} variant={breakdown === item ? "primary" : "secondary"} onClick={() => loadBreakdown(item)} disabled={breakdownLoading}>
                     {item === "age" ? "Age" : item === "gender" ? "Gender" : "Placement"}
                   </Button>
                 ))}
@@ -361,36 +404,69 @@ function KpiGrid({ report, currency }: { report: AdsReport; currency: string }) 
   );
 }
 
-function DailyChart({ rows, currency }: { rows: DailyInsight[]; currency: string }) {
+function DailyMetricChart({
+  rows,
+  metric,
+  chartType,
+  currency,
+  compact = false
+}: {
+  rows: DailyInsight[];
+  metric: ChartMetric;
+  chartType: ChartType;
+  currency: string;
+  compact?: boolean;
+}) {
   if (!rows.length) {
     return <div className="rounded-2xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">Chưa có dữ liệu theo ngày.</div>;
   }
 
-  const values = rows.map((row) => Number(row.spend ?? 0));
+  const values = rows.map((row) => chartMetricValue(row, metric));
   const max = Math.max(...values, 1);
-  const points = values
-    .map((value, index) => {
-      const x = rows.length === 1 ? 300 : (index / (rows.length - 1)) * 600;
-      const y = 220 - (value / max) * 180;
-      return `${x},${y}`;
-    })
-    .join(" ");
 
   return (
     <div>
-      <svg viewBox="0 0 620 240" className="h-64 w-full overflow-visible">
+      <svg viewBox="0 0 620 240" className={compact ? "h-52 w-full overflow-visible" : "h-64 w-full overflow-visible"}>
         <line x1="0" x2="620" y1="220" y2="220" stroke="#c2c6d9" strokeWidth="1" />
-        <polyline fill="none" points={points} stroke="#004cca" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
-        {points.split(" ").map((point, index) => {
-          const [x, y] = point.split(",");
-          return <circle key={`${point}-${index}`} cx={x} cy={y} fill="#ffffff" r="5" stroke="#004cca" strokeWidth="3" />;
-        })}
+        {chartType === "line" ? (
+          <>
+            <polyline
+              fill="none"
+              points={values
+                .map((value, index) => {
+                  const x = rows.length === 1 ? 300 : (index / (rows.length - 1)) * 600;
+                  const y = 220 - (value / max) * 180;
+                  return `${x},${y}`;
+                })
+                .join(" ")}
+              stroke="#004cca"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="4"
+            />
+            {values.map((value, index) => {
+              const x = rows.length === 1 ? 300 : (index / (rows.length - 1)) * 600;
+              const y = 220 - (value / max) * 180;
+              return <circle key={`dot-${index}`} cx={x} cy={y} fill="#ffffff" r="5" stroke="#004cca" strokeWidth="3" />;
+            })}
+          </>
+        ) : (
+          values.map((value, index) => {
+            const barWidth = Math.max(12, 580 / rows.length);
+            const x = 20 + index * (600 / rows.length);
+            const barHeight = (value / max) * 180;
+            const y = 220 - barHeight;
+            return <rect key={`bar-${index}`} x={x} y={y} width={barWidth} height={barHeight} rx={6} fill="#3f56c8" />;
+          })
+        )}
       </svg>
-      <div className="grid gap-2 md:grid-cols-3">
+      <div className="mt-3 grid gap-2 md:grid-cols-3">
         {rows.slice(-3).map((row) => (
-          <div key={row.date_start} className="rounded-2xl bg-surface-container-low p-4 text-sm">
+          <div key={`${metric}-${row.date_start}`} className="rounded-2xl bg-surface-container-low p-4 text-sm">
             <p className="font-bold text-on-surface">{row.date_start}</p>
-            <p className="mt-1 text-on-surface-variant">Spend: {formatMoney(Number(row.spend ?? 0), currency)}</p>
+            <p className="mt-1 text-on-surface-variant">
+              {chartMetricLabel(metric)}: {formatMetricValue(chartMetricValue(row, metric), metric, currency)}
+            </p>
             <p className="text-on-surface-variant">CTR: {formatPercent(Number(row.ctr ?? 0))}</p>
             <p className="text-on-surface-variant">CPC: {formatMoney(Number(row.cpc ?? 0), currency)}</p>
           </div>
@@ -400,13 +476,7 @@ function DailyChart({ rows, currency }: { rows: DailyInsight[]; currency: string
   );
 }
 
-function CampaignTable({
-  rows,
-  currency
-}: {
-  rows: AdsReport["campaigns"];
-  currency: string;
-}) {
+function CampaignTable({ rows, currency }: { rows: AdsReport["campaigns"]; currency: string }) {
   if (!rows.length) {
     return <div className="p-8 text-center text-sm text-on-surface-variant">Không có campaign nào trong khoảng thời gian này.</div>;
   }
@@ -416,11 +486,13 @@ function CampaignTable({
       <table className="w-full min-w-[980px] text-left text-sm">
         <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
           <tr>
-            {["Campaign name", "Status", "Objective", "Spend", "Impressions", "Reach", "CTR", "CPC", "CPM", "Results", "Cost/result", "ROAS"].map((head) => (
-              <th key={head} className="px-5 py-4 font-extrabold">
-                {head}
-              </th>
-            ))}
+            {["Campaign name", "Status", "Objective", "Spend", "Impressions", "Reach", "CTR", "CPC", "CPM", "Results", "Cost/result", "ROAS"].map(
+              (head) => (
+                <th key={head} className="px-5 py-4 font-extrabold">
+                  {head}
+                </th>
+              )
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-outline-variant/70">

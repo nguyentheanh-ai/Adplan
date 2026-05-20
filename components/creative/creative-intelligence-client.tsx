@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -53,10 +53,11 @@ export function CreativeIntelligenceClient() {
 
   const stats = useMemo(() => {
     const withSpend = creatives.filter((item) => item.spend > 0);
-    const withEngagement = creatives.filter((item) => item.ctr > 0 || item.messages > 0 || item.leads > 0);
+    const withEngagement = creatives.filter((item) => item.engagements > 0 || item.messages > 0 || item.leads > 0);
     const withResult = creatives.filter((item) => item.messages > 0 || item.leads > 0);
     const totalLeads = creatives.reduce((sum, item) => sum + item.leads, 0);
     const totalMessages = creatives.reduce((sum, item) => sum + item.messages, 0);
+    const totalEngagements = creatives.reduce((sum, item) => sum + item.engagements, 0);
     const totalSpend = creatives.reduce((sum, item) => sum + item.spend, 0);
     return {
       total: creatives.length,
@@ -65,13 +66,23 @@ export function CreativeIntelligenceClient() {
       withResult: withResult.length,
       totalLeads,
       totalMessages,
+      totalEngagements,
       totalSpend
     };
   }, [creatives]);
 
   const topLeads = useMemo(() => [...creatives].sort((a, b) => b.leads - a.leads).slice(0, 5), [creatives]);
   const topMessages = useMemo(() => [...creatives].sort((a, b) => b.messages - a.messages).slice(0, 5), [creatives]);
-  const topEngagement = useMemo(() => [...creatives].sort((a, b) => b.ctr - a.ctr).slice(0, 5), [creatives]);
+  const topEngagement = useMemo(() => [...creatives].sort((a, b) => b.engagements - a.engagements).slice(0, 5), [creatives]);
+
+  useEffect(() => {
+    readJson<{ data: AdAccount[] }>("/api/meta/adaccounts")
+      .then((payload) => {
+        setAccounts(payload.data ?? []);
+        setSelectedAccountId(payload.data?.[0]?.id ?? "");
+      })
+      .catch((err: Error) => setError(err.message));
+  }, []);
 
   async function loadAccounts() {
     const accountPayload = await readJson<{ data: AdAccount[] }>("/api/meta/adaccounts");
@@ -162,16 +173,10 @@ export function CreativeIntelligenceClient() {
             </label>
           </div>
           <div>
-            <div className="flex gap-2">
-              <Button disabled={loading} onClick={() => void loadAccounts()} variant="secondary">
-                <MaterialIcon name="account_balance_wallet" />
-                Nạp tài khoản
-              </Button>
-              <Button disabled={loading} onClick={() => loadData()}>
-                <MaterialIcon name="refresh" />
-                {loading ? "Đang tải..." : "Lấy báo cáo creative"}
-              </Button>
-            </div>
+            <Button disabled={loading} onClick={() => loadData()}>
+              <MaterialIcon name="refresh" />
+              {loading ? "Đang tải..." : "Lấy báo cáo creative"}
+            </Button>
           </div>
         </div>
       </Card>
@@ -204,6 +209,10 @@ export function CreativeIntelligenceClient() {
               <p className="mt-2 text-3xl font-extrabold">{formatNumber(stats.totalMessages)}</p>
             </Card>
             <Card className="rounded-3xl p-5">
+              <p className="text-sm font-bold text-on-surface-variant">Tổng tương tác</p>
+              <p className="mt-2 text-3xl font-extrabold">{formatNumber(stats.totalEngagements)}</p>
+            </Card>
+            <Card className="rounded-3xl p-5">
               <p className="text-sm font-bold text-on-surface-variant">Tổng chi tiêu creative</p>
               <p className="mt-2 text-3xl font-extrabold">{formatMoney(stats.totalSpend, currency)}</p>
             </Card>
@@ -222,7 +231,7 @@ export function CreativeIntelligenceClient() {
           <section className="grid gap-6 xl:grid-cols-3">
             <TopCreativeCard title="Top creative theo Lead" rows={topLeads} mode="lead" currency={currency} />
             <TopCreativeCard title="Top creative theo Tin nhắn" rows={topMessages} mode="message" currency={currency} />
-            <TopCreativeCard title="Top creative theo Tương tác (CTR)" rows={topEngagement} mode="engagement" currency={currency} />
+            <TopCreativeCard title="Top creative theo Tương tác" rows={topEngagement} mode="engagement" currency={currency} />
           </section>
 
           <Card className="overflow-hidden rounded-3xl p-0">
@@ -234,7 +243,7 @@ export function CreativeIntelligenceClient() {
               <table className="w-full min-w-[1020px] text-left text-sm">
                 <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
                   <tr>
-                    {["Creative", "Campaign", "Nhóm quảng cáo", "Spend", "Lead", "Tin nhắn", "CTR", "CPM", "CPC"].map((head) => (
+                    {["Creative", "Campaign", "Nhóm quảng cáo", "Spend", "Lead", "Tin nhắn", "Tương tác", "CTR", "CPM", "CPC"].map((head) => (
                       <th key={head} className="px-4 py-3 font-extrabold">
                         {head}
                       </th>
@@ -249,12 +258,18 @@ export function CreativeIntelligenceClient() {
                         <td className="px-4 py-3">
                           <p className="font-bold">{parsed.title}</p>
                           <p className="font-mono text-[11px] text-outline">{parsed.code}</p>
+                          {creative.postUrl ? (
+                            <a className="mt-1 inline-flex text-xs font-bold text-primary hover:underline" href={creative.postUrl} rel="noreferrer" target="_blank">
+                              Link bài post
+                            </a>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">{creative.campaignName}</td>
                         <td className="px-4 py-3">{creative.adsetName}</td>
                         <td className="px-4 py-3">{formatMoney(creative.spend, currency)}</td>
                         <td className="px-4 py-3">{formatNumber(creative.leads)}</td>
                         <td className="px-4 py-3">{formatNumber(creative.messages)}</td>
+                        <td className="px-4 py-3">{formatNumber(creative.engagements)}</td>
                         <td className="px-4 py-3">{formatPercent(creative.ctr)}</td>
                         <td className="px-4 py-3">{formatMoney(creative.cpm, currency)}</td>
                         <td className="px-4 py-3">{formatMoney(creative.cpc, currency)}</td>
@@ -313,7 +328,12 @@ function TopCreativeCard({
         {rows.length ? (
           rows.map((row) => {
             const parsed = splitCreativeName(row.creativeName, row.creativeId, row.adId);
-            const metricValue = mode === "lead" ? `${formatNumber(row.leads)} lead` : mode === "message" ? `${formatNumber(row.messages)} tin nhắn` : `CTR ${formatPercent(row.ctr)}`;
+            const metricValue =
+              mode === "lead"
+                ? `${formatNumber(row.leads)} lead`
+                : mode === "message"
+                  ? `${formatNumber(row.messages)} tin nhắn`
+                  : `${formatNumber(row.engagements)} tương tác`;
             return (
               <div key={`${mode}-${row.adId}`} className="rounded-2xl bg-surface-container-low p-3">
                 <p className="line-clamp-2 text-sm font-bold text-on-surface">{parsed.title}</p>
@@ -322,6 +342,11 @@ function TopCreativeCard({
                   <span>{metricValue}</span>
                   <span>{formatMoney(row.spend, currency)}</span>
                 </div>
+                {row.postUrl ? (
+                  <a className="mt-2 inline-flex text-xs font-bold text-primary hover:underline" href={row.postUrl} rel="noreferrer" target="_blank">
+                    Mở bài post
+                  </a>
+                ) : null}
               </div>
             );
           })

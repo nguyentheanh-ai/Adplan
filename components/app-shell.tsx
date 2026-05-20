@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { MaterialIcon } from "@/components/material-icon";
 
@@ -36,20 +37,47 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [sidebarHidden, setSidebarHidden] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("adplanner_sidebar_hidden") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  function toggleSidebar() {
+    setSidebarHidden((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem("adplanner_sidebar_hidden", next ? "1" : "0");
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
 
   async function signOut() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
-      // Đưa người dùng về login kể cả khi logout endpoint lỗi tạm thời.
+      // Vẫn đưa user về login nếu API logout tạm thời lỗi.
     }
     router.replace("/login");
     router.refresh();
   }
 
+  const isDashboardPage = pathname === "/dashboard";
+
   return (
     <div className="min-h-screen bg-background text-on-background">
-      <aside className="fixed left-0 top-0 z-50 hidden h-full w-[268px] flex-col border-r border-outline-variant/70 bg-white/95 shadow-soft backdrop-blur md:flex">
+      <aside
+        className={cn(
+          "fixed left-0 top-0 z-50 hidden h-full w-[268px] flex-col border-r border-outline-variant/70 bg-white/95 shadow-soft backdrop-blur transition-transform md:flex",
+          sidebarHidden && "md:-translate-x-full"
+        )}
+      >
         <div className="px-5 py-6">
           <Link href="/dashboard" className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ai-gradient text-white shadow-glow">
@@ -97,7 +125,12 @@ export function AppShell({
         </div>
       </aside>
 
-      <header className="fixed right-0 top-0 z-40 flex h-16 w-full items-center justify-between border-b border-outline-variant/70 bg-white/82 px-4 backdrop-blur md:w-[calc(100%-268px)] md:px-6">
+      <header
+        className={cn(
+          "fixed right-0 top-0 z-40 flex h-16 w-full items-center justify-between border-b border-outline-variant/70 bg-white/82 px-4 backdrop-blur md:px-6",
+          sidebarHidden ? "md:w-full" : "md:w-[calc(100%-268px)]"
+        )}
+      >
         <Link className="flex items-center gap-2 md:hidden" href="/dashboard">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white">
             <MaterialIcon filled name="insights" />
@@ -106,6 +139,14 @@ export function AppShell({
         </Link>
         <div className="hidden text-sm font-bold text-primary md:block">AI Ads Planner</div>
         <div className="flex items-center gap-3">
+          <button
+            className="hidden h-10 items-center gap-2 rounded-xl border border-outline-variant/70 bg-white px-3 text-sm font-bold text-on-surface-variant hover:text-primary md:inline-flex"
+            onClick={toggleSidebar}
+            type="button"
+          >
+            <MaterialIcon name={sidebarHidden ? "menu_open" : "menu"} />
+            {sidebarHidden ? "Hiện menu" : "Ẩn menu"}
+          </button>
           <div className="hidden text-right sm:block">
             <p className="text-sm font-bold text-on-surface">Tài khoản</p>
             <p className="text-[11px] uppercase tracking-wider text-outline">Facebook</p>
@@ -116,8 +157,8 @@ export function AppShell({
         </div>
       </header>
 
-      <main className={cn("min-h-screen md:ml-[268px]", contentClassName)}>
-        <div className="mx-auto max-w-[1280px]">
+      <main className={cn("min-h-screen transition-all", sidebarHidden ? "md:ml-0" : "md:ml-[268px]", contentClassName)}>
+        <div className={cn("mx-auto", sidebarHidden || isDashboardPage ? "max-w-[1600px]" : "max-w-[1280px]")}>
           {title ? (
             <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>

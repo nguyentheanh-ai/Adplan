@@ -108,6 +108,7 @@ export type NormalizedCampaignPerformance = {
   clicks: number;
   leads: number;
   messages: number;
+  engagements: number;
   purchases: number;
   results: number;
   costPerResult: number;
@@ -127,6 +128,7 @@ export type AdsReport = {
 export type NormalizedActions = {
   leads: number;
   messages: number;
+  engagements: number;
   purchases: number;
   linkClicks: number;
   results: number;
@@ -194,6 +196,22 @@ export type MetaAdWithCreative = {
   adset?: {
     id?: string;
     name?: string;
+    targeting?: {
+      age_min?: number;
+      age_max?: number;
+      genders?: number[];
+      geo_locations?: {
+        countries?: string[];
+        cities?: Array<{ name?: string; key?: string }>;
+        regions?: Array<{ name?: string; key?: string }>;
+      };
+      flexible_spec?: Array<{
+        interests?: Array<{ id?: string; name?: string }>;
+        behaviors?: Array<{ id?: string; name?: string }>;
+      }>;
+      interests?: Array<{ id?: string; name?: string }>;
+      behaviors?: Array<{ id?: string; name?: string }>;
+    };
   };
   creative?: MetaCreative;
   insights?: {
@@ -218,6 +236,12 @@ export type CreativePerformance = {
   cta: string;
   landingUrl: string;
   postId: string;
+  postUrl: string;
+  audienceAgeRange: string;
+  audienceGender: string;
+  audienceLocations: string;
+  audienceInterests: string;
+  audienceBehaviors: string;
   format: "image" | "video" | "carousel" | "dynamic" | "unknown";
   spend: number;
   impressions: number;
@@ -228,6 +252,7 @@ export type CreativePerformance = {
   cpm: number;
   leads: number;
   messages: number;
+  engagements: number;
   cpl: number | null;
   costPerMessage: number | null;
 };
