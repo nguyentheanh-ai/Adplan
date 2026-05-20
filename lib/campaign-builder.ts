@@ -74,6 +74,114 @@ function slugLabel(value: string, fallback: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, 42) || fallback;
 }
 
+function dateParts(value: string) {
+  const [year, month, day] = (value || new Date().toISOString().slice(0, 10)).split("-");
+  return { day: day || "01", month: month || "01", year: year || "2026" };
+}
+
+function capitalizeWord(value: string) {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+export function normalizeVietnameseText(text: unknown, fallback = "KhongRo", maxLength = 42) {
+  const raw = String(text ?? "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s-]/g, " ")
+    .trim();
+
+  const compact = raw
+    .split(/[\s_]+/)
+    .filter(Boolean)
+    .map((part) => part.split("-").map(capitalizeWord).join(""))
+    .join("");
+
+  return (compact || fallback).slice(0, maxLength);
+}
+
+function normalizeWithDash(text: unknown, fallback = "KhongRo", maxLength = 42) {
+  const raw = String(text ?? "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9\s-]/g, " ")
+    .trim();
+
+  const compact = raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.split("-").map(capitalizeWord).join("-"))
+    .join("");
+
+  return (compact || fallback).slice(0, maxLength);
+}
+
+export function generateCampaignCode(adAccountId?: string | null, sequence = 0) {
+  const digits = String(adAccountId || "").replace(/\D/g, "");
+  const suffix = (digits.slice(-4) || "0000").padStart(4, "0");
+  const sequenceText = String(Math.max(0, Number(sequence) || 0)).padStart(2, "0").slice(-2);
+  return `${suffix}${sequenceText}`;
+}
+
+function objectiveName(objective: CampaignBuilderInput["objective"]) {
+  const map: Record<CampaignBuilderInput["objective"], string> = {
+    "Tin nhắn": "TinNhan",
+    "Tương tác": "TuongTac",
+    Lead: "Lead",
+    "Chuyển đổi": "ChuyenDoi",
+    Traffic: "Traffic",
+    Sales: "Sales"
+  };
+  return map[objective] || normalizeVietnameseText(objective, "MucTieu");
+}
+
+function postLabelFrom(input: Pick<CampaignBuilderInput, "postId" | "postMessage" | "offer" | "productName">) {
+  if (input.postId) {
+    const digits = input.postId.replace(/\D/g, "").slice(-2);
+    return digits ? `Post${digits.padStart(2, "0")}` : "Post01";
+  }
+  return normalizeVietnameseText(input.postMessage || input.offer || input.productName, "Post01", 18);
+}
+
+export function generateCampaignName(data: {
+  date: string;
+  objective: CampaignBuilderInput["objective"];
+  productName?: string;
+  audienceName?: string;
+  postLabel?: string;
+}) {
+  const parts = dateParts(data.date);
+  return [
+    parts.day,
+    parts.month,
+    objectiveName(data.objective),
+    normalizeVietnameseText(data.productName, "SanPham", 24),
+    normalizeVietnameseText(data.audienceName, "TepKhach", 24),
+    normalizeVietnameseText(data.postLabel, "Post01", 18)
+  ].join("_");
+}
+
+export function generateAdsetName(data: { campaignCode: string; audienceName?: string; ageRange?: string }) {
+  return [
+    normalizeVietnameseText(data.campaignCode, "000000", 8),
+    normalizeVietnameseText(data.audienceName, "TepKhach", 28),
+    normalizeWithDash(data.ageRange, "25-44", 8)
+  ].join("_");
+}
+
+export function generateAdName(data: { campaignCode: string; postText?: string; fallback?: string }) {
+  const words = String(data.postText || data.fallback || "Quang cao")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 3)
+    .join(" ");
+  return [normalizeVietnameseText(data.campaignCode, "000000", 8), normalizeVietnameseText(words, "QuangCao", 24)].join("_");
+}
+
 function toNumber(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") return 0;
   const parsed = Number(value);
@@ -196,46 +304,64 @@ export function generateCampaignDraft(input: CampaignBuilderInput, interests: Au
   const product = slugLabel(input.productName, "Sản phẩm");
   const audience = slugLabel(input.targetCustomer || input.industry, "Tệp khách hàng");
   const location = slugLabel(input.location, "Việt Nam");
-  const date = compactDate(input.startDate);
+  const campaignCode = input.campaignCode || generateCampaignCode(input.adAccountId, 0);
+  const postLabel = postLabelFrom(input);
+  const structureMode = input.structureMode || "1-1-1";
+  const adsetCount = structureMode === "1-3-3" ? 3 : structureMode === "custom" ? Math.max(1, Math.min(input.adsetCount || 1, 10)) : 1;
+  const adsPerAdset = structureMode === "1-3-3" ? 3 : structureMode === "custom" ? Math.max(1, Math.min(input.adsPerAdset || 1, 10)) : 1;
+  const ageRange = input.ageRange || "25-44";
+  const gender = input.gender || "Tất cả";
   const selectedInterests = interests.length ? interests : buildInternalAudienceSuggestions(input);
   const schedule = input.runContinuously
     ? `Từ ${input.startDate || "ngày bắt đầu"} và chạy liên tục`
     : `${input.startDate || "ngày bắt đầu"} đến ${input.endDate || "ngày kết thúc"}`;
   const pageLabel = input.fanpage || input.pageName || "Chưa chọn fanpage";
+  const campaignName = generateCampaignName({
+    date: input.startDate,
+    objective: input.objective,
+    productName: input.productName,
+    audienceName: input.targetCustomer || input.industry,
+    postLabel
+  });
+  const buildAd = (adIndex: number) => ({
+    name: `${generateAdName({ campaignCode, postText: input.postMessage || input.offer || input.productName })}${adsPerAdset > 1 ? `_Ad${String(adIndex + 1).padStart(2, "0")}` : ""}`,
+    fanpage: pageLabel,
+    media: pickMedia(input),
+    primaryText: `${input.offer ? `${input.offer}\n\n` : ""}${product} dành cho ${audience}. ${input.notes || "Tập trung vào lợi ích rõ ràng, bằng chứng tin cậy và lời kêu gọi hành động cụ thể."}`,
+    headline: input.offer || `${product} cho ${audience}`,
+    description: input.website ? "Nhấn để xem chi tiết ưu đãi." : "Nhắn tin để được tư vấn nhanh.",
+    cta: objective.cta,
+    url: input.website || undefined
+  });
+  const adsets = Array.from({ length: adsetCount }, (_, adsetIndex) => ({
+    name: `${generateAdsetName({ campaignCode, audienceName: input.targetCustomer || input.industry, ageRange })}${adsetCount > 1 ? `_Nhom${adsetIndex + 1}` : ""}`,
+    ageRange,
+    gender,
+    location,
+    interests: selectedInterests,
+    behaviors: ["Tương tác với quảng cáo", "Quan tâm sản phẩm/dịch vụ liên quan"],
+    placement: "Advantage+ placements",
+    optimizationGoal: objective.optimization,
+    billingEvent: objective.billingEvent,
+    ads: Array.from({ length: adsPerAdset }, (_, adIndex) => buildAd(adIndex))
+  }));
 
   return {
     campaign: {
-      name: `[${objective.meta}] - ${product} - ${date}`,
+      code: campaignCode,
+      name: campaignName,
       objective: objective.meta,
       budget: input.dailyBudget ? `${input.dailyBudget}/ngày` : "Chưa nhập ngân sách",
       schedule,
       status: "PAUSED"
     },
-    adSet: {
-      name: `${audience} - 25-44 - ${location}`,
-      ageRange: "25-44",
-      gender: "Tất cả",
-      location,
-      interests: selectedInterests,
-      behaviors: ["Tương tác với quảng cáo", "Quan tâm sản phẩm/dịch vụ liên quan"],
-      placement: "Advantage+ placements",
-      optimizationGoal: objective.optimization,
-      billingEvent: objective.billingEvent
-    },
-    ads: {
-      name: `Image/Video - ${slugLabel(input.offer || input.productName, "Hook chính")} - ${date}`,
-      fanpage: pageLabel,
-      media: pickMedia(input),
-      primaryText: `${input.offer ? `${input.offer}\n\n` : ""}${product} dành cho ${audience}. ${input.notes || "Tập trung vào lợi ích rõ ràng, bằng chứng tin cậy và lời kêu gọi hành động cụ thể."}`,
-      headline: input.offer || `${product} cho ${audience}`,
-      description: input.website ? "Nhấn để xem chi tiết ưu đãi." : "Nhắn tin để được tư vấn nhanh.",
-      cta: objective.cta,
-      url: input.website || undefined
-    },
+    adSet: adsets[0],
+    ads: adsets[0].ads[0],
+    adsets,
     naming: {
-      campaignNameFormat: "[Objective] - [Product] - [Date]",
-      adsetNameFormat: "[Audience] - [Age] - [Location]",
-      adNameFormat: "[CreativeType] - [Hook] - [Date]"
+      campaignNameFormat: "Ngày_Tháng_Mục tiêu_Sản phẩm_Tệp_Post",
+      adsetNameFormat: "Mã chiến dịch_Tệp_Độ tuổi",
+      adNameFormat: "Mã chiến dịch_3 chữ đầu nội dung"
     }
   };
 }
@@ -281,14 +407,18 @@ export function generateScalePreview(input: ScaleCampaignInput): CampaignPlanner
 
 export function validateABTestConfig(draft: ABTestDraft) {
   const errors: string[] = [];
-  if (!draft.name.trim()) errors.push("Can dat ten bai test A/B.");
-  if (!draft.hypothesis.trim()) errors.push("Can co gia thuyet test.");
-  if (!draft.schedule.startDate || !draft.schedule.endDate) errors.push("Can chon lich chay test.");
-  if (draft.variants.length < 2) errors.push("Can it nhat 2 bien the de test A/B.");
+  if (!draft.name.trim()) errors.push("Cần đặt tên bài test A/B.");
+  if (!draft.hypothesis.trim()) errors.push("Cần mô tả ngắn bạn muốn test gì.");
+  if (!draft.schedule.startDate || !draft.schedule.endDate) errors.push("Cần chọn lịch chạy test.");
+  if (draft.variants.length < 2) errors.push("Cần ít nhất 2 biến thể để test A/B.");
+  const variantValues = draft.variants.map((variant) => String(variant.payload.value || variant.name).trim()).filter(Boolean);
+  if (variantValues.length >= 2 && new Set(variantValues).size !== variantValues.length) {
+    errors.push("Các biến thể không được trùng dữ liệu ở yếu tố đang test.");
+  }
 
   const totalSplit = Object.values(draft.budgetSplit).reduce((sum, value) => sum + Number(value || 0), 0);
   if (draft.variants.length >= 2 && Math.abs(totalSplit - 100) > 0.01) {
-    errors.push("Tong phan bo ngan sach phai bang 100%.");
+    errors.push("Tổng phân bổ ngân sách phải bằng 100%.");
   }
 
   return { ok: errors.length === 0, errors };
@@ -315,6 +445,7 @@ export function createABTestDraft(input: {
     variable: input.testVariable,
     payload: {
       label: name,
+      value: name,
       status: "PAUSED"
     }
   }));

@@ -6,6 +6,7 @@ import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
+import { mapAIPlanMode, mapAIPlanToCampaignInput, type AIConsultantResponse } from "@/lib/ai-consultant-shared";
 import {
   buildCampaignValidation,
   buildInternalAudienceSuggestions,
@@ -57,7 +58,12 @@ const defaultInput: CampaignBuilderInput = {
   offer: "",
   notes: "",
   mediaNote: "Chọn media sau",
-  mediaFiles: []
+  mediaFiles: [],
+  structureMode: "1-1-1",
+  adsetCount: 1,
+  adsPerAdset: 1,
+  ageRange: "25-44",
+  gender: "Tất cả"
 };
 
 function defaultDateRange() {
@@ -77,6 +83,20 @@ function formatVnd(value: number) {
   if (!value) return "0 đ";
   return vndFormatter.format(value);
 }
+
+type SimpleABTestType = "copy" | "creative" | "audience" | "placement";
+type SimpleABVariant = {
+  id: string;
+  label: string;
+  value: string;
+};
+
+const abTestOptions: Array<{ key: SimpleABTestType; title: string; description: string }> = [
+  { key: "copy", title: "Test bài viết/content", description: "Cùng tệp, cùng ngân sách, chỉ đổi bài viết." },
+  { key: "creative", title: "Test hình ảnh/video", description: "Cùng nội dung, cùng tệp, chỉ đổi media." },
+  { key: "audience", title: "Test tệp khách hàng", description: "Cùng bài viết, cùng ngân sách, chỉ đổi tệp." },
+  { key: "placement", title: "Test vị trí hiển thị", description: "Cùng bài viết, cùng tệp, chỉ đổi vị trí hiển thị." }
+];
 
 async function readJson<T>(url: string, init?: RequestInit & { force?: boolean }) {
   if (!init || !init.method || init.method === "GET") return getCachedJson<T>(url, { force: init?.force });
@@ -143,11 +163,18 @@ export function CampaignBuilderClient() {
   const [sourceAdsetId, setSourceAdsetId] = useState("");
   const [cloneQuantity, setCloneQuantity] = useState(1);
   const [newBudget, setNewBudget] = useState("");
-  const [abName, setAbName] = useState("A/B Test Creative");
-  const [abHypothesis, setAbHypothesis] = useState("");
-  const [abVariable, setAbVariable] = useState<ABTestDraft["testVariable"]>("creative");
-  const [abVariants, setAbVariants] = useState("Creative A\nCreative B");
-  const [abMinimumSpend, setAbMinimumSpend] = useState("500000");
+  const [abTestType, setAbTestType] = useState<SimpleABTestType>("copy");
+  const [abBudgetPerVariant, setAbBudgetPerVariant] = useState("500000");
+  const [abLocation, setAbLocation] = useState("Việt Nam");
+  const [abAgeRange, setAbAgeRange] = useState("25-44");
+  const [abGender, setAbGender] = useState("Tất cả");
+  const [abObjective, setAbObjective] = useState<CampaignBuilderInput["objective"]>("Tin nhắn");
+  const [abVariantsSimple, setAbVariantsSimple] = useState<SimpleABVariant[]>([
+    { id: "A", label: "Biến thể A", value: "" },
+    { id: "B", label: "Biến thể B", value: "" }
+  ]);
+  const [aiMessage, setAiMessage] = useState("");
+  const [aiResult, setAiResult] = useState<AIConsultantResponse | null>(null);
 
   const needsPost = form.objective === "Tin nhắn" || form.objective === "Tương tác";
   const selectedInterests = useMemo(() => interests.filter((interest) => selectedInterestIds.includes(interest.id)), [interests, selectedInterestIds]);
@@ -308,6 +335,64 @@ export function CampaignBuilderClient() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  async function askAIConsultant() {
+    const message = aiMessage.trim();
+    if (message.length < 3) return toast.error("Nhập vài dòng về sản phẩm, mục tiêu hoặc vấn đề bạn đang gặp.");
+
+    await withProgress("AI đang tư vấn cấu trúc quảng cáo...", async () => {
+      const payload = await readJson<{ data: AIConsultantResponse }>("/api/ai/consultant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          context: { ...form, adAccountId: selectedAccountId }
+        })
+      });
+      setAiResult(payload.data);
+      toast.success("AI đã tạo đề xuất. Kiểm tra rồi bấm chấp thuận nếu phù hợp.");
+    }).catch((error: Error) => toast.error(error.message));
+  }
+
+  async function acceptAIPlan() {
+    if (!aiResult) return toast.error("Chưa có đề xuất từ AI.");
+    const nextMode = mapAIPlanMode(aiResult.plan.mode);
+    const nextForm = mapAIPlanToCampaignInput(aiResult.plan, form);
+    setMode(nextMode);
+    setForm(nextForm);
+    setDraft(null);
+    setStep(2);
+
+    if (nextMode !== "new_campaign") {
+      toast.success("Đã đưa đề xuất AI vào form. Hãy kiểm tra rồi tạo preview.");
+      return;
+    }
+
+    if (!aiResult.plan.canCreatePreview) {
+      toast.warning(`AI còn thiếu: ${aiResult.plan.missingFields.join(", ") || "một vài thông tin cần kiểm tra"}.`);
+      return;
+    }
+
+    await withProgress("Đang tạo preview từ đề xuất AI...", async () => {
+      const code = await ensureCampaignCode();
+      const campaignDraft = generateCampaignDraft({ ...nextForm, adAccountId: selectedAccountId, campaignCode: code }, selectedInterests);
+      setDraft({
+        mode: "new_campaign",
+        accountId: selectedAccountId,
+        title: campaignDraft.campaign.name,
+        campaignDraft,
+        warnings: aiResult.plan.missingFields,
+        metaPayload: {
+          campaign: campaignDraft.campaign,
+          adsets: campaignDraft.adsets,
+          ai_reason: aiResult.plan.reason,
+          status: "PAUSED"
+        }
+      });
+      setStep(3);
+      toast.success("Đã tạo preview từ đề xuất AI. Chưa launch lên Meta.");
+    }).catch((error: Error) => toast.error(error.message));
+  }
+
   function switchMode(nextMode: CampaignBuilderMode) {
     setBusyLabel("Đang chuyển chế độ...");
     setMode(nextMode);
@@ -387,25 +472,22 @@ export function CampaignBuilderClient() {
     setForm((current) => ({ ...current, postId, postMessage: post?.message || "" }));
   }
 
-  function buildNewCampaignPlannerDraft(): CampaignPlannerDraft {
-    const campaignDraft = generateCampaignDraft({ ...form, adAccountId: selectedAccountId }, selectedInterests);
-    return {
-      mode: "new_campaign" as const,
-      accountId: selectedAccountId,
-      title: campaignDraft.campaign.name,
-      campaignDraft,
-      warnings: validation.filter((item) => !item.ok).map((item) => `${item.label}: ${item.note || "Chưa đủ dữ liệu"}`),
-      metaPayload: {
-        campaign: campaignDraft.campaign,
-        adset: campaignDraft.adSet,
-        ads: campaignDraft.ads,
-        status: "PAUSED"
-      }
-    };
+  async function ensureCampaignCode() {
+    if (form.campaignCode) return form.campaignCode;
+    if (!selectedAccountId) throw new Error("Chọn tài khoản quảng cáo trước.");
+    const payload = await readJson<{ code: string; sequence: number; storage?: string }>("/api/campaign-sequences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account_id: selectedAccountId })
+    });
+    setForm((current) => ({ ...current, campaignCode: payload.code }));
+    return payload.code;
   }
 
-  function createPreview() {
+  async function createPreview() {
     if (mode === "scale_existing") {
+      if (!sourceCampaignId) return toast.error("Bạn cần chọn campaign nguồn trước khi nhân bản.");
+      if (scaleAction === "clone_adset" && !sourceAdsetId) return toast.error("Bạn cần chọn nhóm quảng cáo nguồn.");
       const scaleInput: ScaleCampaignInput = {
         adAccountId: selectedAccountId,
         action: scaleAction,
@@ -417,37 +499,79 @@ export function CampaignBuilderClient() {
       };
       setDraft(generateScalePreview(scaleInput));
       setStep(3);
+      toast.success("Đã tạo preview scale.");
       return;
     }
 
     if (mode === "ab_test") {
+      const variantValues = abVariantsSimple.map((item) => item.value.trim()).filter(Boolean);
       const abDraft = createABTestDraft({
-        name: abName,
-        hypothesis: abHypothesis,
-        testVariable: abVariable,
+        name: abTestOptions.find((item) => item.key === abTestType)?.title || "A/B Test",
+        hypothesis: "A/B test chỉ có ý nghĩa khi mỗi lần bạn chỉ thay đổi 1 yếu tố.",
+        testVariable: abTestType,
         schedule: scaleRange,
-        minimumSpend: abMinimumSpend,
-        variants: abVariants.split("\n")
+        minimumSpend: abBudgetPerVariant,
+        variants: variantValues
       });
       const validationResult = validateABTestConfig(abDraft);
+      if (!validationResult.ok) {
+        validationResult.errors.forEach((message) => toast.error(message));
+        setDraft({
+          mode: "ab_test",
+          accountId: selectedAccountId,
+          title: abDraft.name,
+          abTest: abDraft,
+          warnings: validationResult.errors,
+          metaPayload: { ab_test: abDraft, status: "DRAFT_ONLY" }
+        });
+        setStep(3);
+        return;
+      }
       setDraft({
         mode: "ab_test",
         accountId: selectedAccountId,
         title: abDraft.name,
         abTest: abDraft,
         warnings: validationResult.errors,
-        metaPayload: { ab_test: abDraft, status: "DRAFT_ONLY" }
+        metaPayload: {
+          ab_test: abDraft,
+          type: abTestType,
+          common: { account_id: selectedAccountId, page_id: form.pageId, objective: abObjective, budget_per_variant: abBudgetPerVariant, location: abLocation, age_range: abAgeRange, gender: abGender },
+          status: "DRAFT_ONLY"
+        }
       });
       setStep(3);
+      toast.success("Đã tạo preview A/B test.");
       return;
     }
 
-    setDraft(buildNewCampaignPlannerDraft());
-    setStep(3);
+    await withProgress("Đang tạo mã và preview campaign...", async () => {
+      const validationRows = buildCampaignValidation({ ...form, adAccountId: selectedAccountId });
+      const blockers = validationRows.filter((item) => !item.ok);
+      if (blockers.length) {
+        throw new Error(`Cần bổ sung: ${blockers.map((item) => item.label).join(", ")}.`);
+      }
+      const code = await ensureCampaignCode();
+      const campaignDraft = generateCampaignDraft({ ...form, adAccountId: selectedAccountId, campaignCode: code }, selectedInterests);
+      setDraft({
+        mode: "new_campaign",
+        accountId: selectedAccountId,
+        title: campaignDraft.campaign.name,
+        campaignDraft,
+        warnings: buildCampaignValidation({ ...form, adAccountId: selectedAccountId, campaignCode: code }).filter((item) => !item.ok).map((item) => `${item.label}: ${item.note || "Chưa đủ dữ liệu"}`),
+        metaPayload: {
+          campaign: campaignDraft.campaign,
+          adsets: campaignDraft.adsets,
+          status: "PAUSED"
+        }
+      });
+      setStep(3);
+      toast.success("Đã tạo preview Campaign > Adset > Ads.");
+    }).catch((error: Error) => toast.error(error.message));
   }
 
   async function saveDraft() {
-    const currentDraft = draft ?? (mode === "new_campaign" ? buildNewCampaignPlannerDraft() : null);
+    const currentDraft = draft;
     if (!currentDraft) return toast.error("Tạo preview trước khi lưu bản nháp.");
 
     await withProgress("Đang lưu bản nháp...", async () => {
@@ -490,7 +614,9 @@ export function CampaignBuilderClient() {
   }
 
   async function launchScale() {
-    if (!draft?.scale) return toast.error("Tạo preview scale trước.");
+    if (!selectedAccountId) return toast.error("Chọn tài khoản quảng cáo trước.");
+    if (!sourceCampaignId) return toast.error("Bạn cần chọn campaign nguồn trước.");
+    if (scaleAction === "clone_adset" && !sourceAdsetId) return toast.error("Bạn cần chọn nhóm quảng cáo nguồn.");
     await withProgress("Đang gửi yêu cầu scale sang Meta...", async () => {
       const response = await readJson<{ data: { cloned_ids?: string[] } }>("/api/meta/scale", {
         method: "POST",
@@ -509,40 +635,66 @@ export function CampaignBuilderClient() {
     }).catch((error: Error) => toast.error(error.message));
   }
 
-  async function launchPausedCampaign() {
-    const currentDraft = draft?.campaignDraft ?? buildNewCampaignPlannerDraft().campaignDraft;
+  async function launchNewCampaign() {
+    if (mode !== "new_campaign") return;
     if (!selectedAccountId) return toast.error("Chọn tài khoản quảng cáo trước.");
-    if (!currentDraft) return toast.error("Tạo preview campaign trước.");
+    if (!draft?.campaignDraft) return toast.error("Tạo preview trước khi launch lên Meta.");
+    if (!form.postId) {
+      return toast.error("Launch thật hiện cần chọn một bài viết có sẵn trên Fanpage. Bạn vẫn có thể lưu preview rồi bổ sung trong Ads Manager.");
+    }
 
-    await withProgress("Đang tạo campaign PAUSED trên Meta...", async () => {
-      const payload = await readJson<{ id: string; name: string; status: string }>("/api/meta/create-campaign", {
+    await withProgress("Meta đang tạo Campaign → Nhóm quảng cáo → Quảng cáo ở trạng thái PAUSED...", async () => {
+      const response = await readJson<{
+        data: {
+          status: "success" | "partial_success";
+          campaign: { id: string; name: string; status: "PAUSED" };
+          adsets: Array<{ id: string; name: string; ads: Array<{ id?: string; name: string; error?: string }> }>;
+          failed_ads: Array<{ name: string; error?: string }>;
+          note: string;
+        };
+      }>("/api/meta/launch-campaign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ad_account_id: selectedAccountId,
-          name: currentDraft.campaign.name,
-          objective: currentDraft.campaign.objective
+          page_id: form.pageId || null,
+          post_id: form.postId || null,
+          campaign_draft: draft.campaignDraft
         })
       });
-      toast.success(`Đã tạo campaign PAUSED: ${payload.name || payload.id}. Adset/ads vẫn cần kiểm tra trong Ads Manager.`);
+
+      const createdAds = response.data.adsets.reduce((sum, adset) => sum + adset.ads.filter((ad) => ad.id).length, 0);
+      if (response.data.status === "partial_success") {
+        toast.warning(`Đã tạo campaign PAUSED, nhưng ${response.data.failed_ads.length} quảng cáo lỗi. Kiểm tra chi tiết trong preview/log.`);
+      } else {
+        toast.success(`Đã tạo campaign PAUSED: ${response.data.campaign.id}. Tổng ads đã tạo: ${createdAds}.`);
+      }
       await loadCampaigns(selectedAccountId, true);
     }).catch((error: Error) => toast.error(error.message));
   }
 
+  function scalePrimaryLabel() {
+    if (scaleAction === "clone_campaign") return "Nhân bản chiến dịch";
+    if (scaleAction === "clone_adset") return "Nhân bản nhóm quảng cáo";
+    return "Cập nhật ngân sách";
+  }
+
   async function saveABTest() {
-    const rows = abVariants.split("\n").map((item) => item.trim()).filter(Boolean);
+    const rows = abVariantsSimple.map((item) => item.value.trim()).filter(Boolean);
+    if (rows.length < 2) return toast.error("Cần ít nhất 2 biến thể khác nhau.");
+    if (new Set(rows).size !== rows.length) return toast.error("Các biến thể không được trùng dữ liệu ở yếu tố đang test.");
     await withProgress("Đang lưu A/B test...", async () => {
       const payload = await readJson<{ storage?: string }>("/api/campaign-ab-tests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           account_id: selectedAccountId,
-          name: abName,
-          hypothesis: abHypothesis,
-          test_variable: abVariable,
+          name: abTestOptions.find((item) => item.key === abTestType)?.title || "A/B Test",
+          hypothesis: "A/B test chỉ có ý nghĩa khi mỗi lần bạn chỉ thay đổi 1 yếu tố.",
+          test_variable: abTestType,
           start_date: scaleRange.startDate,
           end_date: scaleRange.endDate,
-          minimum_spend: abMinimumSpend,
+          minimum_spend: abBudgetPerVariant,
           variants: rows
         })
       });
@@ -559,7 +711,8 @@ export function CampaignBuilderClient() {
   }
 
   function exportJson() {
-    const current = draft ?? buildNewCampaignPlannerDraft();
+    if (!draft) return toast.error("Tạo preview trước khi xuất JSON.");
+    const current = draft;
     const blob = new Blob([JSON.stringify(current, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -570,8 +723,40 @@ export function CampaignBuilderClient() {
   }
 
   async function copyConfig() {
-    await navigator.clipboard.writeText(JSON.stringify(draft ?? buildNewCampaignPlannerDraft(), null, 2));
+    if (!draft) return toast.error("Tạo preview trước khi copy cấu hình.");
+    await navigator.clipboard.writeText(JSON.stringify(draft, null, 2));
     toast.success("Đã copy cấu hình.");
+  }
+
+  function getChecklist() {
+    if (mode === "scale_existing") {
+      return [
+        { key: "account", label: "Tài khoản quảng cáo", ok: Boolean(selectedAccountId) },
+        { key: "action", label: "Hành động scale", ok: Boolean(scaleAction) },
+        { key: "range", label: "Khoảng thời gian", ok: Boolean(scaleRange.startDate && scaleRange.endDate) },
+        { key: "campaign", label: "Campaign nguồn", ok: Boolean(sourceCampaignId), note: sourceCampaignId ? undefined : "Bạn cần chọn campaign từ bảng." },
+        { key: "adset", label: "Adset nguồn", ok: scaleAction !== "clone_adset" || Boolean(sourceAdsetId), note: scaleAction === "clone_adset" ? "Bắt buộc khi nhân bản nhóm quảng cáo." : "Không bắt buộc." },
+        { key: "quantity", label: "Số lượng nhân bản", ok: scaleAction === "increase_budget" || cloneQuantity > 0 },
+        { key: "budget", label: "Ngân sách mới", ok: scaleAction !== "increase_budget" || Boolean(newBudget.trim()), note: scaleAction === "increase_budget" ? "Bắt buộc khi tăng ngân sách." : "Có thể bổ sung nếu muốn đổi ngân sách." }
+      ];
+    }
+
+    if (mode === "ab_test") {
+      const values = abVariantsSimple.map((item) => item.value.trim()).filter(Boolean);
+      return [
+        { key: "type", label: "Loại test", ok: Boolean(abTestType) },
+        { key: "common", label: "Thông tin chung", ok: Boolean(selectedAccountId && form.pageId && abObjective && abBudgetPerVariant && scaleRange.startDate && scaleRange.endDate) },
+        { key: "variants", label: "Có ít nhất 2 biến thể", ok: values.length >= 2 },
+        { key: "unique", label: "Biến thể không trùng dữ liệu", ok: values.length >= 2 && new Set(values).size === values.length },
+        { key: "preview", label: "Preview đã tạo", ok: draft?.mode === "ab_test" }
+      ];
+    }
+
+    return [
+      ...validation,
+      { key: "audience", label: "Tệp khách hàng", ok: Boolean(form.targetCustomer.trim() || selectedInterestIds.length || selectedSavedAudienceId), note: "Có thể dùng tệp đã lưu hoặc mô tả tệp mới." },
+      { key: "preview", label: "Preview đã tạo", ok: draft?.mode === "new_campaign" }
+    ];
   }
 
   return (
@@ -597,6 +782,15 @@ export function CampaignBuilderClient() {
           </Button>
         </div>
       </Card>
+
+      <AIConsultantCard
+        message={aiMessage}
+        setMessage={setAiMessage}
+        result={aiResult}
+        onAsk={() => void askAIConsultant()}
+        onAccept={() => void acceptAIPlan()}
+        busy={Boolean(busyLabel)}
+      />
 
       <Card className="rounded-lg p-5">
         <div className="grid gap-3 md:grid-cols-3">
@@ -631,21 +825,6 @@ export function CampaignBuilderClient() {
               selectedCampaign={selectedCampaign}
               selectedAdset={selectedAdset}
               onLoadCampaigns={() => void loadCampaigns(selectedAccountId, true)}
-              onUseCampaign={(id) => {
-                setSourceCampaignId(id);
-                setSourceAdsetId("");
-                void loadAdsets(id);
-                setDraft(generateScalePreview({
-                  adAccountId: selectedAccountId,
-                  action: scaleAction,
-                  dateRange: scaleRange,
-                  sourceCampaignId: id,
-                  sourceAdsetId: "",
-                  quantity: cloneQuantity,
-                  newBudget
-                }));
-                setStep(3);
-              }}
             />
           ) : null}
 
@@ -674,24 +853,31 @@ export function CampaignBuilderClient() {
 
           {mode === "ab_test" ? (
             <ABTestPanel
-              abName={abName}
-              setAbName={setAbName}
-              abHypothesis={abHypothesis}
-              setAbHypothesis={setAbHypothesis}
-              abVariable={abVariable}
-              setAbVariable={setAbVariable}
-              abVariants={abVariants}
-              setAbVariants={setAbVariants}
-              abMinimumSpend={abMinimumSpend}
-              setAbMinimumSpend={setAbMinimumSpend}
+              testType={abTestType}
+              setTestType={setAbTestType}
+              pages={pages}
+              pageId={form.pageId || ""}
+              onPageChange={onPageChange}
+              objective={abObjective}
+              setObjective={setAbObjective}
+              budgetPerVariant={abBudgetPerVariant}
+              setBudgetPerVariant={setAbBudgetPerVariant}
+              location={abLocation}
+              setLocation={setAbLocation}
+              ageRange={abAgeRange}
+              setAgeRange={setAbAgeRange}
+              gender={abGender}
+              setGender={setAbGender}
               scaleRange={scaleRange}
               setScaleRange={setScaleRange}
+              variants={abVariantsSimple}
+              setVariants={setAbVariantsSimple}
             />
           ) : null}
 
           <Card className="rounded-lg p-5">
             <div className="flex flex-wrap gap-3">
-              <Button variant="ai" onClick={createPreview}>
+              <Button variant="ai" onClick={() => void createPreview()}>
                 <MaterialIcon filled name="auto_awesome" />
                 Tạo preview
               </Button>
@@ -706,9 +892,9 @@ export function CampaignBuilderClient() {
                 </Button>
               ) : null}
               {mode === "scale_existing" ? (
-                <Button onClick={() => void launchScale()} disabled={!draft?.scale}>
+                <Button onClick={() => void launchScale()} disabled={Boolean(busyLabel)}>
                   <MaterialIcon name="rocket_launch" />
-                  Nhân bản / cập nhật PAUSED
+                  {scalePrimaryLabel()}
                 </Button>
               ) : null}
               {mode === "ab_test" ? (
@@ -724,17 +910,17 @@ export function CampaignBuilderClient() {
                 Copy cấu hình
               </Button>
               {mode === "new_campaign" ? (
-                <Button onClick={() => void launchPausedCampaign()}>
+                <Button onClick={() => void launchNewCampaign()} disabled={Boolean(busyLabel) || !draft?.campaignDraft} title={!draft?.campaignDraft ? "Tạo preview trước khi launch." : "Tất cả campaign/adset/ad sẽ được tạo ở trạng thái PAUSED."}>
                   <MaterialIcon name="rocket_launch" />
-                  Tạo campaign PAUSED
+                  Launch lên Meta PAUSED
                 </Button>
               ) : null}
-              {mode === "ab_test" ? <Button disabled>Launch A/B lên Meta - Sắp ra mắt</Button> : null}
+              {mode === "ab_test" ? <Button disabled>Chỉ lưu bản nháp</Button> : null}
             </div>
           </Card>
         </div>
 
-        <PreviewPanel draft={draft} fallback={mode === "new_campaign" ? buildNewCampaignPlannerDraft() : null} validation={validation} step={step} />
+        <PreviewPanel draft={draft} fallback={null} validation={getChecklist()} mode={mode} />
       </div>
     </div>
   );
@@ -751,6 +937,88 @@ function MiniProgress({ label }: { label: string }) {
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-primary-fixed">
         <div className="h-full w-1/2 animate-pulse rounded-full bg-primary" />
       </div>
+    </div>
+  );
+}
+
+function AIConsultantCard({
+  message,
+  setMessage,
+  result,
+  onAsk,
+  onAccept,
+  busy
+}: {
+  message: string;
+  setMessage: (value: string) => void;
+  result: AIConsultantResponse | null;
+  onAsk: () => void;
+  onAccept: () => void;
+  busy: boolean;
+}) {
+  return (
+    <Card className="rounded-lg p-5">
+      <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
+        <div>
+          <div className="flex items-center gap-2">
+            <MaterialIcon className="text-primary" filled name="auto_awesome" />
+            <h3 className="text-lg font-extrabold">AI tư vấn tạo quảng cáo</h3>
+          </div>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Viết đơn giản như đang nói với nhân viên marketing: bạn bán gì, muốn có tin nhắn/lead/sale, ngân sách khoảng bao nhiêu.
+          </p>
+          <Textarea
+            className="mt-4"
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            placeholder="Ví dụ: Tôi bán khóa học AI cho chủ doanh nghiệp, muốn có lead/inbox, ngân sách 500k/ngày, khách ở Hà Nội..."
+          />
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Button variant="ai" onClick={onAsk} disabled={busy}>
+              <MaterialIcon name="contact_support" />
+              Hỏi AI tư vấn
+            </Button>
+            <Button variant="secondary" onClick={onAccept} disabled={busy || !result}>
+              Chấp thuận & tạo preview
+            </Button>
+          </div>
+        </div>
+        <div className="rounded-lg bg-surface-container-low p-4">
+          {!result ? (
+            <div className="text-sm text-on-surface-variant">
+              AI sẽ trả về đề xuất dễ hiểu, cấu trúc campaign nên dùng và những thông tin còn thiếu. Nếu chưa cấu hình Gemini key, app sẽ báo rõ thay vì đứng im.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-bold uppercase text-outline">Đề xuất</p>
+                <p className="mt-1 text-sm font-semibold">{result.advice}</p>
+              </div>
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <InfoPill label="Chế độ" value={result.plan.mode === "scale_campaign" ? "Scale camp cũ" : result.plan.mode === "ab_test" ? "Testing A/B" : "Tạo camp mới"} />
+                <InfoPill label="Mục tiêu" value={result.plan.objective || "Chưa rõ"} />
+                <InfoPill label="Ngân sách" value={result.plan.dailyBudget ? formatVnd(result.plan.dailyBudget) : "Chưa rõ"} />
+                <InfoPill label="Cấu trúc" value={result.plan.recommendedStructure} />
+              </div>
+              {result.plan.reason ? <p className="rounded-md bg-white p-3 text-sm text-on-surface-variant">{result.plan.reason}</p> : null}
+              {result.plan.missingFields.length ? (
+                <div className="rounded-md bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                  Còn thiếu: {result.plan.missingFields.join(", ")}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function InfoPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-white p-3">
+      <p className="text-[11px] font-bold uppercase text-outline">{label}</p>
+      <p className="mt-1 font-bold">{value}</p>
     </div>
   );
 }
@@ -786,7 +1054,6 @@ function ScalePanel(props: {
   selectedCampaign?: Campaign;
   selectedAdset?: AdSet;
   onLoadCampaigns: () => void;
-  onUseCampaign: (campaignId: string) => void;
 }) {
   const sourceRows = buildScaleSourceRows(props.campaigns);
 
@@ -809,20 +1076,17 @@ function ScalePanel(props: {
         </Field>
         <Field label="Từ ngày"><Input type="date" value={props.scaleRange.startDate} onChange={(event) => props.setScaleRange({ ...props.scaleRange, startDate: event.target.value })} /></Field>
         <Field label="Đến ngày"><Input type="date" value={props.scaleRange.endDate} onChange={(event) => props.setScaleRange({ ...props.scaleRange, endDate: event.target.value })} /></Field>
-        <Field label="Campaign nguồn" className="md:col-span-2">
-          <select className="dashboard-input" value={props.sourceCampaignId} onChange={(event) => props.setSourceCampaignId(event.target.value)}>
-            <option value="">Chọn campaign</option>
-            {props.campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name} · {campaign.status || "UNKNOWN"} · {campaign.objective || "UNKNOWN"}</option>)}
-          </select>
-        </Field>
-        <Field label="Số lượng nhân bản">
-          <Input type="number" min={1} max={20} value={props.cloneQuantity} onChange={(event) => props.setCloneQuantity(Number(event.target.value))} disabled={props.scaleAction === "increase_budget"} />
-        </Field>
+        <div className="md:col-span-3 rounded-md bg-surface-container-low p-4 text-sm text-on-surface-variant">
+          {props.sourceCampaignId ? "Đã chọn campaign nguồn. Nếu cần đổi, chọn radio ở bảng bên dưới." : "Bấm Lấy campaign rồi chọn một dòng trong bảng bên dưới."}
+        </div>
         <Field label="Nhóm quảng cáo nguồn" className="md:col-span-2">
           <select className="dashboard-input" value={props.sourceAdsetId} onChange={(event) => props.setSourceAdsetId(event.target.value)} disabled={props.scaleAction === "clone_campaign"}>
             <option value="">{props.scaleAction === "clone_campaign" ? "Không cần chọn adset" : "Chọn adset"}</option>
             {props.adsets.map((adset) => <option key={adset.id} value={adset.id}>{adset.name} · {adset.status || "UNKNOWN"}</option>)}
           </select>
+        </Field>
+        <Field label="Số lượng nhân bản">
+          <Input type="number" min={1} max={20} value={props.cloneQuantity} onChange={(event) => props.setCloneQuantity(Number(event.target.value))} disabled={props.scaleAction === "increase_budget"} />
         </Field>
         <Field label="Ngân sách mới">
           <Input value={props.newBudget} onChange={(event) => props.setNewBudget(event.target.value)} placeholder="VD: 500000" />
@@ -840,7 +1104,7 @@ function ScalePanel(props: {
               <th className="px-4 py-3 text-right">Kết quả</th>
               <th className="px-4 py-3 text-right">Hiển thị</th>
               <th className="px-4 py-3">Ngày tạo</th>
-              <th className="px-4 py-3"></th>
+              <th className="px-4 py-3">Chọn</th>
             </tr>
           </thead>
           <tbody>
@@ -857,8 +1121,14 @@ function ScalePanel(props: {
                 <td className="px-4 py-3 text-right">{campaign.results}</td>
                 <td className="px-4 py-3 text-right">{campaign.impressions.toLocaleString("vi-VN")}</td>
                 <td className="px-4 py-3">{campaign.createdTime || "Không có dữ liệu"}</td>
-                <td className="px-4 py-3 text-right">
-                  <Button variant="secondary" onClick={() => props.onUseCampaign(campaign.campaignId)}>Nhân bản</Button>
+                <td className="px-4 py-3 text-center">
+                  <input
+                    aria-label={`Chọn ${campaign.name}`}
+                    type="radio"
+                    name="sourceCampaign"
+                    checked={campaign.campaignId === props.sourceCampaignId}
+                    onChange={() => props.setSourceCampaignId(campaign.campaignId)}
+                  />
                 </td>
               </tr>
             ))}
@@ -902,6 +1172,19 @@ function NewCampaignPanel(props: {
               <option>Tin nhắn</option><option>Tương tác</option><option>Lead</option><option>Chuyển đổi</option><option>Traffic</option><option>Sales</option>
             </select>
           </Field>
+          <Field label="Mô hình tạo camp">
+            <select className="dashboard-input" value={props.form.structureMode || "1-1-1"} onChange={(event) => props.updateField("structureMode", event.target.value as CampaignBuilderInput["structureMode"])}>
+              <option value="1-1-1">1 Campaign - 1 Nhóm - 1 Quảng cáo</option>
+              <option value="1-3-3">1 Campaign - 3 Nhóm - 9 Quảng cáo</option>
+              <option value="custom">Tùy chỉnh</option>
+            </select>
+          </Field>
+          {props.form.structureMode === "custom" ? (
+            <>
+              <Field label="Số nhóm quảng cáo"><Input type="number" min={1} max={10} value={props.form.adsetCount || 1} onChange={(event) => props.updateField("adsetCount", Number(event.target.value))} /></Field>
+              <Field label="Số quảng cáo mỗi nhóm"><Input type="number" min={1} max={10} value={props.form.adsPerAdset || 1} onChange={(event) => props.updateField("adsPerAdset", Number(event.target.value))} /></Field>
+            </>
+          ) : null}
           <Field label="Ngân sách mỗi ngày"><Input value={props.form.dailyBudget} onChange={(event) => props.updateField("dailyBudget", event.target.value)} /></Field>
           <Field label="Ngày bắt đầu"><Input type="date" value={props.form.startDate} onChange={(event) => props.updateField("startDate", event.target.value)} /></Field>
           <Field label="Ngày kết thúc"><Input type="date" value={props.form.endDate} disabled={props.form.runContinuously} onChange={(event) => props.updateField("endDate", event.target.value)} /></Field>
@@ -913,6 +1196,14 @@ function NewCampaignPanel(props: {
             </select>
           </Field>
           <Field label="Khu vực chạy"><Input value={props.form.location} onChange={(event) => props.updateField("location", event.target.value)} /></Field>
+          <Field label="Độ tuổi"><Input value={props.form.ageRange || "25-44"} onChange={(event) => props.updateField("ageRange", event.target.value)} /></Field>
+          <Field label="Giới tính">
+            <select className="dashboard-input" value={props.form.gender || "Tất cả"} onChange={(event) => props.updateField("gender", event.target.value)}>
+              <option>Tất cả</option>
+              <option>Nam</option>
+              <option>Nữ</option>
+            </select>
+          </Field>
           <Field label="Fanpage">
             <select className="dashboard-input" value={props.form.pageId || ""} onChange={(event) => props.onPageChange(event.target.value)}>
               <option value="">Chọn fanpage từ tài khoản</option>
@@ -955,50 +1246,127 @@ function NewCampaignPanel(props: {
 }
 
 function ABTestPanel(props: {
-  abName: string; setAbName: (value: string) => void;
-  abHypothesis: string; setAbHypothesis: (value: string) => void;
-  abVariable: ABTestDraft["testVariable"]; setAbVariable: (value: ABTestDraft["testVariable"]) => void;
-  abVariants: string; setAbVariants: (value: string) => void;
-  abMinimumSpend: string; setAbMinimumSpend: (value: string) => void;
-  scaleRange: { startDate: string; endDate: string }; setScaleRange: (value: { startDate: string; endDate: string }) => void;
+  testType: SimpleABTestType;
+  setTestType: (value: SimpleABTestType) => void;
+  pages: FacebookPage[];
+  pageId: string;
+  onPageChange: (value: string) => void;
+  objective: CampaignBuilderInput["objective"];
+  setObjective: (value: CampaignBuilderInput["objective"]) => void;
+  budgetPerVariant: string;
+  setBudgetPerVariant: (value: string) => void;
+  location: string;
+  setLocation: (value: string) => void;
+  ageRange: string;
+  setAgeRange: (value: string) => void;
+  gender: string;
+  setGender: (value: string) => void;
+  scaleRange: { startDate: string; endDate: string };
+  setScaleRange: (value: { startDate: string; endDate: string }) => void;
+  variants: SimpleABVariant[];
+  setVariants: React.Dispatch<React.SetStateAction<SimpleABVariant[]>>;
 }) {
+  const valueLabel =
+    props.testType === "copy"
+      ? "Bài viết/Post"
+      : props.testType === "creative"
+        ? "Media"
+        : props.testType === "audience"
+          ? "Tệp khách hàng"
+          : "Vị trí hiển thị";
+
   return (
-    <Card className="rounded-lg p-6">
-      <h3 className="text-lg font-extrabold">Testing A/B</h3>
-      <p className="mt-1 text-sm text-on-surface-variant">Tạo cấu hình test trước. Khi launch thật, mọi biến thể vẫn phải PAUSED để kiểm tra.</p>
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <Field label="Tên test"><Input value={props.abName} onChange={(event) => props.setAbName(event.target.value)} /></Field>
-        <Field label="Biến test">
-          <select className="dashboard-input" value={props.abVariable} onChange={(event) => props.setAbVariable(event.target.value as ABTestDraft["testVariable"])}>
-            <option value="creative">Creative</option><option value="audience">Tệp khách hàng</option><option value="placement">Placement</option><option value="copy">Nội dung</option>
-          </select>
-        </Field>
-        <Field label="Từ ngày"><Input type="date" value={props.scaleRange.startDate} onChange={(event) => props.setScaleRange({ ...props.scaleRange, startDate: event.target.value })} /></Field>
-        <Field label="Đến ngày"><Input type="date" value={props.scaleRange.endDate} onChange={(event) => props.setScaleRange({ ...props.scaleRange, endDate: event.target.value })} /></Field>
-        <Field label="Ngân sách tối thiểu/biến thể"><Input value={props.abMinimumSpend} onChange={(event) => props.setAbMinimumSpend(event.target.value)} /></Field>
-        <Field label="Giả thuyết test"><Textarea value={props.abHypothesis} onChange={(event) => props.setAbHypothesis(event.target.value)} /></Field>
-        <Field label="Các biến thể, mỗi dòng một biến thể" className="md:col-span-2"><Textarea rows={5} value={props.abVariants} onChange={(event) => props.setAbVariants(event.target.value)} /></Field>
-      </div>
-    </Card>
+    <div className="space-y-6">
+      <Card className="rounded-lg p-6">
+        <h3 className="text-lg font-extrabold">Bước 1: Bạn muốn test gì?</h3>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {abTestOptions.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => props.setTestType(option.key)}
+              className={`rounded-lg border p-4 text-left ${props.testType === option.key ? "border-primary bg-primary text-white" : "border-outline-variant bg-white"}`}
+            >
+              <p className="font-extrabold">{option.title}</p>
+              <p className={`mt-1 text-sm ${props.testType === option.key ? "text-white/80" : "text-on-surface-variant"}`}>{option.description}</p>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="rounded-lg p-6">
+        <h3 className="text-lg font-extrabold">Bước 2: Thông tin chung</h3>
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <Field label="Fanpage">
+            <select className="dashboard-input" value={props.pageId} onChange={(event) => props.onPageChange(event.target.value)}>
+              <option value="">Chọn fanpage</option>
+              {props.pages.map((page) => <option key={page.id} value={page.id}>{page.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Mục tiêu">
+            <select className="dashboard-input" value={props.objective} onChange={(event) => props.setObjective(event.target.value as CampaignBuilderInput["objective"])}>
+              <option>Tin nhắn</option><option>Tương tác</option><option>Lead</option><option>Traffic</option><option>Sales</option>
+            </select>
+          </Field>
+          <Field label="Ngân sách mỗi biến thể"><Input value={props.budgetPerVariant} onChange={(event) => props.setBudgetPerVariant(event.target.value)} /></Field>
+          <Field label="Khu vực"><Input value={props.location} onChange={(event) => props.setLocation(event.target.value)} /></Field>
+          <Field label="Từ ngày"><Input type="date" value={props.scaleRange.startDate} onChange={(event) => props.setScaleRange({ ...props.scaleRange, startDate: event.target.value })} /></Field>
+          <Field label="Đến ngày"><Input type="date" value={props.scaleRange.endDate} onChange={(event) => props.setScaleRange({ ...props.scaleRange, endDate: event.target.value })} /></Field>
+          <Field label="Độ tuổi"><Input value={props.ageRange} onChange={(event) => props.setAgeRange(event.target.value)} /></Field>
+          <Field label="Giới tính">
+            <select className="dashboard-input" value={props.gender} onChange={(event) => props.setGender(event.target.value)}>
+              <option>Tất cả</option><option>Nam</option><option>Nữ</option>
+            </select>
+          </Field>
+        </div>
+      </Card>
+
+      <Card className="rounded-lg p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-extrabold">Bước 3: Tạo biến thể</h3>
+            <p className="text-sm text-on-surface-variant">Mỗi biến thể chỉ thay đổi 1 yếu tố: {valueLabel}.</p>
+          </div>
+          <Button variant="secondary" onClick={() => props.setVariants((current) => [...current, { id: String.fromCharCode(65 + current.length), label: `Biến thể ${String.fromCharCode(65 + current.length)}`, value: "" }])}>
+            + Thêm biến thể
+          </Button>
+        </div>
+        <div className="mt-4 space-y-3">
+          {props.variants.map((variant, index) => (
+            <Field key={variant.id} label={`${variant.label} - ${valueLabel}`}>
+              <Input
+                value={variant.value}
+                placeholder={props.testType === "copy" ? "Nhập/chọn post khác nhau" : `Nhập ${valueLabel.toLowerCase()} khác nhau`}
+                onChange={(event) => props.setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item))}
+              />
+            </Field>
+          ))}
+        </div>
+      </Card>
+    </div>
   );
 }
 
-function PreviewPanel({ draft, fallback, validation, step }: { draft: CampaignPlannerDraft | null; fallback: CampaignPlannerDraft | null; validation: Array<{ key: string; label: string; ok: boolean; note?: string }>; step: number }) {
+function PreviewPanel({ draft, fallback, validation, mode }: { draft: CampaignPlannerDraft | null; fallback: CampaignPlannerDraft | null; validation: Array<{ key: string; label: string; ok: boolean; note?: string }>; mode: CampaignBuilderMode }) {
   const data = draft ?? fallback;
+  const emptyMessage =
+    mode === "scale_existing"
+      ? "Bạn cần lấy campaign và chọn campaign nguồn trước khi nhân bản."
+      : mode === "ab_test"
+        ? "Chọn loại test, nhập 2 biến thể khác nhau rồi bấm Tạo preview."
+        : "Nhập thông tin cơ bản rồi bấm Tạo preview để xem cây Campaign > Nhóm quảng cáo > Quảng cáo.";
   return (
     <div className="space-y-6 xl:sticky xl:top-24 xl:self-start">
       <Card className="rounded-lg p-6">
         <h3 className="text-lg font-extrabold">Preview & Launch</h3>
-        <p className="mt-1 text-sm text-on-surface-variant">Bước hiện tại: {step}/3. Preview không tự tạo campaign ACTIVE.</p>
-        {!data ? <div className="mt-5 rounded-md bg-surface-container-low p-5 text-sm text-on-surface-variant">Chọn chế độ và bấm “Tạo preview”.</div> : null}
+        <p className="mt-1 text-sm text-on-surface-variant">Preview chỉ để kiểm tra. Không tự tạo campaign ACTIVE.</p>
+        {!data ? <div className="mt-5 rounded-md bg-surface-container-low p-5 text-sm text-on-surface-variant">{emptyMessage}</div> : null}
         {data ? (
           <div className="mt-5 space-y-4">
             <PreviewSection title="Tổng quan" rows={{ mode: data.mode, accountId: data.accountId, title: data.title }} />
-            {data.campaignDraft ? <PreviewSection title="Campaign mới" rows={data.campaignDraft.campaign} /> : null}
-            {data.campaignDraft ? <PreviewSection title="Ad Set" rows={{ ...data.campaignDraft.adSet, interests: data.campaignDraft.adSet.interests.map((item) => item.name).join(", ") }} /> : null}
-            {data.campaignDraft ? <PreviewSection title="Ads" rows={data.campaignDraft.ads} /> : null}
+            {data.campaignDraft ? <CampaignTreePreview draft={data.campaignDraft} /> : null}
             {data.scale ? <PreviewSection title="Scale camp cũ" rows={data.metaPayload} /> : null}
-            {data.abTest ? <PreviewSection title="A/B test" rows={data.abTest as unknown as Record<string, unknown>} /> : null}
+            {data.abTest ? <ABPreview draft={data.abTest} /> : null}
             {data.warnings.length ? <PreviewSection title="Cần kiểm tra" rows={Object.fromEntries(data.warnings.map((item, index) => [`warning_${index + 1}`, item]))} /> : null}
           </div>
         ) : null}
@@ -1009,6 +1377,53 @@ function PreviewPanel({ draft, fallback, validation, step }: { draft: CampaignPl
           {validation.map((item) => <div key={item.key} className="flex gap-3 rounded-md bg-surface-container-low p-3"><MaterialIcon className={item.ok ? "text-emerald-600" : "text-amber-600"} name={item.ok ? "check_circle" : "warning"} /><span><span className="block font-bold">{item.label}</span>{item.note ? <span className="text-xs text-on-surface-variant">{item.note}</span> : null}</span></div>)}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function CampaignTreePreview({ draft }: { draft: CampaignDraft }) {
+  return (
+    <div className="rounded-lg border border-outline-variant p-4">
+      <p className="mb-3 text-sm font-extrabold text-primary">Cấu trúc sẽ tạo</p>
+      <div className="rounded-md bg-surface-container-low p-3">
+        <p className="font-extrabold">Campaign: {draft.campaign.name}</p>
+        <p className="text-xs text-on-surface-variant">Mã: {draft.campaign.code} · {draft.campaign.objective} · {draft.campaign.status}</p>
+      </div>
+      <div className="mt-3 space-y-3 pl-4">
+        {(draft.adsets ?? [{ ...draft.adSet, ads: [draft.ads] }]).map((adset, index) => (
+          <div key={`${adset.name}-${index}`} className="border-l-2 border-primary/30 pl-4">
+            <div className="rounded-md bg-white p-3 ring-1 ring-outline-variant">
+              <p className="font-bold">Adset {index + 1}: {adset.name}</p>
+              <p className="text-xs text-on-surface-variant">{adset.ageRange} · {adset.gender} · {adset.location}</p>
+            </div>
+            <div className="mt-2 space-y-2 pl-4">
+              {adset.ads.map((ad, adIndex) => (
+                <div key={`${ad.name}-${adIndex}`} className="rounded-md bg-surface-container-low p-3">
+                  <p className="font-semibold">Ad {adIndex + 1}: {ad.name}</p>
+                  <p className="text-xs text-on-surface-variant">{ad.headline} · {ad.cta}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ABPreview({ draft }: { draft: ABTestDraft }) {
+  return (
+    <div className="rounded-lg border border-outline-variant p-4">
+      <p className="mb-3 text-sm font-extrabold text-primary">A/B Test: {draft.name}</p>
+      <div className="space-y-2">
+        {draft.variants.map((variant, index) => (
+          <div key={variant.id} className="rounded-md bg-surface-container-low p-3">
+            <p className="font-bold">Biến thể {String.fromCharCode(65 + index)}</p>
+            <p className="text-sm text-on-surface-variant">{String(variant.payload.value || variant.name)}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm font-semibold text-amber-800">A/B test chỉ có ý nghĩa khi mỗi lần bạn chỉ thay đổi 1 yếu tố.</p>
     </div>
   );
 }

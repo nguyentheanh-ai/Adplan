@@ -346,6 +346,7 @@ export type CreativeAsset = {
 
 export type CampaignBuilderInput = {
   adAccountId?: string;
+  campaignCode?: string;
   pageId?: string;
   pageName?: string;
   postId?: string;
@@ -365,6 +366,11 @@ export type CampaignBuilderInput = {
   notes?: string;
   mediaNote?: string;
   mediaFiles?: string[];
+  structureMode?: "1-1-1" | "1-3-3" | "custom";
+  adsetCount?: number;
+  adsPerAdset?: number;
+  ageRange?: string;
+  gender?: string;
 };
 
 export type CampaignBuilderMode = "scale_existing" | "new_campaign" | "ab_test";
@@ -414,6 +420,7 @@ export type CampaignPlannerDraft = {
 
 export type CampaignDraft = {
   campaign: {
+    code?: string;
     name: string;
     objective: string;
     budget: string;
@@ -441,6 +448,7 @@ export type CampaignDraft = {
     cta: string;
     url?: string;
   };
+  adsets: Array<CampaignDraft["adSet"] & { ads: CampaignDraft["ads"][] }>;
   naming: {
     campaignNameFormat: string;
     adsetNameFormat: string;

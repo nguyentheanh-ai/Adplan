@@ -590,19 +590,131 @@ export async function createPausedMetaCampaign({
 
 export const createCampaignOnMeta = createPausedMetaCampaign;
 
-export async function createAdsetOnMeta() {
-  throw new MetaApiError({
-    status: 501,
-    message: "Ad set creation is not enabled yet",
-    userMessage: "Tao ad set that chua duoc bat. Hay dung preview va bo sung trong Ads Manager."
+function parseAgeRange(ageRange?: string) {
+  const matches = String(ageRange || "25-44").match(/\d+/g) ?? [];
+  const min = Number(matches[0] || 25);
+  const max = Number(matches[1] || 44);
+  return {
+    age_min: Math.max(18, Math.min(min, 65)),
+    age_max: Math.max(Math.max(18, min), Math.min(max, 65))
+  };
+}
+
+function parseGender(gender?: string) {
+  const normalized = String(gender || "").toLowerCase();
+  if (normalized.includes("nam")) return [1];
+  if (normalized.includes("nữ") || normalized.includes("nu")) return [2];
+  return [];
+}
+
+function parseDailyBudget(value?: string) {
+  const amount = String(value || "").replace(/[^\d]/g, "");
+  if (!amount) {
+    throw new MetaApiError({
+      status: 400,
+      message: "Missing daily budget",
+      userMessage: "Vui lòng nhập ngân sách mỗi ngày trước khi launch."
+    });
+  }
+  return amount;
+}
+
+export async function createAdsetOnMeta({
+  adAccountId,
+  campaignId,
+  name,
+  dailyBudget,
+  ageRange,
+  gender,
+  accessToken
+}: {
+  adAccountId?: string | null;
+  campaignId: string;
+  name: string;
+  dailyBudget: string;
+  ageRange?: string;
+  gender?: string;
+  accessToken?: string | null;
+}) {
+  const normalizedAdAccountId = resolveAdAccountId(adAccountId);
+  const age = parseAgeRange(ageRange);
+  const genders = parseGender(gender);
+  const targeting: Record<string, unknown> = {
+    geo_locations: { countries: ["VN"] },
+    age_min: age.age_min,
+    age_max: age.age_max
+  };
+  if (genders.length) targeting.genders = genders;
+
+  const body = new URLSearchParams({
+    name,
+    campaign_id: campaignId,
+    status: "PAUSED",
+    daily_budget: parseDailyBudget(dailyBudget),
+    billing_event: "IMPRESSIONS",
+    optimization_goal: "POST_ENGAGEMENT",
+    targeting: JSON.stringify(targeting)
+  });
+
+  return metaFetch<{ id: string }>(`${normalizedAdAccountId}/adsets`, {
+    accessToken,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
   });
 }
 
-export async function createAdOnMeta() {
-  throw new MetaApiError({
-    status: 501,
-    message: "Ad creation is not enabled yet",
-    userMessage: "Tao ads that chua duoc bat. Hay dung preview va bo sung trong Ads Manager."
+export async function createPostAdCreativeOnMeta({
+  adAccountId,
+  name,
+  objectStoryId,
+  accessToken
+}: {
+  adAccountId?: string | null;
+  name: string;
+  objectStoryId: string;
+  accessToken?: string | null;
+}) {
+  const normalizedAdAccountId = resolveAdAccountId(adAccountId);
+  const body = new URLSearchParams({
+    name,
+    object_story_id: objectStoryId
+  });
+
+  return metaFetch<{ id: string }>(`${normalizedAdAccountId}/adcreatives`, {
+    accessToken,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+}
+
+export async function createAdOnMeta({
+  adAccountId,
+  adsetId,
+  name,
+  creativeId,
+  accessToken
+}: {
+  adAccountId?: string | null;
+  adsetId: string;
+  name: string;
+  creativeId: string;
+  accessToken?: string | null;
+}) {
+  const normalizedAdAccountId = resolveAdAccountId(adAccountId);
+  const body = new URLSearchParams({
+    name,
+    adset_id: adsetId,
+    status: "PAUSED",
+    creative: JSON.stringify({ creative_id: creativeId })
+  });
+
+  return metaFetch<{ id: string }>(`${normalizedAdAccountId}/ads`, {
+    accessToken,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
   });
 }
 

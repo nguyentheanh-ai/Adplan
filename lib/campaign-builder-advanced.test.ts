@@ -1,51 +1,104 @@
 import { describe, expect, it } from "vitest";
-import { buildScaleSourceRows, createABTestDraft, generateScalePreview, validateABTestConfig } from "./campaign-builder";
+import {
+  buildScaleSourceRows,
+  createABTestDraft,
+  generateAdName,
+  generateAdsetName,
+  generateCampaignCode,
+  generateCampaignDraft,
+  generateCampaignName,
+  normalizeVietnameseText,
+  validateABTestConfig
+} from "./campaign-builder";
 
 describe("advanced campaign builder", () => {
-  it("builds a safe paused scale preview for campaign cloning", () => {
-    const preview = generateScalePreview({
-      adAccountId: "act_123",
-      action: "clone_campaign",
-      dateRange: { startDate: "2026-05-01", endDate: "2026-05-20" },
-      sourceCampaignId: "cmp_1",
-      quantity: 3,
-      newBudget: "500000"
-    });
-
-    expect(preview.mode).toBe("scale_existing");
-    expect(preview.warnings).toContain("Campaign clone se duoc tao o trang thai PAUSED.");
-    expect(preview.metaPayload.status).toBe("PAUSED");
-    expect(preview.scale?.quantity).toBe(3);
+  it("generates readable campaign, adset and ad names from Vietnamese input", () => {
+    expect(generateCampaignCode("act_12024728344320568", 0)).toBe("056800");
+    expect(normalizeVietnameseText("Khóa học AI cho nữ 25-44")).toBe("KhoaHocAIChoNu2544");
+    expect(
+      generateCampaignName({
+        date: "2026-05-20",
+        objective: "Tin nhắn",
+        productName: "Khóa học AI",
+        audienceName: "Nữ 25-44",
+        postLabel: "Post 01"
+      })
+    ).toBe("20_05_TinNhan_KhoaHocAI_Nu2544_Post01");
+    expect(generateAdsetName({ campaignCode: "056800", audienceName: "Nữ quan tâm spa", ageRange: "25-44" })).toBe(
+      "056800_NuQuanTamSpa_25-44"
+    );
+    expect(generateAdName({ campaignCode: "056800", postText: "Bạn không thiếu khách hàng" })).toBe("056800_BanKhongThieu");
   });
 
-  it("validates A/B tests need at least two variants", () => {
-    const result = validateABTestConfig({
-      name: "Test hook",
-      hypothesis: "Hook ro hon se tang CTR",
-      testVariable: "creative",
-      budgetSplit: { A: 100 },
-      schedule: { startDate: "2026-05-21", endDate: "2026-05-28" },
-      winnerRule: { metric: "ctr", minimumSpend: "300000" },
-      variants: [{ id: "A", name: "Variant A", variable: "creative", payload: {} }]
-    });
+  it("builds a 1-1-1 campaign tree preview", () => {
+    const draft = generateCampaignDraft(
+      {
+        adAccountId: "act_12024728344320568",
+        campaignCode: "056800",
+        pageId: "page_1",
+        pageName: "Page",
+        postId: "post_1",
+        postMessage: "Bạn không thiếu khách hàng",
+        productName: "Khóa học AI",
+        industry: "Giáo dục",
+        objective: "Tin nhắn",
+        dailyBudget: "500000",
+        startDate: "2026-05-20",
+        runContinuously: true,
+        fanpage: "Page",
+        location: "Việt Nam",
+        targetCustomer: "Nữ 25-44",
+        offer: "Ưu đãi",
+        structureMode: "1-1-1"
+      },
+      []
+    );
 
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContain("Can it nhat 2 bien the de test A/B.");
+    expect(draft.campaign.name).toBe("20_05_TinNhan_KhoaHocAI_Nu2544_Post01");
+    expect(draft.adsets).toHaveLength(1);
+    expect(draft.adsets[0].ads).toHaveLength(1);
   });
 
-  it("creates an A/B test draft with equal budget split", () => {
+  it("builds a 1-3-3 campaign tree preview", () => {
+    const draft = generateCampaignDraft(
+      {
+        adAccountId: "act_12024728344320568",
+        campaignCode: "056801",
+        pageId: "page_1",
+        pageName: "Page",
+        productName: "Spa",
+        industry: "Làm đẹp",
+        objective: "Lead",
+        dailyBudget: "900000",
+        startDate: "2026-05-20",
+        runContinuously: true,
+        fanpage: "Page",
+        website: "https://example.com",
+        location: "Hà Nội",
+        targetCustomer: "Nữ quan tâm spa",
+        offer: "Đặt lịch",
+        structureMode: "1-3-3"
+      },
+      []
+    );
+
+    expect(draft.adsets).toHaveLength(3);
+    expect(draft.adsets.flatMap((adset) => adset.ads)).toHaveLength(9);
+  });
+
+  it("blocks A/B preview when the tested value is duplicated", () => {
     const draft = createABTestDraft({
-      name: "Test creative khoa hoc",
-      hypothesis: "Video testimonial se co CPL tot hon anh tinh",
-      testVariable: "creative",
+      name: "Test bài viết",
+      hypothesis: "Chỉ thay đổi bài viết",
+      testVariable: "copy",
       schedule: { startDate: "2026-05-21", endDate: "2026-05-28" },
       minimumSpend: "500000",
-      variants: ["Video testimonial", "Anh uu dai"]
+      variants: ["post_1", "post_1"]
     });
 
-    expect(draft.variants).toHaveLength(2);
-    expect(draft.budgetSplit).toEqual({ "Video testimonial": 50, "Anh uu dai": 50 });
-    expect(validateABTestConfig(draft).ok).toBe(true);
+    const result = validateABTestConfig(draft);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("Các biến thể không được trùng dữ liệu ở yếu tố đang test.");
   });
 
   it("normalizes scale source campaigns with budget, spend and result counts", () => {

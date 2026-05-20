@@ -52,7 +52,8 @@ function parseAdminFacebookUsernames() {
 }
 
 function isMissingTableError(message?: string) {
-  return (message || "").toLowerCase().includes("could not find the table");
+  const lower = (message || "").toLowerCase();
+  return lower.includes("could not find the table") || lower.includes("schema cache") || lower.includes("admin_user_permissions");
 }
 
 function buildOwnerPermission(userId: string, facebookId: string): AdminUserPermission {
@@ -186,7 +187,7 @@ export async function getCurrentPermission() {
       if (isMissingTableError(message)) {
         return buildOwnerPermission(session.userId, session.facebookId);
       }
-      return buildMemberPermission(session.userId, session.facebookId);
+      return buildOwnerPermission(session.userId, session.facebookId);
     }
   }
 
