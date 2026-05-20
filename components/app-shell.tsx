@@ -124,17 +124,17 @@ export function AppShell({
     <div className="min-h-screen bg-background text-on-background">
       <aside
         className={cn(
-          "fixed left-0 top-0 z-50 hidden h-full w-[268px] flex-col border-r border-outline-variant/70 bg-white/95 shadow-soft backdrop-blur transition-transform md:flex",
+          "fixed left-0 top-0 z-50 hidden h-full w-[240px] flex-col border-r border-outline-variant bg-surface-container-lowest transition-transform md:flex",
           sidebarHidden && "md:-translate-x-full"
         )}
       >
         <div className="px-5 py-6">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ai-gradient text-white shadow-glow">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-white">
               <MaterialIcon filled name="insights" />
             </div>
             <div>
-              <h1 className="text-xl font-extrabold leading-none text-primary">AdPlanner AI</h1>
+              <h1 className="text-3xl font-extrabold leading-none text-primary">AdPlanner AI</h1>
               <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-outline">Meta Ads Cockpit</p>
             </div>
           </Link>
@@ -148,8 +148,8 @@ export function AppShell({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-on-surface-variant transition hover:bg-surface-container-low hover:text-primary",
-                  active && "bg-primary text-white shadow-glow hover:bg-primary hover:text-white"
+                  "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold text-on-surface-variant transition hover:bg-surface-container",
+                  active && "bg-primary text-white hover:bg-primary"
                 )}
               >
                 <MaterialIcon className="text-[22px]" filled={active} name={item.icon} />
@@ -160,17 +160,15 @@ export function AppShell({
         </nav>
 
         <div className="px-4 py-5">
-          <div className="mb-4 rounded-2xl border border-outline-variant/70 bg-surface-container-low p-4">
+          <div className="mb-4 rounded-lg border border-outline-variant bg-surface-container-low p-4">
             <p className="text-xs font-bold uppercase tracking-wide text-outline">Kết nối</p>
             <p className="mt-1 text-sm font-bold text-on-surface">Facebook Marketing API</p>
             <p className="mt-1 text-xs leading-5 text-on-surface-variant">Campaign thật luôn được giữ PAUSED trước khi duyệt.</p>
-            {!permissionLoaded ? null : (
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-outline">Vai trò: {userRole}</p>
-            )}
+            {!permissionLoaded ? null : <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-outline">Vai trò: {userRole}</p>}
           </div>
           <button
             onClick={signOut}
-            className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold text-on-surface-variant transition hover:bg-surface-container-low hover:text-primary"
+            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-bold text-on-surface-variant transition hover:bg-surface-container hover:text-primary"
           >
             <MaterialIcon name="logout" />
             Đăng xuất
@@ -180,12 +178,12 @@ export function AppShell({
 
       <header
         className={cn(
-          "fixed right-0 top-0 z-40 flex h-16 w-full items-center justify-between border-b border-outline-variant/70 bg-white/82 px-4 backdrop-blur md:px-6",
-          sidebarHidden ? "md:w-full" : "md:w-[calc(100%-268px)]"
+          "fixed right-0 top-0 z-40 flex h-16 w-full items-center justify-between border-b border-outline-variant bg-surface-container-lowest px-4 md:px-6",
+          sidebarHidden ? "md:w-full" : "md:w-[calc(100%-240px)]"
         )}
       >
         <Link className="flex items-center gap-2 md:hidden" href="/dashboard">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-white">
             <MaterialIcon filled name="insights" />
           </div>
           <span className="font-extrabold text-primary">AdPlanner AI</span>
@@ -193,7 +191,7 @@ export function AppShell({
         <div className="hidden text-sm font-bold text-primary md:block">AI Ads Planner</div>
         <div className="flex items-center gap-3">
           <button
-            className="hidden h-10 items-center gap-2 rounded-xl border border-outline-variant/70 bg-white px-3 text-sm font-bold text-on-surface-variant hover:text-primary md:inline-flex"
+            className="hidden h-10 items-center gap-2 rounded-lg border border-outline-variant bg-white px-3 text-sm font-bold text-on-surface-variant hover:text-primary md:inline-flex"
             onClick={toggleSidebar}
             type="button"
           >
@@ -204,14 +202,12 @@ export function AppShell({
             <p className="text-sm font-bold text-on-surface">Tài khoản</p>
             <p className="text-[11px] uppercase tracking-wider text-outline">Facebook</p>
           </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary-fixed bg-primary-fixed text-sm font-extrabold text-primary">
-            FB
-          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary-fixed bg-primary-fixed text-sm font-extrabold text-primary">FB</div>
         </div>
       </header>
 
-      <main className={cn("min-h-screen transition-all", sidebarHidden ? "md:ml-0" : "md:ml-[268px]", contentClassName)}>
-        <div className={cn("mx-auto", sidebarHidden || isDashboardPage ? "max-w-[1600px]" : "max-w-[1280px]")}>
+      <main className={cn("min-h-screen transition-all", sidebarHidden ? "md:ml-0" : "md:ml-[240px]", contentClassName)}>
+        <div className={cn("mx-auto", sidebarHidden || isDashboardPage ? "max-w-[1440px]" : "max-w-[1280px]")}>
           {title ? (
             <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
@@ -225,15 +221,11 @@ export function AppShell({
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 grid h-16 grid-cols-5 border-t border-outline-variant/70 bg-white px-2 md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 grid h-16 grid-cols-5 border-t border-outline-variant bg-white px-2 md:hidden">
         {visibleNavItems.slice(0, 5).map((item) => {
           const active = isActive(pathname, item.match);
           return (
-            <Link
-              key={`${item.href}-mobile`}
-              href={item.href}
-              className={cn("flex flex-col items-center justify-center gap-1 text-on-surface-variant", active && "text-primary")}
-            >
+            <Link key={`${item.href}-mobile`} href={item.href} className={cn("flex flex-col items-center justify-center gap-1 text-on-surface-variant", active && "text-primary")}>
               <MaterialIcon className="text-[22px]" filled={active} name={item.icon} />
               <span className="max-w-full truncate text-[10px] font-bold">{item.label}</span>
             </Link>

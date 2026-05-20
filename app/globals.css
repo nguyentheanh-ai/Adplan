@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap");
 
 @tailwind base;
@@ -19,9 +19,9 @@ html {
 
 body {
   margin: 0;
-  background: #f8f9ff;
-  color: #0b1c30;
-  font-family: "Be Vietnam Pro", Inter, system-ui, sans-serif;
+  background: #faf9ff;
+  color: #051a3e;
+  font-family: "Hanken Grotesk", Inter, system-ui, sans-serif;
 }
 
 button,
@@ -115,22 +115,27 @@ select {
 }
 
 .dashboard-input {
-  height: 2.75rem;
+  height: 2.5rem;
   width: 100%;
-  border-radius: 1rem;
-  border: 1px solid #c2c6d9;
+  border-radius: 0.5rem;
+  border: 1px solid #c3c6d6;
   background: #ffffff;
-  padding: 0 0.875rem;
+  padding: 0 0.75rem;
   font-size: 0.875rem;
-  font-weight: 700;
-  color: #0b1c30;
+  font-weight: 600;
+  color: #051a3e;
   outline: none;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .dashboard-input:focus {
-  border-color: #004cca;
-  box-shadow: 0 0 0 2px rgba(0, 76, 202, 0.16);
+  border-width: 2px;
+  border-color: #003d9b;
+  box-shadow: none;
+}
+
+.mono-data {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 @keyframes floating {
