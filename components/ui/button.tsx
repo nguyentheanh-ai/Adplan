@@ -8,11 +8,11 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-white shadow-lg shadow-primary/20 hover:-translate-y-0.5",
-  ai: "ai-gradient-bg text-white shadow-lg shadow-primary/20 hover:-translate-y-0.5",
+  primary: "bg-primary text-white border border-primary hover:brightness-95",
+  ai: "bg-primary-container text-on-primary border border-primary hover:brightness-95",
   secondary: "bg-white text-on-surface border border-outline-variant hover:bg-surface-container-low",
-  ghost: "bg-transparent text-on-surface-variant hover:bg-surface-variant/50 hover:text-primary",
-  danger: "bg-error text-white shadow-lg hover:-translate-y-0.5"
+  ghost: "bg-transparent text-on-surface-variant border border-transparent hover:bg-surface-container-low hover:text-primary",
+  danger: "bg-error text-white border border-error hover:brightness-95"
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -21,7 +21,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
         variants[variant],
         className
       )}
