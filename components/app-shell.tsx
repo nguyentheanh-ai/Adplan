@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { MaterialIcon } from "@/components/material-icon";
 
@@ -39,8 +38,7 @@ export function AppShell({
 
   async function signOut() {
     try {
-      const supabase = createClient();
-      await supabase.auth.signOut();
+      await fetch("/api/auth/logout", { method: "POST" });
     } catch {
       // Ignore local configuration errors and return to login.
     }

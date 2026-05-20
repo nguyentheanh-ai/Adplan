@@ -3,11 +3,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { MaterialIcon } from "@/components/material-icon";
-import { createClient } from "@/lib/supabase/client";
-
-const productionRedirectTo = "https://adsplan.theanhmarketing.com/dashboard";
-const facebookScopes = "public_profile,ads_read,ads_management,read_insights";
-
 export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -16,19 +11,7 @@ export function LoginForm() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const supabase = createClient();
-      const result = await supabase.auth.signInWithOAuth({
-        provider: "facebook",
-        options: {
-          redirectTo: productionRedirectTo,
-          scopes: facebookScopes
-        }
-      });
-
-      if (result.error) {
-        setErrorMessage(result.error.message);
-        toast.error(result.error.message);
-      }
+      window.location.href = "/api/auth/facebook/start";
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không thể mở đăng nhập Facebook.";
       setErrorMessage(message);

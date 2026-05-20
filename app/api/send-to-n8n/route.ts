@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { requireAppSession } from "@/lib/auth/session";
 import { hasSupabaseServerEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 
 const sendToN8nSchema = z.object({
   outputId: z.string().uuid().optional(),
@@ -27,14 +27,7 @@ export async function POST(request: Request) {
     }
 
     const body = sendToN8nSchema.parse(await request.json());
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Bạn cần đăng nhập để gửi kế hoạch." }, { status: 401 });
-    }
+    const session = await requireAppSession();
 
     let payload = body.ads_plan_json;
 
@@ -44,7 +37,7 @@ export async function POST(request: Request) {
         .from("ai_outputs")
         .select("id, project_id, session_id, ads_plan_json")
         .eq("id", body.outputId)
-        .eq("user_id", user.id)
+        .eq("user_id", session.userId)
         .single();
 
       if (error || !data) {

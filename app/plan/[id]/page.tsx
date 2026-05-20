@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { requireAppSession } from "@/lib/auth/session";
 import { AppShell } from "@/components/app-shell";
 import { MaterialIcon } from "@/components/material-icon";
 import { SetupRequired } from "@/components/setup-required";
@@ -7,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { adsPlanOutputSchema, type AdsPlanOutput } from "@/lib/ads-plan-schema";
 import { hasSupabasePublicEnv } from "@/lib/env";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { PlanActions } from "@/app/plan/[id]/plan-actions";
 
 type PlanPageProps = {
@@ -25,16 +26,14 @@ export default async function PlanPage({ params }: PlanPageProps) {
     );
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const session = await requireAppSession();
+  const admin = createAdminClient();
 
-  const { data } = await supabase
+  const { data } = await admin
     .from("ai_outputs")
     .select("id, ads_plan_json, session_id, projects(business_name), question_sessions(answers_json)")
     .eq("id", id)
-    .eq("user_id", user?.id ?? "")
+    .eq("user_id", session.userId)
     .single();
 
   if (!data) notFound();

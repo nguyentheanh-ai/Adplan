@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
+import { requireAppSession } from "@/lib/auth/session";
 import { analyzeRequestSchema } from "@/lib/ads-plan-schema";
 import { hasSupabaseServerEnv } from "@/lib/env";
 import { analyzeAdsPlanWithGemini } from "@/lib/gemini";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
@@ -15,15 +15,7 @@ export async function POST(request: Request) {
     }
 
     const body = analyzeRequestSchema.parse(await request.json());
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user },
-      error: userError
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Bạn cần đăng nhập để tạo kế hoạch." }, { status: 401 });
-    }
+    const session = await requireAppSession();
 
     const admin = createAdminClient();
     const firstAnswer = body.answers[0]?.answer ?? "Dự án quảng cáo mới";
@@ -34,7 +26,7 @@ export async function POST(request: Request) {
         await admin
           .from("projects")
           .insert({
-            user_id: user.id,
+            user_id: session.userId,
             business_name: firstAnswer.slice(0, 120),
             industry: firstAnswer.slice(0, 120)
           })
@@ -52,7 +44,7 @@ export async function POST(request: Request) {
         await admin
           .from("question_sessions")
           .insert({
-            user_id: user.id,
+            user_id: session.userId,
             project_id: projectId,
             answers_json: body.answers,
             status: "analyzing"
@@ -73,7 +65,7 @@ export async function POST(request: Request) {
         updated_at: new Date().toISOString()
       })
       .eq("id", sessionId)
-      .eq("user_id", user.id);
+      .eq("user_id", session.userId);
 
     const { output, raw } = await analyzeAdsPlanWithGemini(body.answers);
 
@@ -84,12 +76,12 @@ export async function POST(request: Request) {
         updated_at: new Date().toISOString()
       })
       .eq("id", projectId)
-      .eq("user_id", user.id);
+      .eq("user_id", session.userId);
 
     const { data: aiOutput, error: outputError } = await admin
       .from("ai_outputs")
       .insert({
-        user_id: user.id,
+        user_id: session.userId,
         project_id: projectId,
         session_id: sessionId,
         persona_json: output.customer_persona,
@@ -107,7 +99,7 @@ export async function POST(request: Request) {
       .from("question_sessions")
       .update({ status: "completed", updated_at: new Date().toISOString() })
       .eq("id", sessionId)
-      .eq("user_id", user.id);
+      .eq("user_id", session.userId);
 
     return NextResponse.json({
       id: aiOutput.id,

@@ -1,8 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
-
-type SessionWithProviderToken = {
-  provider_token?: string | null;
-};
+import { getAppSession } from "@/lib/auth/session";
 
 export class FacebookAuthRequiredError extends Error {
   constructor() {
@@ -12,14 +8,8 @@ export class FacebookAuthRequiredError extends Error {
 }
 
 export async function getFacebookProviderToken() {
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getSession();
-    const session = data.session as (typeof data.session & SessionWithProviderToken) | null;
-    return session?.provider_token ?? null;
-  } catch {
-    return null;
-  }
+  const session = await getAppSession();
+  return session?.accessToken ?? null;
 }
 
 export async function requireFacebookProviderToken() {

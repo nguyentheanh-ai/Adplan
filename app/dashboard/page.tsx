@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getAppSession } from "@/lib/auth/session";
 import { AppShell, MiniPersonaLink } from "@/components/app-shell";
 import { EmptyState } from "@/components/empty-state";
 import { MaterialIcon } from "@/components/material-icon";
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { adsPlanOutputSchema, type AdsPlanOutput } from "@/lib/ads-plan-schema";
 import { hasSupabasePublicEnv } from "@/lib/env";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { formatDate } from "@/lib/utils";
 
 type DashboardOutput = {
@@ -29,23 +30,20 @@ export default async function DashboardPage() {
     );
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const session = await getAppSession();
+  if (!session) redirect("/login");
 
-  if (!user) redirect("/login");
-
-  const { data: outputs } = await supabase
+  const admin = createAdminClient();
+  const { data: outputs } = await admin
     .from("ai_outputs")
     .select("id, created_at, ads_plan_json, projects(business_name, industry)")
-    .eq("user_id", user.id)
+    .eq("user_id", session.userId)
     .order("created_at", { ascending: false })
     .limit(6);
 
   return (
     <AppShell contentClassName="px-gutter pb-12 pt-24">
-      <DashboardView outputs={outputs ?? []} userEmail={user.email ?? "Facebook user"} />
+      <DashboardView outputs={outputs ?? []} userEmail={session.name ?? "Facebook user"} />
     </AppShell>
   );
 }

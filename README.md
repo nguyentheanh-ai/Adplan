@@ -7,7 +7,7 @@ Vietnamese MVP web app for guided Facebook Ads planning. A business owner answer
 - Next.js App Router
 - TypeScript
 - Tailwind CSS
-- Supabase Auth + Postgres
+- Supabase Postgres + service-role server writes
 - Gemini API through server-only API routes
 - n8n webhook handoff route
 
@@ -34,6 +34,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 GEMINI_API_KEY=
 N8N_WEBHOOK_URL=
 META_APP_ID=
+META_APP_SECRET=
 META_API_VERSION=v23.0
 ```
 
@@ -59,7 +60,7 @@ Open `http://localhost:3000`.
 
 ## Main Routes
 
-- `/login` - Facebook-only login UI. Supabase Facebook OAuth must be configured before users can enter the app.
+- `/login` - Facebook-only login UI using direct Facebook OAuth.
 - `/dashboard` - recent generated plans and empty state
 - `/ask` - guided 9-question AI chat flow
 - `/persona/[id]` - generated customer persona
@@ -103,7 +104,7 @@ Server-side route that calls:
 https://graph.facebook.com/v23.0/me/adaccounts
 ```
 
-After Facebook login, the route uses the Facebook OAuth provider token from the Supabase server session, so it returns the ad accounts owned or accessible by the logged-in Facebook user. If there is no Facebook session token, the route returns `401`.
+After Facebook login, the route uses the server-side Facebook OAuth session token, so it returns the ad accounts owned or accessible by the logged-in Facebook user. If there is no Facebook session token, the route returns `401`.
 
 ### `GET /api/meta/campaigns`
 
@@ -156,10 +157,11 @@ Add these values to `.env.local`:
 
 ```bash
 META_APP_ID=your_meta_app_id
+META_APP_SECRET=your_meta_app_secret
 META_API_VERSION=v23.0
 ```
 
-For real Facebook login, configure Supabase Auth provider `Facebook` with your Meta app id/secret and set the callback URL in Meta Developer dashboard. The login page requests:
+For real Facebook login, configure Facebook Login for Business in Meta Developer dashboard. The login page requests:
 
 ```text
 public_profile,ads_read,ads_management,read_insights
@@ -171,7 +173,7 @@ Production Meta access is scoped to the logged-in Facebook session. Do not add a
 
 ## Security Notes
 
-- `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `N8N_WEBHOOK_URL`, and `META_APP_ID` are used only in server routes/helpers.
+- `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `N8N_WEBHOOK_URL`, `META_APP_ID`, and `META_APP_SECRET` are used only in server routes/helpers.
 - Browser code only reads `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 - Supabase RLS policies restrict users to their own projects, sessions, and outputs.
 
@@ -195,21 +197,15 @@ SUPABASE_SERVICE_ROLE_KEY=
 GEMINI_API_KEY=
 N8N_WEBHOOK_URL=
 META_APP_ID=
+META_APP_SECRET=
 META_API_VERSION=v23.0
 GEMINI_MODEL=gemini-2.0-flash
 ```
 
-Then configure Supabase Auth redirect URLs for both local and production domains:
+In Meta Developer dashboard, set the Facebook OAuth redirect URI to the app callback URL:
 
 ```text
-http://localhost:3001/**
-https://your-domain.com/**
-```
-
-In Meta Developer dashboard, set the Facebook OAuth redirect URI to the Supabase callback URL:
-
-```text
-https://pppiqhkectojxbmhqcnx.supabase.co/auth/v1/callback
+https://adsplan.theanhmarketing.com/api/auth/facebook/callback
 ```
 
 Do not deploy `.env.local`. It is ignored by git.

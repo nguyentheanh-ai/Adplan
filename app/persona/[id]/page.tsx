@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { requireAppSession } from "@/lib/auth/session";
 import { AppShell } from "@/components/app-shell";
 import { MaterialIcon } from "@/components/material-icon";
 import { SetupRequired } from "@/components/setup-required";
 import { Button } from "@/components/ui/button";
 import { adsPlanOutputSchema, type AdsPlanOutput } from "@/lib/ads-plan-schema";
 import { hasSupabasePublicEnv } from "@/lib/env";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type PersonaPageProps = {
   params: Promise<{ id: string }>;
@@ -23,16 +24,14 @@ export default async function PersonaPage({ params }: PersonaPageProps) {
     );
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const session = await requireAppSession();
+  const admin = createAdminClient();
 
-  const { data } = await supabase
+  const { data } = await admin
     .from("ai_outputs")
     .select("id, ads_plan_json, projects(business_name)")
     .eq("id", id)
-    .eq("user_id", user?.id ?? "")
+    .eq("user_id", session.userId)
     .single();
 
   if (!data) notFound();

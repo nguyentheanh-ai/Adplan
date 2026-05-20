@@ -2,8 +2,7 @@ import { AppShell } from "@/components/app-shell";
 import { MaterialIcon } from "@/components/material-icon";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { hasSupabasePublicEnv } from "@/lib/env";
-import { createClient } from "@/lib/supabase/server";
+import { getAppSession } from "@/lib/auth/session";
 
 const envItems = [
   ["NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL],
@@ -12,11 +11,12 @@ const envItems = [
   ["GEMINI_API_KEY", process.env.GEMINI_API_KEY],
   ["N8N_WEBHOOK_URL", process.env.N8N_WEBHOOK_URL],
   ["META_APP_ID", process.env.META_APP_ID],
+  ["META_APP_SECRET", process.env.META_APP_SECRET],
   ["META_API_VERSION", process.env.META_API_VERSION]
 ];
 
 export default async function SettingsPage() {
-  const user = hasSupabasePublicEnv() ? (await (await createClient()).auth.getUser()).data.user : null;
+  const session = await getAppSession();
 
   return (
     <AppShell title="Cài đặt" description="Kiểm tra tài khoản và các biến môi trường cần cho MVP.">
@@ -32,8 +32,8 @@ export default async function SettingsPage() {
             </div>
           </div>
           <div className="space-y-3">
-            <InfoRow label="Email" value={user?.email ?? "Chưa đăng nhập"} />
-            <InfoRow label="User ID" value={user?.id ?? "Chưa có phiên đăng nhập"} />
+            <InfoRow label="Facebook" value={session?.name ?? "Chưa đăng nhập"} />
+            <InfoRow label="User ID" value={session?.userId ?? "Chưa có phiên đăng nhập"} />
           </div>
         </Card>
 
