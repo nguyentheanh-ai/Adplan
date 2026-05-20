@@ -28,12 +28,12 @@ export default async function SettingsPage() {
             </div>
             <div>
               <h3 className="text-xl font-bold text-primary">Tài khoản</h3>
-              <p className="text-sm text-on-surface-variant">Thông tin đăng nhập Supabase Auth.</p>
+              <p className="text-sm text-on-surface-variant">Thông tin đăng nhập Facebook hiện tại.</p>
             </div>
           </div>
           <div className="space-y-3">
-            <InfoRow label="Facebook" value={session?.name ?? "Chưa đăng nhập"} />
-            <InfoRow label="User ID" value={session?.userId ?? "Chưa có phiên đăng nhập"} />
+            <InfoRow label="Facebook" value={session?.name || "Chưa đăng nhập"} />
+            <InfoRow label="User ID" value={session?.userId || "Chưa có phiên đăng nhập"} />
           </div>
         </Card>
 

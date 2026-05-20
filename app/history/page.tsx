@@ -1,22 +1,20 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { AppShell, MiniPersonaLink } from "@/components/app-shell";
-import { EmptyState } from "@/components/empty-state";
+import { AppShell } from "@/components/app-shell";
 import { Card } from "@/components/ui/card";
-import { getAppSession } from "@/lib/auth/session";
+import { requireAppSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { formatDate } from "@/lib/utils";
 
 type HistoryRow = {
   id: string;
   created_at: string;
-  projects: unknown;
+  projects:
+    | { business_name?: string | null; industry?: string | null }
+    | Array<{ business_name?: string | null; industry?: string | null }>
+    | null;
 };
 
 export default async function HistoryPage() {
-  const session = await getAppSession();
-  if (!session) redirect("/login");
-
+  const session = await requireAppSession();
   const admin = createAdminClient();
   const { data } = await admin
     .from("ai_outputs")
@@ -29,40 +27,28 @@ export default async function HistoryPage() {
 
   return (
     <AppShell title="Lịch sử" description="Các bản phân tích persona và kế hoạch quảng cáo đã tạo bằng AI.">
-      <Card className="overflow-hidden rounded-3xl p-0">
+      <Card className="overflow-hidden rounded-xl p-0">
         {rows.length ? (
           <div className="divide-y divide-outline-variant/70">
             {rows.map((row) => {
-              const project = Array.isArray(row.projects) ? row.projects[0] : (row.projects as { business_name?: string; industry?: string } | null);
+              const project = Array.isArray(row.projects) ? row.projects[0] : row.projects;
               return (
                 <div key={row.id} className="flex flex-col gap-3 px-6 py-5 md:flex-row md:items-center md:justify-between">
                   <div>
                     <Link href={`/plan/${row.id}`} className="text-lg font-extrabold text-on-surface hover:text-primary">
                       {project?.business_name || "Kế hoạch quảng cáo"}
                     </Link>
-                    <p className="mt-1 text-sm text-on-surface-variant">
-                      {project?.industry || "Chưa rõ ngành"} · {formatDate(row.created_at)}
-                    </p>
-                    <div className="mt-2">
-                      <MiniPersonaLink id={row.id} />
-                    </div>
+                    <p className="text-sm text-on-surface-variant">{project?.industry || "Chưa có ngành hàng"}</p>
                   </div>
-                  <Link href={`/plan/${row.id}`} className="text-sm font-bold text-primary hover:underline">
-                    Xem kế hoạch
-                  </Link>
+                  <div className="text-sm text-on-surface-variant">
+                    {new Date(row.created_at).toLocaleString("vi-VN", { dateStyle: "medium", timeStyle: "short" })}
+                  </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="p-6">
-            <EmptyState
-              title="Chưa có lịch sử tư vấn"
-              description="Khi bạn tạo kế hoạch AI đầu tiên, lịch sử sẽ xuất hiện tại đây."
-              href="/ask"
-              action="Bắt đầu đặt câu hỏi"
-            />
-          </div>
+          <div className="px-6 py-12 text-center text-sm text-on-surface-variant">Bạn chưa có phiên phân tích nào.</div>
         )}
       </Card>
     </AppShell>

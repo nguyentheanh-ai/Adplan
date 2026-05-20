@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const errorDescription = url.searchParams.get("error_description");
-  const cookieHeader = request.headers.get("cookie") ?? "";
+  const cookieHeader = request.headers.get("cookie") || "";
   const savedState = cookieHeader
     .split(";")
     .map((item) => item.trim())
@@ -35,9 +35,7 @@ export async function GET(request: Request) {
     const missingScopes = findMissingFacebookScopes(grantedScopes);
 
     if (missingScopes.length) {
-      return redirectToLogin(
-        `Facebook chưa cấp đủ quyền: ${missingScopes.join(", ")}. Hãy bấm đăng nhập lại và chọn tiếp tục/cấp quyền cho ứng dụng.`
-      );
+      return redirectToLogin(`Facebook chưa cấp đủ quyền: ${missingScopes.join(", ")}. Hãy đăng nhập lại và cấp quyền cho ứng dụng.`);
     }
 
     const profile = await getFacebookProfile(token.accessToken);

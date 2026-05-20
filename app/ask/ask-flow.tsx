@@ -14,6 +14,7 @@ export function AskFlow() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
   const current = plannerQuestions[currentIndex];
   const isLast = currentIndex === plannerQuestions.length - 1;
   const answeredCount = plannerQuestions.filter((question) => answers[question.id]?.trim()).length;
@@ -38,7 +39,7 @@ export function AskFlow() {
       const payload = (await response.json()) as { id?: string; error?: string };
 
       if (!response.ok || !payload.id) {
-        throw new Error(payload.error ?? "Không thể tạo kế hoạch.");
+        throw new Error(payload.error || "Không thể tạo kế hoạch.");
       }
 
       toast.success("Đã tạo kế hoạch quảng cáo");
@@ -75,7 +76,8 @@ export function AskFlow() {
             <div className="max-w-[85%] space-y-4">
               <div className="rounded-2xl rounded-tl-none bg-white p-6 text-on-surface custom-shadow">
                 <p className="text-lg leading-[1.6]">
-                  Chào bạn! Tôi là trợ lý chiến lược của AdPlanner AI. Để xây dựng kế hoạch quảng cáo hoàn hảo, hãy giúp tôi hiểu rõ về dự án của bạn.
+                  Chào bạn! Tôi là trợ lý chiến lược của AdPlanner AI. Để xây dựng kế hoạch quảng cáo phù hợp, hãy giúp tôi hiểu rõ về dự án của
+                  bạn.
                 </p>
                 <p className="mt-4 font-bold text-primary">{current.question}</p>
               </div>
@@ -167,7 +169,7 @@ export function AskFlow() {
               className="min-h-12 flex-1 resize-none border-none bg-transparent px-4 py-3 focus:ring-0"
               onChange={(event) => updateAnswer(event.target.value)}
               placeholder="Mô tả câu trả lời của bạn..."
-              value={answers[current.id] ?? ""}
+              value={answers[current.id] || ""}
             />
             {!isLast ? (
               <button
@@ -189,14 +191,10 @@ export function AskFlow() {
             )}
           </div>
           <div className="mt-3 flex items-center justify-between">
-          <Button
-            disabled={currentIndex === 0 || loading}
-            onClick={() => setCurrentIndex((value) => Math.max(0, value - 1))}
-            variant="ghost"
-          >
-            <MaterialIcon name="arrow_back" />
-            Quay lại
-          </Button>
+            <Button disabled={currentIndex === 0 || loading} onClick={() => setCurrentIndex((value) => Math.max(0, value - 1))} variant="ghost">
+              <MaterialIcon name="arrow_back" />
+              Quay lại
+            </Button>
             <p className="text-center text-[10px] uppercase tracking-widest text-on-surface-variant opacity-50">
               AI đang trong quá trình học hỏi · Thông tin được bảo mật 100%
             </p>

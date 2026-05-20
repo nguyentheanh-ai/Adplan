@@ -39,7 +39,7 @@ export default async function PersonaPage({ params }: PersonaPageProps) {
   if (!parsed.success) notFound();
 
   const project = Array.isArray(data.projects) ? data.projects[0] : data.projects;
-  return <PersonaView id={id} persona={parsed.data.customer_persona} projectName={project?.business_name ?? "kế hoạch quảng cáo"} />;
+  return <PersonaView id={id} persona={parsed.data.customer_persona} projectName={project?.business_name || "kế hoạch quảng cáo"} />;
 }
 
 function PersonaView({
@@ -55,8 +55,8 @@ function PersonaView({
     <AppShell contentClassName="px-gutter pb-12 pt-24">
       <div className="mb-8 flex items-end justify-between">
         <div>
-          <h2 className="mb-1 text-[24px] font-semibold leading-[1.4] text-primary">Phân Tích Chân Dung Khách Hàng</h2>
-          <p className="text-on-surface-variant">Dựa trên dữ liệu AI và câu trả lời từ {projectName}</p>
+          <h2 className="mb-1 text-[24px] font-semibold leading-[1.4] text-primary">Phân tích chân dung khách hàng</h2>
+          <p className="text-on-surface-variant">Dựa trên dữ liệu AI và câu trả lời từ dự án {projectName}</p>
         </div>
         <Link href={`/plan/${id}`}>
           <Button variant="secondary">
@@ -68,43 +68,19 @@ function PersonaView({
 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 space-y-6 lg:col-span-4">
-          <div className="rounded-[24px] p-8 text-center glass-card">
-            <div className="relative mb-6 inline-block">
-              <div className="mx-auto flex h-32 w-32 items-center justify-center rounded-full border-4 border-primary-fixed bg-white text-4xl font-extrabold text-primary shadow-lg">
-                KH
-              </div>
-              <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full border-4 border-white bg-secondary text-white">
-                <MaterialIcon filled className="text-sm" name="bolt" />
-              </div>
+          <div className="rounded-xl bg-white p-8 text-center">
+            <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full border-4 border-primary-fixed bg-white text-3xl font-extrabold text-primary">
+              KH
             </div>
             <h3 className="mb-1 text-xl font-bold">{persona.primary_customer || "Khách hàng mục tiêu"}</h3>
-            <p className="mb-4 font-bold text-secondary">{persona.customer_insight}</p>
-            <div className="mb-6 flex flex-wrap justify-center gap-2">
+            <p className="mb-4 font-bold text-secondary">{persona.customer_insight || "Đang cập nhật insight"}</p>
+            <div className="flex flex-wrap justify-center gap-2">
               <span className="rounded-full bg-primary-fixed/30 px-3 py-1 text-xs font-bold text-primary">Persona chính</span>
-              <span className="rounded-full bg-tertiary-fixed/30 px-3 py-1 text-xs font-bold text-tertiary">{persona.location}</span>
-              <span className="rounded-full bg-secondary-fixed/70 px-3 py-1 text-xs font-bold text-secondary">AI Insight</span>
-            </div>
-            <div className="relative flex h-48 items-center justify-center">
-              <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                <div className="h-32 w-32 rounded-full border border-primary" />
-                <div className="absolute h-24 w-24 rounded-full border border-primary" />
-                <div className="absolute h-16 w-16 rounded-full border border-primary" />
-              </div>
-              <svg className="h-40 w-40 -rotate-90 drop-shadow-lg" viewBox="0 0 100 100">
-                <polygon fill="rgba(0, 76, 202, 0.2)" points="50,10 85,35 75,80 25,80 15,35" stroke="#004cca" strokeWidth="2" />
-                {[["50", "10"], ["85", "35"], ["75", "80"], ["25", "80"], ["15", "35"]].map(([cx, cy]) => (
-                  <circle key={`${cx}-${cy}`} cx={cx} cy={cy} fill="#004cca" r="3" />
-                ))}
-              </svg>
-              <span className="absolute top-0 text-[10px] font-bold text-outline">Niềm tin</span>
-              <span className="absolute right-0 top-1/4 text-[10px] font-bold text-outline">Giá trị</span>
-              <span className="absolute bottom-4 right-4 text-[10px] font-bold text-outline">Tiện dụng</span>
-              <span className="absolute bottom-4 left-4 text-[10px] font-bold text-outline">Giá</span>
-              <span className="absolute left-0 top-1/4 text-[10px] font-bold text-outline">Tốc độ</span>
+              <span className="rounded-full bg-tertiary-fixed/30 px-3 py-1 text-xs font-bold text-tertiary">{persona.location || "Việt Nam"}</span>
             </div>
           </div>
 
-          <div className="rounded-[24px] bg-surface-container-highest p-6">
+          <div className="rounded-xl bg-surface-container-highest p-6">
             <h4 className="mb-4 flex items-center gap-2 font-bold">
               <MaterialIcon className="text-primary" name="interests" />
               Hành vi nổi bật
@@ -122,35 +98,29 @@ function PersonaView({
 
         <div className="col-span-12 space-y-6 lg:col-span-8">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <InsightCard icon="warning" title="Nỗi đau chính (Pain Points)" tone="error" items={persona.pain_points} />
+            <InsightCard icon="warning" title="Nỗi đau chính (Pain points)" tone="error" items={persona.pain_points} />
             <InsightCard icon="shopping_cart_checkout" title="Insight mua hàng" tone="tertiary" items={persona.buying_triggers} />
           </div>
 
-          <div className="relative overflow-hidden rounded-[24px] bg-primary-container p-8 text-on-primary">
-            <div className="absolute right-0 top-0 p-8 opacity-10">
-              <MaterialIcon className="text-[120px]" name="auto_awesome" />
-            </div>
-            <div className="relative z-10">
-              <h4 className="mb-6 flex items-center gap-2 text-xl font-bold">
-                <MaterialIcon name="campaign" />
-                Góc nội dung quảng cáo đề xuất (AI Suggest)
-              </h4>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                {persona.objections.map((item, index) => (
-                  <div key={item} className="cursor-pointer rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur-md transition hover:bg-white/20">
-                    <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-full bg-white font-bold text-primary">{index + 1}</div>
-                    <h5 className="mb-2 font-bold">Góc xử lý rào cản</h5>
-                    <p className="text-xs leading-relaxed opacity-90">{item}</p>
-                  </div>
-                ))}
-              </div>
+          <div className="rounded-xl bg-primary-container p-8 text-on-primary">
+            <h4 className="mb-6 flex items-center gap-2 text-xl font-bold">
+              <MaterialIcon name="campaign" />
+              Góc nội dung quảng cáo đề xuất
+            </h4>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {persona.objections.map((item, index) => (
+                <div key={item} className="rounded-xl border border-white/20 bg-white/10 p-5">
+                  <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-white font-bold text-primary">{index + 1}</div>
+                  <p className="text-xs leading-relaxed opacity-90">{item}</p>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="flex flex-col items-center justify-between rounded-[24px] border-2 border-dashed border-outline-variant bg-surface-container-low p-6 sm:flex-row">
+          <div className="flex flex-col items-center justify-between rounded-xl border border-outline-variant bg-surface-container-low p-6 sm:flex-row">
             <div className="mb-4 sm:mb-0">
               <p className="font-bold text-on-surface">Bạn đã sẵn sàng cho bước tiếp theo?</p>
-              <p className="text-sm text-on-surface-variant">AI đã chuẩn bị sẵn lộ trình phân bổ ngân sách cho chân dung này.</p>
+              <p className="text-sm text-on-surface-variant">AI đã chuẩn bị lộ trình phân bổ ngân sách cho chân dung này.</p>
             </div>
             <Link href={`/plan/${id}`}>
               <Button variant="primary">
@@ -177,8 +147,14 @@ function InsightCard({
   items: string[];
 }) {
   return (
-    <div className="rounded-[24px] border border-transparent bg-white p-6 shadow-sm transition hover:border-primary/20">
-      <div className={tone === "error" ? "mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-error-container text-error" : "mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-tertiary-container text-white"}>
+    <div className="rounded-xl border border-transparent bg-white p-6 shadow-sm">
+      <div
+        className={
+          tone === "error"
+            ? "mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-error-container text-error"
+            : "mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-tertiary-container text-white"
+        }
+      >
         <MaterialIcon name={icon} />
       </div>
       <h4 className="mb-4 text-lg font-bold">{title}</h4>

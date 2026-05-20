@@ -4,7 +4,6 @@ import { requireAppSession } from "@/lib/auth/session";
 import { AppShell } from "@/components/app-shell";
 import { MaterialIcon } from "@/components/material-icon";
 import { SetupRequired } from "@/components/setup-required";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { adsPlanOutputSchema, type AdsPlanOutput } from "@/lib/ads-plan-schema";
 import { hasSupabasePublicEnv } from "@/lib/env";
@@ -41,20 +40,10 @@ export default async function PlanPage({ params }: PlanPageProps) {
   if (!parsed.success) notFound();
 
   const project = Array.isArray(data.projects) ? data.projects[0] : data.projects;
-  const sessionRelation = data.question_sessions as unknown as
-    | { answers_json?: unknown }
-    | Array<{ answers_json?: unknown }>
-    | null;
+  const sessionRelation = data.question_sessions as unknown as { answers_json?: unknown } | Array<{ answers_json?: unknown }> | null;
   const answers = Array.isArray(sessionRelation) ? sessionRelation[0]?.answers_json : sessionRelation?.answers_json;
 
-  return (
-    <PlanView
-      answers={answers}
-      outputId={id}
-      plan={parsed.data}
-      projectName={project?.business_name ?? "Dự án quảng cáo"}
-    />
-  );
+  return <PlanView answers={answers} outputId={id} plan={parsed.data} projectName={project?.business_name || "Dự án quảng cáo"} />;
 }
 
 function PlanView({
@@ -101,7 +90,12 @@ function PlanView({
       </div>
 
       <div className="mb-10 grid grid-cols-1 gap-6 md:grid-cols-4">
-        <Metric label="Cấu trúc đề xuất" value={`${plan.campaign_plan.recommended_campaign_count}`} suffix="Camp" second={`${plan.campaign_plan.recommended_adset_count} Ad Sets`} />
+        <Metric
+          label="Cấu trúc đề xuất"
+          value={`${plan.campaign_plan.recommended_campaign_count}`}
+          suffix="Camp"
+          second={`${plan.campaign_plan.recommended_adset_count} Ad Sets`}
+        />
         <Metric label="Mẫu quảng cáo" value={`${plan.campaign_plan.recommended_creative_count}`} suffix="Creatives" tone="secondary" />
         <Metric label="Tổng ngân sách/ngày" value={plan.business_summary.budget || "Chưa rõ"} />
         <Metric label="KPI dự kiến (CPA)" value="~45,000" suffix="VND" gradient />
@@ -115,13 +109,8 @@ function PlanView({
         </div>
 
         {adsets.map((adset, index) => (
-          <div
-            key={`${adset.campaign}-${adset.adset_name}`}
-            className="group relative rounded-[24px] border border-transparent bg-white p-6 transition-all duration-300 custom-shadow hover:-translate-y-1 hover:border-primary/20 md:p-8"
-          >
-            <div className="absolute -left-3 top-6 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-              {index + 1}
-            </div>
+          <div key={`${adset.campaign}-${adset.adset_name}`} className="relative rounded-xl border border-outline-variant/60 bg-white p-6 md:p-8">
+            <div className="absolute -left-3 top-6 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">{index + 1}</div>
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
               <div className="border-outline-variant/50 lg:col-span-4 lg:border-r lg:pr-8">
                 <div className="mb-4 flex items-center gap-3">
@@ -135,7 +124,7 @@ function PlanView({
                 <div className="space-y-4">
                   <Info label="Ngân sách" value={adset.budget} />
                   <div>
-                    <Label>Targeting Idea</Label>
+                    <Label>Targeting idea</Label>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {[adset.audience, adset.location].filter(Boolean).map((item) => (
                         <span key={item} className="rounded-lg bg-surface-container-high px-3 py-1 text-sm">
@@ -150,8 +139,8 @@ function PlanView({
 
               <div className="flex flex-col gap-8 md:flex-row lg:col-span-8">
                 <div className="flex-1">
-                  <Label>Creative Angle</Label>
-                  <div className="mt-3 rounded-2xl bg-surface-container-low p-4">
+                  <Label>Creative angle</Label>
+                  <div className="mt-3 rounded-xl bg-surface-container-low p-4">
                     <ul className="space-y-2 font-medium leading-relaxed text-on-surface">
                       {adset.creative_angles.map((angle) => (
                         <li key={angle} className="flex gap-2">
@@ -163,9 +152,9 @@ function PlanView({
                   </div>
                 </div>
                 <div className="flex-1">
-                  <Label>Copy Suggestion</Label>
-                  <div className="mt-3 rounded-2xl border border-primary/10 bg-primary/5 p-4">
-                    <p className="text-sm leading-relaxed text-on-surface">{adset.sample_copy[0] ?? "Chưa có mẫu nội dung."}</p>
+                  <Label>Copy suggestion</Label>
+                  <div className="mt-3 rounded-xl border border-primary/10 bg-primary/5 p-4">
+                    <p className="text-sm leading-relaxed text-on-surface">{adset.sample_copy[0] || "Chưa có mẫu nội dung."}</p>
                   </div>
                 </div>
               </div>
@@ -174,7 +163,7 @@ function PlanView({
         ))}
       </div>
 
-      <div className="mt-12 rounded-[24px] border-2 border-dashed border-primary/30 p-8 text-center glass-card">
+      <div className="mt-12 rounded-xl border border-dashed border-primary/30 p-8 text-center">
         <MaterialIcon className="mb-4 text-4xl text-primary" name="rocket_launch" />
         <h3 className="mb-2 text-2xl font-bold">Sẵn sàng để triển khai?</h3>
         <p className="mx-auto mb-6 max-w-lg text-on-surface-variant">
@@ -217,7 +206,7 @@ function Metric({
   gradient?: boolean;
 }) {
   return (
-    <div className="glass-card flex flex-col rounded-2xl p-6">
+    <div className="flex flex-col rounded-xl border border-outline-variant/60 bg-white p-6">
       <span className="mb-1 text-sm font-medium text-on-surface-variant">{label}</span>
       <div className="mt-2 flex flex-wrap items-baseline gap-2">
         <span
@@ -253,7 +242,7 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function SummaryBlock({ title, items, danger }: { title: string; items: string[]; danger?: boolean }) {
   return (
-    <div className={danger ? "rounded-xl border border-error/20 bg-error-container/20 p-6" : "rounded-xl bg-white p-6 custom-shadow"}>
+    <div className={danger ? "rounded-xl border border-error/20 bg-error-container/20 p-6" : "rounded-xl border border-outline-variant/60 bg-white p-6"}>
       <h4 className={danger ? "mb-4 flex items-center gap-2 font-bold text-error" : "mb-4 flex items-center gap-2 font-bold text-primary"}>
         <MaterialIcon filled name={danger ? "warning" : "analytics"} />
         {title}

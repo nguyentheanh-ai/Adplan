@@ -33,7 +33,7 @@ type ApiResult<T> = {
 
 async function readJson<T>(response: Response) {
   const payload = (await response.json()) as ApiResult<T>;
-  if (!response.ok) throw new Error(payload.error ?? "Meta API trả về lỗi.");
+  if (!response.ok) throw new Error(payload.error || "Meta API trả về lỗi.");
   return payload.data as T;
 }
 
@@ -56,12 +56,10 @@ export function MetaDashboard({ compact = false }: { compact?: boolean }) {
     setLoading(true);
     setError(null);
     try {
-      const campaignData = await fetch(`/api/meta/campaigns?ad_account_id=${encodeURIComponent(adAccountId)}`).then((response) =>
-        readJson<MetaCampaign[]>(response)
-      );
+      const campaignData = await fetch(`/api/meta/campaigns?ad_account_id=${encodeURIComponent(adAccountId)}`).then((response) => readJson<MetaCampaign[]>(response));
       setCampaigns(campaignData ?? []);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Không thể tải campaigns.";
+      const message = err instanceof Error ? err.message : "Không thể tải campaign.";
       setError(message);
       toast.error(message);
     } finally {
@@ -109,7 +107,7 @@ export function MetaDashboard({ compact = false }: { compact?: boolean }) {
   }
 
   async function createCampaign(formData: FormData) {
-    const name = String(formData.get("name") ?? "").trim();
+    const name = String(formData.get("name") || "").trim();
     const objective = String(formData.get("objective") || "OUTCOME_TRAFFIC");
     setCreating(true);
     setError(null);
@@ -140,7 +138,7 @@ export function MetaDashboard({ compact = false }: { compact?: boolean }) {
 
   if (compact) {
     return (
-      <Card className="mt-8 overflow-hidden rounded-2xl p-0">
+      <Card className="mt-8 overflow-hidden rounded-lg p-0">
         <div className="flex items-center justify-between border-b border-outline-variant px-6 py-6">
           <div>
             <h3 className="text-[20px] font-semibold">Campaign từ Meta</h3>
@@ -162,12 +160,10 @@ export function MetaDashboard({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 rounded-2xl border border-primary/10 bg-white p-5 custom-shadow md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 rounded-lg border border-primary/10 bg-white p-5 md:flex-row md:items-center md:justify-between">
         <div>
           <h3 className="text-xl font-bold text-primary">Meta Marketing API</h3>
-          <p className="mt-1 text-sm text-on-surface-variant">
-            Sau khi đăng nhập Facebook, app quét các tài khoản quảng cáo của chính Facebook đó. Token chỉ chạy ở server.
-          </p>
+          <p className="mt-1 text-sm text-on-surface-variant">Sau khi đăng nhập Facebook, app quét các tài khoản quảng cáo của chính tài khoản đó. Token chỉ chạy ở server.</p>
         </div>
         <Button disabled={loading} onClick={() => void loadMeta(selectedAdAccountId)} variant="ai">
           <MaterialIcon className={loading ? "animate-spin" : ""} name={loading ? "sync" : "hub"} />
@@ -178,14 +174,12 @@ export function MetaDashboard({ compact = false }: { compact?: boolean }) {
       {error ? <div className="rounded-xl border border-error/20 bg-error-container/30 p-4 text-sm font-semibold text-error">{error}</div> : null}
 
       <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <Card className="rounded-2xl p-6">
+        <Card className="rounded-lg p-6">
           <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-primary">
             <MaterialIcon name="account_balance_wallet" />
             Tài khoản quảng cáo
           </h3>
-          <p className="mb-4 text-sm leading-6 text-on-surface-variant">
-            Chọn tài khoản để xem campaign và tạo campaign PAUSED. ID quảng cáo được hiển thị để kiểm tra.
-          </p>
+          <p className="mb-4 text-sm leading-6 text-on-surface-variant">Chọn tài khoản để xem campaign và tạo campaign PAUSED. ID quảng cáo được hiển thị để kiểm tra.</p>
           {accounts.length ? (
             <AccountSelector accounts={accounts} onSelect={chooseAccount} selectedAdAccountId={selectedAdAccountId} />
           ) : (
@@ -193,7 +187,7 @@ export function MetaDashboard({ compact = false }: { compact?: boolean }) {
           )}
         </Card>
 
-        <Card className="rounded-2xl p-6">
+        <Card className="rounded-lg p-6">
           <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-primary">
             <MaterialIcon name="add_circle" />
             Tạo campaign PAUSED
@@ -222,7 +216,7 @@ export function MetaDashboard({ compact = false }: { compact?: boolean }) {
         </Card>
       </div>
 
-      <Card className="overflow-hidden rounded-2xl p-0">
+      <Card className="overflow-hidden rounded-lg p-0">
         <div className="border-b border-outline-variant px-6 py-6">
           <h3 className="text-[20px] font-semibold">Danh sách campaigns</h3>
           <p className="mt-1 text-sm text-on-surface-variant">Fields: id, name, status, objective, created_time.</p>
@@ -245,6 +239,7 @@ function AccountSelector({
   compact?: boolean;
 }) {
   const selected = accounts.find((account) => account.id === selectedAdAccountId);
+
   return (
     <div className="space-y-4">
       <label className="block text-sm font-bold text-on-surface">
@@ -310,9 +305,7 @@ function CampaignTable({ campaigns }: { campaigns: MetaCampaign[] }) {
               </td>
               <td className="px-6 py-5">{campaign.objective || "Chưa rõ"}</td>
               <td className="px-6 py-5">
-                <Badge className={campaign.status === "ACTIVE" ? "bg-error-container text-error" : "bg-primary-fixed/30 text-primary"}>
-                  {campaign.status || "UNKNOWN"}
-                </Badge>
+                <Badge className={campaign.status === "ACTIVE" ? "bg-error-container text-error" : "bg-primary-fixed/30 text-primary"}>{campaign.status || "UNKNOWN"}</Badge>
               </td>
               <td className="px-6 py-5">{campaign.created_time ? new Date(campaign.created_time).toLocaleString("vi-VN") : "Chưa rõ"}</td>
             </tr>
