@@ -207,7 +207,7 @@ export async function getMetaCampaigns(adAccountIdInput?: string | null, accessT
   const payload = await metaFetch<{ data: Campaign[] }>(`${adAccountId}/campaigns`, {
     accessToken,
     params: {
-      fields: "id,name,status,objective,created_time",
+      fields: "id,name,status,objective,created_time,daily_budget,lifetime_budget,budget_remaining",
       limit: "100"
     }
   });

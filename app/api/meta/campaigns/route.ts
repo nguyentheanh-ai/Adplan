@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
-import { getMetaCampaigns, metaErrorResponse } from "@/lib/meta/facebook";
+import { getMetaCampaigns, listCampaignsByDateRange, metaErrorResponse } from "@/lib/meta/facebook";
 
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const accessToken = await requireFacebookProviderToken();
-    const campaigns = await getMetaCampaigns(url.searchParams.get("ad_account_id"), accessToken);
+    const startDate = url.searchParams.get("start_date");
+    const endDate = url.searchParams.get("end_date");
+    const campaigns =
+      startDate && endDate
+        ? await listCampaignsByDateRange(url.searchParams.get("ad_account_id"), { startDate, endDate }, accessToken)
+        : await getMetaCampaigns(url.searchParams.get("ad_account_id"), accessToken);
     return NextResponse.json({ data: campaigns });
   } catch (error) {
     const response = metaErrorResponse(error);

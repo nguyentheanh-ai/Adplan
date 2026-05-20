@@ -31,6 +31,7 @@ export type Campaign = {
   daily_budget?: string;
   lifetime_budget?: string;
   budget_remaining?: string;
+  insight?: CampaignInsight | null;
 };
 
 export type MetaTargeting = {

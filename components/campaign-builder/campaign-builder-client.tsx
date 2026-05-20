@@ -9,6 +9,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import {
   buildCampaignValidation,
   buildInternalAudienceSuggestions,
+  buildScaleSourceRows,
   createABTestDraft,
   generateCampaignDraft,
   generateScalePreview,
@@ -64,6 +65,17 @@ function defaultDateRange() {
   const start = new Date();
   start.setDate(start.getDate() - 29);
   return { startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) };
+}
+
+const vndFormatter = new Intl.NumberFormat("vi-VN", {
+  style: "currency",
+  currency: "VND",
+  maximumFractionDigits: 0
+});
+
+function formatVnd(value: number) {
+  if (!value) return "0 đ";
+  return vndFormatter.format(value);
 }
 
 async function readJson<T>(url: string, init?: RequestInit & { force?: boolean }) {
@@ -254,7 +266,12 @@ export function CampaignBuilderClient() {
   async function loadCampaigns(accountId = selectedAccountId, force = true) {
     if (!accountId) return;
     await withProgress("Đang lấy campaign cũ...", async () => {
-      const payload = await readJson<{ data: Campaign[] }>(`/api/meta/campaigns?ad_account_id=${encodeURIComponent(accountId)}`, { force });
+      const query = new URLSearchParams({
+        ad_account_id: accountId,
+        start_date: scaleRange.startDate,
+        end_date: scaleRange.endDate
+      });
+      const payload = await readJson<{ data: Campaign[] }>(`/api/meta/campaigns?${query.toString()}`, { force });
       setCampaigns(payload.data ?? []);
     }).catch((error: Error) => setNotice(error.message));
   }
@@ -492,6 +509,26 @@ export function CampaignBuilderClient() {
     }).catch((error: Error) => toast.error(error.message));
   }
 
+  async function launchPausedCampaign() {
+    const currentDraft = draft?.campaignDraft ?? buildNewCampaignPlannerDraft().campaignDraft;
+    if (!selectedAccountId) return toast.error("Chọn tài khoản quảng cáo trước.");
+    if (!currentDraft) return toast.error("Tạo preview campaign trước.");
+
+    await withProgress("Đang tạo campaign PAUSED trên Meta...", async () => {
+      const payload = await readJson<{ id: string; name: string; status: string }>("/api/meta/create-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ad_account_id: selectedAccountId,
+          name: currentDraft.campaign.name,
+          objective: currentDraft.campaign.objective
+        })
+      });
+      toast.success(`Đã tạo campaign PAUSED: ${payload.name || payload.id}. Adset/ads vẫn cần kiểm tra trong Ads Manager.`);
+      await loadCampaigns(selectedAccountId, true);
+    }).catch((error: Error) => toast.error(error.message));
+  }
+
   async function saveABTest() {
     const rows = abVariants.split("\n").map((item) => item.trim()).filter(Boolean);
     await withProgress("Đang lưu A/B test...", async () => {
@@ -594,6 +631,21 @@ export function CampaignBuilderClient() {
               selectedCampaign={selectedCampaign}
               selectedAdset={selectedAdset}
               onLoadCampaigns={() => void loadCampaigns(selectedAccountId, true)}
+              onUseCampaign={(id) => {
+                setSourceCampaignId(id);
+                setSourceAdsetId("");
+                void loadAdsets(id);
+                setDraft(generateScalePreview({
+                  adAccountId: selectedAccountId,
+                  action: scaleAction,
+                  dateRange: scaleRange,
+                  sourceCampaignId: id,
+                  sourceAdsetId: "",
+                  quantity: cloneQuantity,
+                  newBudget
+                }));
+                setStep(3);
+              }}
             />
           ) : null}
 
@@ -671,7 +723,13 @@ export function CampaignBuilderClient() {
               <Button variant="secondary" onClick={() => void copyConfig()}>
                 Copy cấu hình
               </Button>
-              {mode !== "scale_existing" ? <Button disabled>Launch lên Meta - Sắp ra mắt</Button> : null}
+              {mode === "new_campaign" ? (
+                <Button onClick={() => void launchPausedCampaign()}>
+                  <MaterialIcon name="rocket_launch" />
+                  Tạo campaign PAUSED
+                </Button>
+              ) : null}
+              {mode === "ab_test" ? <Button disabled>Launch A/B lên Meta - Sắp ra mắt</Button> : null}
             </div>
           </Card>
         </div>
@@ -728,7 +786,10 @@ function ScalePanel(props: {
   selectedCampaign?: Campaign;
   selectedAdset?: AdSet;
   onLoadCampaigns: () => void;
+  onUseCampaign: (campaignId: string) => void;
 }) {
+  const sourceRows = buildScaleSourceRows(props.campaigns);
+
   return (
     <Card className="rounded-lg p-6">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -770,15 +831,38 @@ function ScalePanel(props: {
       <div className="mt-5 overflow-x-auto rounded-lg border border-outline-variant">
         <table className="min-w-full text-sm">
           <thead className="bg-surface-container-low text-xs uppercase text-outline">
-            <tr><th className="px-4 py-3 text-left">Tên chiến dịch</th><th className="px-4 py-3">Objective</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Ngày tạo</th></tr>
+            <tr>
+              <th className="px-4 py-3 text-left">Tên chiến dịch</th>
+              <th className="px-4 py-3">Objective</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Ngân sách</th>
+              <th className="px-4 py-3 text-right">Chi tiêu</th>
+              <th className="px-4 py-3 text-right">Kết quả</th>
+              <th className="px-4 py-3 text-right">Hiển thị</th>
+              <th className="px-4 py-3">Ngày tạo</th>
+              <th className="px-4 py-3"></th>
+            </tr>
           </thead>
           <tbody>
-            {props.campaigns.map((campaign) => (
-              <tr key={campaign.id} className={campaign.id === props.sourceCampaignId ? "bg-primary-fixed/30" : "border-t border-outline-variant"}>
-                <td className="px-4 py-3 font-bold">{campaign.name}</td><td className="px-4 py-3">{campaign.objective || "—"}</td><td className="px-4 py-3">{campaign.status || "—"}</td><td className="px-4 py-3">{campaign.created_time || "—"}</td>
+            {sourceRows.map((campaign) => (
+              <tr key={campaign.campaignId} className={campaign.campaignId === props.sourceCampaignId ? "bg-primary-fixed/30" : "border-t border-outline-variant"}>
+                <td className="min-w-64 px-4 py-3">
+                  <span className="block font-bold">{campaign.name}</span>
+                  <span className="text-xs text-on-surface-variant">{campaign.campaignId}</span>
+                </td>
+                <td className="px-4 py-3">{campaign.objective}</td>
+                <td className="px-4 py-3">{campaign.status}</td>
+                <td className="px-4 py-3 text-right">{campaign.budget ? formatVnd(campaign.budget) : "Không có dữ liệu"}</td>
+                <td className="px-4 py-3 text-right">{formatVnd(campaign.spend)}</td>
+                <td className="px-4 py-3 text-right">{campaign.results}</td>
+                <td className="px-4 py-3 text-right">{campaign.impressions.toLocaleString("vi-VN")}</td>
+                <td className="px-4 py-3">{campaign.createdTime || "Không có dữ liệu"}</td>
+                <td className="px-4 py-3 text-right">
+                  <Button variant="secondary" onClick={() => props.onUseCampaign(campaign.campaignId)}>Nhân bản</Button>
+                </td>
               </tr>
             ))}
-            {!props.campaigns.length ? <tr><td className="px-4 py-6 text-center text-on-surface-variant" colSpan={4}>Chưa có dữ liệu campaign. Bấm “Lấy campaign”.</td></tr> : null}
+            {!props.campaigns.length ? <tr><td className="px-4 py-6 text-center text-on-surface-variant" colSpan={9}>Chưa có dữ liệu campaign. Bấm “Lấy campaign”.</td></tr> : null}
           </tbody>
         </table>
       </div>

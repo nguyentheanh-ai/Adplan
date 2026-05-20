@@ -7,8 +7,10 @@ import type {
   CampaignDraft,
   ScaleCampaignInput,
   CampaignValidationItem,
-  CreativeAsset
+  CreativeAsset,
+  Campaign
 } from "@/lib/meta/types";
+import { normalizeMetaActions } from "./reports/ads-report";
 
 const objectiveMap: Record<
   CampaignBuilderInput["objective"],
@@ -70,6 +72,52 @@ function compactDate(value: string) {
 
 function slugLabel(value: string, fallback: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, 42) || fallback;
+}
+
+function toNumber(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export type ScaleSourceRow = {
+  campaignId: string;
+  name: string;
+  status: string;
+  objective: string;
+  budget: number;
+  budgetType: "daily" | "lifetime" | "none";
+  spend: number;
+  impressions: number;
+  results: number;
+  leads: number;
+  messages: number;
+  createdTime: string;
+};
+
+export function buildScaleSourceRows(campaigns: Campaign[]): ScaleSourceRow[] {
+  return campaigns.map((campaign) => {
+    const insight = campaign.insight ?? null;
+    const spend = toNumber(insight?.spend);
+    const actions = normalizeMetaActions(insight?.actions, insight?.cost_per_action_type, spend);
+    const dailyBudget = toNumber(campaign.daily_budget);
+    const lifetimeBudget = toNumber(campaign.lifetime_budget);
+
+    return {
+      campaignId: campaign.id,
+      name: campaign.name,
+      status: campaign.status || "UNKNOWN",
+      objective: campaign.objective || "UNKNOWN",
+      budget: dailyBudget || lifetimeBudget,
+      budgetType: dailyBudget ? "daily" : lifetimeBudget ? "lifetime" : "none",
+      spend,
+      impressions: toNumber(insight?.impressions),
+      results: actions.results,
+      leads: actions.leads,
+      messages: actions.messages,
+      createdTime: campaign.created_time || ""
+    };
+  });
 }
 
 export function buildInternalAudienceSuggestions(input: CampaignBuilderInput): AudienceSuggestion[] {
