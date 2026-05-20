@@ -8,6 +8,7 @@ export type AppSession = {
   userId: string;
   facebookId: string;
   name?: string;
+  profileUrl?: string;
   accessToken: string;
   expiresAt: number;
   grantedScopes?: string[];

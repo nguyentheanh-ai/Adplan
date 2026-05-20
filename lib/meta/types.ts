@@ -294,6 +294,20 @@ export type AudienceSuggestion = {
   source: "facebook" | "internal";
 };
 
+export type FacebookPage = {
+  id: string;
+  name: string;
+  category?: string;
+  access_token?: string;
+};
+
+export type FacebookPagePost = {
+  id: string;
+  message?: string;
+  created_time?: string;
+  permalink_url?: string;
+};
+
 export type CreativeAsset = {
   id: string;
   type: "image" | "video" | "placeholder";
@@ -302,9 +316,14 @@ export type CreativeAsset = {
 };
 
 export type CampaignBuilderInput = {
+  adAccountId?: string;
+  pageId?: string;
+  pageName?: string;
+  postId?: string;
+  postMessage?: string;
   productName: string;
   industry: string;
-  objective: "Tin nhắn" | "Lead" | "Traffic" | "Engagement" | "Sales";
+  objective: "Tin nhắn" | "Tương tác" | "Lead" | "Chuyển đổi" | "Traffic" | "Sales";
   dailyBudget: string;
   startDate: string;
   endDate?: string;
@@ -316,6 +335,7 @@ export type CampaignBuilderInput = {
   offer: string;
   notes?: string;
   mediaNote?: string;
+  mediaFiles?: string[];
 };
 
 export type CampaignDraft = {
@@ -352,5 +372,52 @@ export type CampaignDraft = {
     adsetNameFormat: string;
     adNameFormat: string;
   };
+};
+
+export type CampaignValidationItem = {
+  key: string;
+  label: string;
+  ok: boolean;
+  note?: string;
+};
+
+export type SavedAudience = {
+  id: string;
+  user_id: string;
+  account_id?: string | null;
+  code: string;
+  name: string;
+  payload: {
+    ageRange?: string;
+    gender?: string;
+    locations?: string;
+    interests?: string;
+    behaviors?: string;
+  };
+  created_at: string;
+  updated_at: string;
+};
+
+export type CampaignTemplate = {
+  id: string;
+  user_id: string;
+  account_id?: string | null;
+  name: string;
+  objective: CampaignBuilderInput["objective"];
+  payload: CampaignBuilderInput;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserRole = "owner" | "manager" | "member";
+
+export type AdminUserPermission = {
+  id: string;
+  user_id: string;
+  facebook_id?: string | null;
+  role: UserRole;
+  locked_sections: string[];
+  created_at: string;
+  updated_at: string;
 };
 

@@ -37,12 +37,47 @@ create table if not exists public.ai_outputs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.saved_audiences (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id text,
+  code text not null,
+  name text not null,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.campaign_templates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  account_id text,
+  name text not null,
+  objective text not null,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.admin_user_permissions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references public.profiles(id) on delete cascade,
+  facebook_id text,
+  role text not null default 'member' check (role in ('owner', 'manager', 'member')),
+  locked_sections text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists projects_user_id_idx on public.projects(user_id);
 create index if not exists question_sessions_user_id_idx on public.question_sessions(user_id);
 create index if not exists question_sessions_project_id_idx on public.question_sessions(project_id);
 create index if not exists ai_outputs_user_id_idx on public.ai_outputs(user_id);
 create index if not exists ai_outputs_project_id_idx on public.ai_outputs(project_id);
 create index if not exists ai_outputs_session_id_idx on public.ai_outputs(session_id);
+create index if not exists saved_audiences_user_id_idx on public.saved_audiences(user_id);
+create index if not exists campaign_templates_user_id_idx on public.campaign_templates(user_id);
+create index if not exists admin_user_permissions_user_id_idx on public.admin_user_permissions(user_id);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -62,6 +97,21 @@ for each row execute function public.set_updated_at();
 drop trigger if exists question_sessions_set_updated_at on public.question_sessions;
 create trigger question_sessions_set_updated_at
 before update on public.question_sessions
+for each row execute function public.set_updated_at();
+
+drop trigger if exists saved_audiences_set_updated_at on public.saved_audiences;
+create trigger saved_audiences_set_updated_at
+before update on public.saved_audiences
+for each row execute function public.set_updated_at();
+
+drop trigger if exists campaign_templates_set_updated_at on public.campaign_templates;
+create trigger campaign_templates_set_updated_at
+before update on public.campaign_templates
+for each row execute function public.set_updated_at();
+
+drop trigger if exists admin_user_permissions_set_updated_at on public.admin_user_permissions;
+create trigger admin_user_permissions_set_updated_at
+before update on public.admin_user_permissions
 for each row execute function public.set_updated_at();
 
 create or replace function public.handle_new_user()
@@ -93,6 +143,9 @@ alter table public.profiles enable row level security;
 alter table public.projects enable row level security;
 alter table public.question_sessions enable row level security;
 alter table public.ai_outputs enable row level security;
+alter table public.saved_audiences enable row level security;
+alter table public.campaign_templates enable row level security;
+alter table public.admin_user_permissions enable row level security;
 
 drop policy if exists "Users can read own profile" on public.profiles;
 create policy "Users can read own profile"
@@ -155,4 +208,42 @@ drop policy if exists "Users can insert own outputs" on public.ai_outputs;
 create policy "Users can insert own outputs"
 on public.ai_outputs for insert
 to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can read own saved audiences" on public.saved_audiences;
+create policy "Users can read own saved audiences"
+on public.saved_audiences for select
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert own saved audiences" on public.saved_audiences;
+create policy "Users can insert own saved audiences"
+on public.saved_audiences for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update own saved audiences" on public.saved_audiences;
+create policy "Users can update own saved audiences"
+on public.saved_audiences for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can read own campaign templates" on public.campaign_templates;
+create policy "Users can read own campaign templates"
+on public.campaign_templates for select
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert own campaign templates" on public.campaign_templates;
+create policy "Users can insert own campaign templates"
+on public.campaign_templates for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update own campaign templates" on public.campaign_templates;
+create policy "Users can update own campaign templates"
+on public.campaign_templates for update
+to authenticated
+using (auth.uid() = user_id)
 with check (auth.uid() = user_id);

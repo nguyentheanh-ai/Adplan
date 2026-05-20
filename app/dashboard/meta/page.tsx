@@ -1,20 +1,11 @@
-import { AppShell } from "@/components/app-shell";
-import { MetaDashboard } from "@/components/meta/meta-dashboard";
-import { SetupRequired } from "@/components/setup-required";
-import { hasSupabasePublicEnv } from "@/lib/env";
+import { redirect } from "next/navigation";
+import { getCurrentPermission } from "@/lib/admin/permissions";
 
-export default function DashboardMetaPage() {
-  if (!hasSupabasePublicEnv()) {
-    return (
-      <AppShell title="Meta API">
-        <SetupRequired />
-      </AppShell>
-    );
+export default async function DashboardMetaPage() {
+  const permission = await getCurrentPermission();
+  if (!permission || (permission.role !== "owner" && permission.role !== "manager")) {
+    redirect("/dashboard");
   }
 
-  return (
-    <AppShell title="Meta Test" description="Kiểm tra kết nối Meta Graph API và tạo campaign test ở trạng thái PAUSED.">
-      <MetaDashboard />
-    </AppShell>
-  );
+  redirect("/admin");
 }

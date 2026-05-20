@@ -67,7 +67,8 @@ export async function GET(request: Request) {
     }
 
     const previousRange = getPreviousDateRange(dateRange);
-    const selectedAccount = accountRows.find((account) => account.id === selectedId || account.account_id === selectedId.replace(/^act_/, "")) ?? null;
+    const selectedAccount =
+      accountRows.find((account) => account.id === selectedId || account.account_id === selectedId.replace(/^act_/, "")) ?? null;
 
     let creativeAccessWarning: string | undefined;
     const [campaigns, campaignInsights, daily, previousInsights] = await Promise.all([
@@ -81,7 +82,7 @@ export async function GET(request: Request) {
       const message = error instanceof Error ? error.message.toLowerCase() : "";
       if (message.includes("pages_read_engagement") || message.includes("permission") || message.includes("page")) {
         creativeAccessWarning =
-          "Tài khoản này chưa có quyền xem post/creative của Page. Cần quyền quản trị Page hoặc pages_read_engagement để xem đầy đủ nội dung post.";
+          "Tài khoản này chưa có quyền xem post/creative của Page. Cần quyền quản trị Page hoặc pages_read_engagement để xem đầy đủ.";
       } else {
         creativeAccessWarning = "Không thể tải dữ liệu post/creative từ Meta API ở tài khoản này.";
       }

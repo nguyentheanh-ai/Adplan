@@ -5,9 +5,10 @@ import Link from "next/link";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { campaignMetricValue } from "@/lib/reports/meta-intelligence";
+import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
+import type { MetaIntelligenceDashboardData, NormalizedCampaignPerformance } from "@/lib/meta/types";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
-import type { CreativePerformance, MetaIntelligenceDashboardData, NormalizedCampaignPerformance } from "@/lib/meta/types";
+import { campaignMetricValue } from "@/lib/reports/meta-intelligence";
 
 type DatePreset = "today" | "yesterday" | "7d" | "30d" | "month" | "lastMonth" | "custom";
 type MetricKey = "spend" | "ctr" | "cpc";
@@ -21,7 +22,6 @@ function presetRange(preset: DatePreset) {
   const now = new Date();
   const start = new Date(now);
   const end = new Date(now);
-
   if (preset === "yesterday") {
     start.setDate(start.getDate() - 1);
     end.setDate(end.getDate() - 1);
@@ -33,7 +33,6 @@ function presetRange(preset: DatePreset) {
     start.setMonth(start.getMonth() - 1, 1);
     end.setDate(0);
   }
-
   return { startDate: isoDate(start), endDate: isoDate(end) };
 }
 
@@ -73,6 +72,8 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [technicalError, setTechnicalError] = useState("");
+  const [campaignStatusFilter, setCampaignStatusFilter] = useState("ALL");
+  const [keyword, setKeyword] = useState("");
 
   async function load(nextAccountId = selectedAccountId) {
     setLoading(true);
@@ -83,7 +84,8 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
       if (nextAccountId) params.set("ad_account_id", nextAccountId);
       const payload = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${params.toString()}`);
       setData(payload.data);
-      setSelectedAccountId(nextAccountId || payload.data.selectedAccount?.id || payload.data.accounts[0]?.id || "");
+      const picked = applyDefaultAdAccount(payload.data.accounts, nextAccountId || payload.data.selectedAccount?.id || payload.data.accounts[0]?.id);
+      setSelectedAccountId(picked);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải dashboard.");
       setTechnicalError(err instanceof Error ? err.stack || err.message : "");
@@ -93,11 +95,15 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
   }
 
   useEffect(() => {
-    const params = new URLSearchParams({ start_date: presetRange("7d").startDate, end_date: presetRange("7d").endDate });
+    const initialRange = presetRange("7d");
+    const params = new URLSearchParams({ start_date: initialRange.startDate, end_date: initialRange.endDate });
+    const defaultId = getDefaultAdAccountId();
+    if (defaultId) params.set("ad_account_id", defaultId);
     readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${params.toString()}`)
       .then((payload) => {
         setData(payload.data);
-        setSelectedAccountId(payload.data.selectedAccount?.id || payload.data.accounts[0]?.id || "");
+        const picked = applyDefaultAdAccount(payload.data.accounts, defaultId || payload.data.selectedAccount?.id || payload.data.accounts[0]?.id);
+        setSelectedAccountId(picked);
       })
       .catch((err: Error) => {
         setError(err.message);
@@ -112,9 +118,18 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
   }
 
   const currency = data?.selectedAccount?.currency || "VND";
-  const campaigns = data?.report?.campaigns ?? [];
+  const campaigns = useMemo(() => data?.report?.campaigns ?? [], [data?.report?.campaigns]);
   const dailyRows = data?.report?.daily ?? [];
   const creatives = useMemo(() => [...(data?.creatives ?? [])].sort((a, b) => b.spend - a.spend).slice(0, 8), [data]);
+
+  const filteredCampaigns = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    return campaigns.filter((item) => {
+      if (campaignStatusFilter !== "ALL" && (item.status || "UNKNOWN") !== campaignStatusFilter) return false;
+      if (!normalizedKeyword) return true;
+      return (item.campaignName || "").toLowerCase().includes(normalizedKeyword);
+    });
+  }, [campaigns, campaignStatusFilter, keyword]);
 
   const kpi = {
     spend: data?.report?.summary.spend ?? 0,
@@ -134,16 +149,21 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
 
           <div className="grid gap-3 md:grid-cols-4">
             <Field label="Tài khoản">
-              <select className="dashboard-input" value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)}>
-                {data?.accounts.length ? (
-                  data.accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name || account.id}
-                    </option>
-                  ))
-                ) : (
-                  <option>Chưa có tài khoản</option>
-                )}
+              <select
+                className="dashboard-input"
+                value={selectedAccountId}
+                onChange={(event) => {
+                  setSelectedAccountId(event.target.value);
+                  setDefaultAdAccountId(event.target.value);
+                }}
+              >
+                {data?.accounts.length
+                  ? data.accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name || account.id}
+                      </option>
+                    ))
+                  : <option>Chưa có tài khoản</option>}
               </select>
             </Field>
             <Field label="Thời gian">
@@ -182,7 +202,7 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => load(selectedAccountId)} disabled={loading}>
+            <Button onClick={() => void load(selectedAccountId)} disabled={loading}>
               <MaterialIcon name="refresh" />
               {loading ? "Đang tải..." : "Làm mới"}
             </Button>
@@ -247,10 +267,26 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
             <div className="flex flex-col gap-3 border-b border-outline-variant/70 px-6 py-5 md:flex-row md:items-center md:justify-between">
               <div>
                 <h3 className="text-lg font-extrabold">Campaign performance</h3>
-                <p className="text-sm text-on-surface-variant">Đối chiếu hiệu suất giữa các campaign trong cùng kỳ.</p>
+                <p className="text-sm text-on-surface-variant">Có bộ lọc trạng thái và từ khóa để xem nhanh theo nhu cầu.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  className="dashboard-input"
+                  placeholder="Tìm theo tên campaign..."
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                />
+                <select className="dashboard-input" value={campaignStatusFilter} onChange={(event) => setCampaignStatusFilter(event.target.value)}>
+                  <option value="ALL">Tất cả trạng thái</option>
+                  {Array.from(new Set(campaigns.map((item) => item.status || "UNKNOWN"))).map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-            <CampaignTable campaigns={campaigns} currency={currency} />
+            <CampaignTable campaigns={filteredCampaigns} currency={currency} />
           </Card>
 
           {data.creativeAccessWarning ? (
@@ -306,16 +342,6 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
           </Card>
         </>
       ) : null}
-
-      {!loading && data && !data.accounts.length ? (
-        <Card className="rounded-3xl p-8 text-center">
-          <MaterialIcon className="mx-auto mb-3 text-4xl text-primary" name="account_balance_wallet" />
-          <h3 className="text-xl font-extrabold">Chưa tìm thấy tài khoản quảng cáo</h3>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-on-surface-variant">
-            Facebook chưa trả về ad account nào. Hãy kiểm tra lại quyền ads_read hoặc quyền truy cập tài khoản quảng cáo.
-          </p>
-        </Card>
-      ) : null}
     </div>
   );
 }
@@ -365,7 +391,6 @@ function DailyChart({
   }
 
   const max = Math.max(...values, 1);
-
   return (
     <div>
       <svg viewBox="0 0 620 240" className={compact ? "h-52 w-full overflow-visible" : "h-64 w-full overflow-visible"}>
@@ -403,14 +428,17 @@ function DailyChart({
         )}
       </svg>
       <div className="mt-3 grid gap-2 md:grid-cols-3">
-        {rows.slice(-3).map((row) => (
-          <div key={`${metric}-${row.date_start}`} className="rounded-2xl bg-surface-container-low p-4 text-sm">
-            <p className="font-bold text-on-surface">{row.date_start}</p>
-            <p className="mt-1 text-on-surface-variant">
-              {metricLabel(metric)}: {formatMetricValue(metric, metric === "ctr" ? Number(row.ctr ?? 0) : metric === "cpc" ? Number(row.cpc ?? 0) : Number(row.spend ?? 0), currency)}
-            </p>
-          </div>
-        ))}
+        {rows.slice(-3).map((row) => {
+          const value = metric === "ctr" ? Number(row.ctr ?? 0) : metric === "cpc" ? Number(row.cpc ?? 0) : Number(row.spend ?? 0);
+          return (
+            <div key={`${metric}-${row.date_start}`} className="rounded-2xl bg-surface-container-low p-4 text-sm">
+              <p className="font-bold text-on-surface">{row.date_start}</p>
+              <p className="mt-1 text-on-surface-variant">
+                {metricLabel(metric)}: {formatMetricValue(metric, value, currency)}
+              </p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -458,10 +486,7 @@ function ErrorState({ message, detail }: { message: string; detail: string }) {
         <div>
           <p className="font-extrabold text-error">{message}</p>
           <p className="mt-1 text-sm text-on-surface-variant">Hãy kiểm tra token, quyền ads_read/pages_read_engagement hoặc quyền với ad account.</p>
-          <a
-            className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-soft"
-            href="/api/auth/facebook/start?force=1"
-          >
+          <a className="mt-4 inline-flex min-h-10 items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-soft" href="/api/auth/facebook/start?force=1">
             Kết nối lại Facebook và cấp quyền
           </a>
           {detail ? (

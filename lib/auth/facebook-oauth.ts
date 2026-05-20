@@ -1,7 +1,14 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const facebookApiVersion = process.env.META_API_VERSION || "v23.0";
-export const REQUIRED_FACEBOOK_SCOPES = ["public_profile", "ads_read", "ads_management", "read_insights"] as const;
+export const REQUIRED_FACEBOOK_SCOPES = [
+  "public_profile",
+  "ads_read",
+  "ads_management",
+  "read_insights",
+  "pages_show_list",
+  "pages_read_engagement"
+] as const;
 const facebookScopes = REQUIRED_FACEBOOK_SCOPES.join(",");
 
 export function getSiteUrl() {
@@ -70,9 +77,9 @@ export async function exchangeFacebookCode(code: string) {
 
 export async function getFacebookProfile(accessToken: string) {
   const url = new URL(`https://graph.facebook.com/${facebookApiVersion}/me`);
-  url.searchParams.set("fields", "id,name");
+  url.searchParams.set("fields", "id,name,link");
   url.searchParams.set("access_token", accessToken);
-  return fetchJson<{ id: string; name?: string }>(url);
+  return fetchJson<{ id: string; name?: string; link?: string }>(url);
 }
 
 export async function getFacebookGrantedPermissions(accessToken: string) {

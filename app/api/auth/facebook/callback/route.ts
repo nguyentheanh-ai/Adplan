@@ -52,6 +52,7 @@ export async function GET(request: Request) {
         userId,
         facebookId: profile.id,
         name: profile.name,
+        profileUrl: profile.link,
         accessToken: token.accessToken,
         expiresAt: Date.now() + maxAge * 1000,
         grantedScopes: Array.from(grantedScopes)

@@ -6,10 +6,25 @@ import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
-import { buildInternalAudienceSuggestions, generateCampaignDraft } from "@/lib/campaign-builder";
-import type { AdAccount, AudienceSuggestion, CampaignBuilderInput, CampaignDraft } from "@/lib/meta/types";
+import { buildCampaignValidation, buildInternalAudienceSuggestions, generateCampaignDraft } from "@/lib/campaign-builder";
+import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
+import type {
+  AdAccount,
+  AudienceSuggestion,
+  CampaignBuilderInput,
+  CampaignDraft,
+  CampaignTemplate,
+  FacebookPage,
+  FacebookPagePost,
+  SavedAudience
+} from "@/lib/meta/types";
 
 const defaultInput: CampaignBuilderInput = {
+  adAccountId: "",
+  pageId: "",
+  pageName: "",
+  postId: "",
+  postMessage: "",
   productName: "",
   industry: "",
   objective: "Tin nhắn",
@@ -23,11 +38,12 @@ const defaultInput: CampaignBuilderInput = {
   targetCustomer: "",
   offer: "",
   notes: "",
-  mediaNote: "Chọn media sau"
+  mediaNote: "Chọn media sau",
+  mediaFiles: []
 };
 
-async function readJson<T>(url: string) {
-  const response = await fetch(url, { cache: "no-store" });
+async function readJson<T>(url: string, init?: RequestInit) {
+  const response = await fetch(url, { cache: "no-store", ...init });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new Error(payload.error || "Không thể lấy dữ liệu.");
   return payload;
@@ -36,29 +52,113 @@ async function readJson<T>(url: string) {
 export function CampaignBuilderClient() {
   const [accounts, setAccounts] = useState<AdAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [pages, setPages] = useState<FacebookPage[]>([]);
+  const [posts, setPosts] = useState<FacebookPagePost[]>([]);
+  const [templates, setTemplates] = useState<CampaignTemplate[]>([]);
+  const [savedAudiences, setSavedAudiences] = useState<SavedAudience[]>([]);
+  const [selectedSavedAudienceId, setSelectedSavedAudienceId] = useState("");
   const [form, setForm] = useState<CampaignBuilderInput>(defaultInput);
   const [interests, setInterests] = useState<AudienceSuggestion[]>([]);
   const [selectedInterestIds, setSelectedInterestIds] = useState<string[]>([]);
   const [interestNotice, setInterestNotice] = useState("");
   const [searching, setSearching] = useState(false);
   const [draft, setDraft] = useState<CampaignDraft | null>(null);
+  const [loadingPages, setLoadingPages] = useState(false);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+
+  const needsPost = form.objective === "Tin nhắn" || form.objective === "Tương tác";
+  const needsLanding = form.objective === "Chuyển đổi" || form.objective === "Traffic" || form.objective === "Sales";
 
   useEffect(() => {
     readJson<{ data: AdAccount[] }>("/api/meta/adaccounts")
-      .then((payload) => {
-        setAccounts(payload.data ?? []);
-        setSelectedAccountId(payload.data?.[0]?.id ?? "");
+      .then(async (payload) => {
+        const rows = payload.data ?? [];
+        setAccounts(rows);
+        const accountId = applyDefaultAdAccount(rows, getDefaultAdAccountId() || rows[0]?.id);
+        setSelectedAccountId(accountId);
+        setForm((prev) => ({ ...prev, adAccountId: accountId }));
+        if (accountId) {
+          await Promise.all([loadPages(), loadTemplates(accountId), loadSavedAudiences(accountId)]);
+        }
       })
       .catch((err: Error) => setInterestNotice(err.message));
   }, []);
+
+  useEffect(() => {
+    if (!form.pageId || !needsPost) return;
+    const timer = window.setTimeout(() => {
+      void loadPosts(form.pageId!);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [form.pageId, needsPost]);
 
   const selectedInterests = useMemo(
     () => interests.filter((interest) => selectedInterestIds.includes(interest.id)),
     [interests, selectedInterestIds]
   );
 
+  const validation = useMemo(() => buildCampaignValidation({ ...form, adAccountId: selectedAccountId }), [form, selectedAccountId]);
+  const missingCount = validation.filter((item) => !item.ok).length;
+
   function updateField<K extends keyof CampaignBuilderInput>(field: K, value: CampaignBuilderInput[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function loadTemplates(accountId: string) {
+    try {
+      const payload = await readJson<{ data: CampaignTemplate[] }>(`/api/campaign-templates?account_id=${encodeURIComponent(accountId)}`);
+      setTemplates(payload.data ?? []);
+    } catch {
+      setTemplates([]);
+    }
+  }
+
+  async function loadSavedAudiences(accountId: string) {
+    try {
+      const payload = await readJson<{ data: SavedAudience[] }>(`/api/saved-audiences?account_id=${encodeURIComponent(accountId)}`);
+      setSavedAudiences(payload.data ?? []);
+    } catch {
+      setSavedAudiences([]);
+    }
+  }
+
+  async function loadPages() {
+    setLoadingPages(true);
+    try {
+      const payload = await readJson<{ data: FacebookPage[] }>("/api/meta/pages");
+      setPages(payload.data ?? []);
+    } catch (err) {
+      setPages([]);
+      setInterestNotice(err instanceof Error ? err.message : "Không thể tải danh sách fanpage.");
+    } finally {
+      setLoadingPages(false);
+    }
+  }
+
+  async function loadPosts(pageId: string) {
+    setLoadingPosts(true);
+    try {
+      const payload = await readJson<{ data: FacebookPagePost[] }>(`/api/meta/page-posts?page_id=${encodeURIComponent(pageId)}`);
+      setPosts(payload.data ?? []);
+      if (!(payload.data ?? []).length) {
+        setInterestNotice("Fanpage chưa có bài viết phù hợp hoặc thiếu quyền pages_read_engagement/pages_show_list.");
+      }
+    } catch (err) {
+      setPosts([]);
+      setInterestNotice(err instanceof Error ? err.message : "Không thể tải bài viết từ fanpage.");
+    } finally {
+      setLoadingPosts(false);
+    }
+  }
+
+  async function onAccountChange(nextAccountId: string) {
+    setSelectedAccountId(nextAccountId);
+    setDefaultAdAccountId(nextAccountId);
+    setForm((prev) => ({ ...prev, adAccountId: nextAccountId }));
+    await Promise.all([loadTemplates(nextAccountId), loadSavedAudiences(nextAccountId)]);
   }
 
   async function searchInterests() {
@@ -70,7 +170,6 @@ export function CampaignBuilderClient() {
 
     setSearching(true);
     setInterestNotice("");
-
     try {
       const params = new URLSearchParams({ q: query, ad_account_id: selectedAccountId });
       const payload = await readJson<{ data: AudienceSuggestion[] }>(`/api/meta/targeting-search?${params.toString()}`);
@@ -79,18 +178,62 @@ export function CampaignBuilderClient() {
         throw new Error("Facebook chưa trả về interest phù hợp.");
       }
       setInterests(facebookInterests);
-      setSelectedInterestIds(facebookInterests.slice(0, 3).map((item) => item.id));
+      setSelectedInterestIds(facebookInterests.slice(0, 5).map((item) => item.id));
       setInterestNotice("Interest đã được lấy từ Facebook Targeting Search.");
     } catch (err) {
       const fallback = buildInternalAudienceSuggestions(form);
       setInterests(fallback);
-      setSelectedInterestIds(fallback.slice(0, 3).map((item) => item.id));
-      setInterestNotice(
-        `${err instanceof Error ? err.message : "Không gọi được Facebook Targeting Search."} Gợi ý nội bộ, chưa xác minh từ Facebook.`
-      );
+      setSelectedInterestIds(fallback.slice(0, 4).map((item) => item.id));
+      setInterestNotice(`${err instanceof Error ? err.message : "Không gọi được Facebook Targeting Search."} Gợi ý nội bộ, chưa xác minh từ Facebook.`);
     } finally {
       setSearching(false);
     }
+  }
+
+  function applySavedAudience(savedId: string) {
+    setSelectedSavedAudienceId(savedId);
+    const row = savedAudiences.find((item) => item.id === savedId);
+    if (!row) return;
+    setForm((current) => ({
+      ...current,
+      location: row.payload.locations || current.location,
+      targetCustomer: [row.payload.ageRange, row.payload.gender, row.payload.behaviors].filter(Boolean).join(" · ")
+    }));
+
+    if (row.payload.interests) {
+      const hints = row.payload.interests
+        .split(",")
+        .map((item, index) => ({
+          id: `saved-${index + 1}`,
+          name: item.trim(),
+          source: "internal" as const
+        }))
+        .filter((item) => item.name);
+      setInterests(hints);
+      setSelectedInterestIds(hints.map((item) => item.id));
+    }
+  }
+
+  function onPageChange(pageId: string) {
+    const page = pages.find((item) => item.id === pageId);
+    setForm((current) => ({
+      ...current,
+      pageId,
+      pageName: page?.name || "",
+      fanpage: page?.name || "",
+      postId: "",
+      postMessage: ""
+    }));
+    setPosts([]);
+  }
+
+  function onPostChange(postId: string) {
+    const post = posts.find((item) => item.id === postId);
+    setForm((current) => ({
+      ...current,
+      postId,
+      postMessage: post?.message || ""
+    }));
   }
 
   function generateDraft() {
@@ -98,19 +241,41 @@ export function CampaignBuilderClient() {
       toast.error("Vui lòng nhập tên sản phẩm, ngành hàng và ngân sách.");
       return;
     }
-    const nextDraft = generateCampaignDraft(form, selectedInterests);
+    const nextDraft = generateCampaignDraft({ ...form, adAccountId: selectedAccountId }, selectedInterests);
     setDraft(nextDraft);
   }
 
-  function saveDraft() {
-    const nextDraft = draft ?? generateCampaignDraft(form, selectedInterests);
-    localStorage.setItem("adplanner_campaign_draft", JSON.stringify({ form, draft: nextDraft, savedAt: new Date().toISOString() }));
-    setDraft(nextDraft);
-    toast.success("Đã lưu bản nháp trên trình duyệt.");
+  async function saveTemplate() {
+    try {
+      const name = window.prompt("Tên mẫu chiến dịch (để dùng lại):", `${form.objective} - ${form.productName || "Mẫu mới"}`);
+      if (!name) return;
+      await readJson("/api/campaign-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          account_id: selectedAccountId || null,
+          objective: form.objective,
+          payload: { ...form, adAccountId: selectedAccountId }
+        })
+      });
+      toast.success("Đã lưu lại chiến dịch.");
+      if (selectedAccountId) await loadTemplates(selectedAccountId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Không thể lưu template.");
+    }
+  }
+
+  function applyTemplate(templateId: string) {
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) return;
+    setForm(template.payload);
+    setDraft(null);
+    toast.success("Đã nạp mẫu chiến dịch.");
   }
 
   function exportJson() {
-    const nextDraft = draft ?? generateCampaignDraft(form, selectedInterests);
+    const nextDraft = draft ?? generateCampaignDraft({ ...form, adAccountId: selectedAccountId }, selectedInterests);
     const blob = new Blob([JSON.stringify(nextDraft, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -121,7 +286,7 @@ export function CampaignBuilderClient() {
   }
 
   async function copyConfig() {
-    const nextDraft = draft ?? generateCampaignDraft(form, selectedInterests);
+    const nextDraft = draft ?? generateCampaignDraft({ ...form, adAccountId: selectedAccountId }, selectedInterests);
     await navigator.clipboard.writeText(JSON.stringify(nextDraft, null, 2));
     toast.success("Đã copy cấu hình campaign.");
   }
@@ -130,9 +295,45 @@ export function CampaignBuilderClient() {
     <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
       <div className="space-y-6">
         <Card className="rounded-3xl p-6">
+          <div className="mb-4 grid gap-3 md:grid-cols-3">
+            <Field label="Tài khoản quảng cáo">
+              <select className="dashboard-input" value={selectedAccountId} onChange={(event) => void onAccountChange(event.target.value)}>
+                {accounts.length
+                  ? accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name || account.id} - {account.id}
+                      </option>
+                    ))
+                  : <option value="">Chưa có tài khoản</option>}
+              </select>
+            </Field>
+            <Field label="Mẫu chiến dịch đã lưu">
+              <select className="dashboard-input" defaultValue="" onChange={(event) => applyTemplate(event.target.value)}>
+                <option value="">Chọn mẫu để nạp</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Tệp khách hàng đã lưu">
+              <select className="dashboard-input" value={selectedSavedAudienceId} onChange={(event) => applySavedAudience(event.target.value)}>
+                <option value="">Chọn tệp đã lưu</option>
+                {savedAudiences.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.code} · {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        </Card>
+
+        <Card className="rounded-3xl p-6">
           <div className="mb-5">
             <h3 className="text-lg font-extrabold">Thông tin campaign</h3>
-            <p className="mt-1 text-sm text-on-surface-variant">Các trường này sẽ được dùng để tạo preview cấu hình Meta Ads.</p>
+            <p className="mt-1 text-sm text-on-surface-variant">Nhập dữ liệu để tạo preview campaign trước khi launch thật trên Meta.</p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -144,14 +345,22 @@ export function CampaignBuilderClient() {
             </Field>
             <Field label="Mục tiêu quảng cáo">
               <select
-                className="h-11 w-full rounded-lg bg-slate-100 px-4 text-sm font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-primary"
+                className="dashboard-input"
                 value={form.objective}
-                onChange={(event) => updateField("objective", event.target.value as CampaignBuilderInput["objective"])}
+                onChange={(event) => {
+                  const nextObjective = event.target.value as CampaignBuilderInput["objective"];
+                  updateField("objective", nextObjective);
+                  if (nextObjective !== "Tin nhắn" && nextObjective !== "Tương tác") {
+                    setPosts([]);
+                    setForm((current) => ({ ...current, postId: "", postMessage: "" }));
+                  }
+                }}
               >
                 <option>Tin nhắn</option>
+                <option>Tương tác</option>
                 <option>Lead</option>
+                <option>Chuyển đổi</option>
                 <option>Traffic</option>
-                <option>Engagement</option>
                 <option>Sales</option>
               </select>
             </Field>
@@ -162,32 +371,57 @@ export function CampaignBuilderClient() {
               <Input type="date" value={form.startDate} onChange={(event) => updateField("startDate", event.target.value)} />
             </Field>
             <Field label="Ngày kết thúc">
-              <Input
-                type="date"
-                value={form.endDate}
-                disabled={form.runContinuously}
-                onChange={(event) => updateField("endDate", event.target.value)}
-              />
+              <Input type="date" value={form.endDate} disabled={form.runContinuously} onChange={(event) => updateField("endDate", event.target.value)} />
             </Field>
             <label className="flex items-center gap-3 rounded-2xl bg-surface-container-low p-4 text-sm font-bold md:col-span-2">
-              <input
-                type="checkbox"
-                checked={form.runContinuously}
-                onChange={(event) => updateField("runContinuously", event.target.checked)}
-              />
+              <input type="checkbox" checked={form.runContinuously} onChange={(event) => updateField("runContinuously", event.target.checked)} />
               Chạy liên tục, chưa đặt ngày kết thúc
             </label>
-            <Field label="Fanpage">
-              <Input value={form.fanpage} onChange={(event) => updateField("fanpage", event.target.value)} placeholder="Tên fanpage sẽ chạy ads" />
+
+            <Field label="Fanpage (chọn từ tài khoản)">
+              <select className="dashboard-input" value={form.pageId || ""} onChange={(event) => onPageChange(event.target.value)}>
+                <option value="">{loadingPages ? "Đang tải fanpage..." : "Chọn fanpage"}</option>
+                {pages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                  </option>
+                ))}
+              </select>
             </Field>
+
+            <Field label={needsPost ? "Bài viết có sẵn trên page" : "Bài viết có sẵn (không bắt buộc)"}>
+              <select className="dashboard-input" value={form.postId || ""} onChange={(event) => onPostChange(event.target.value)} disabled={!form.pageId || !needsPost}>
+                <option value="">
+                  {!needsPost ? "Không bắt buộc với mục tiêu này" : loadingPosts ? "Đang tải bài viết..." : "Chọn bài viết"}
+                </option>
+                {posts.map((post) => (
+                  <option key={post.id} value={post.id}>
+                    {(post.message || "Bài viết không có text").slice(0, 70)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
             <Field label="Website/Landing page">
-              <Input value={form.website} onChange={(event) => updateField("website", event.target.value)} placeholder="https://..." />
+              <Input value={form.website} onChange={(event) => updateField("website", event.target.value)} placeholder={needsLanding ? "Bắt buộc cho chuyển đổi/traffic/sales" : "https://..."} />
             </Field>
             <Field label="Khu vực chạy">
               <Input value={form.location} onChange={(event) => updateField("location", event.target.value)} placeholder="TP.HCM, Hà Nội, toàn quốc..." />
             </Field>
-            <Field label="Media">
-              <Input value={form.mediaNote} onChange={(event) => updateField("mediaNote", event.target.value)} placeholder="Chọn media sau" />
+            <Field label="Media (đường dẫn hoặc ghi chú)" className="md:col-span-2">
+              <Textarea value={form.mediaNote} onChange={(event) => updateField("mediaNote", event.target.value)} placeholder="Ví dụ: video testimonial, ảnh ưu đãi..." />
+            </Field>
+            <Field label="Thêm hình ảnh/video" className="md:col-span-2">
+              <input
+                className="dashboard-input"
+                type="file"
+                multiple
+                accept="image/*,video/*"
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []).map((file) => file.name);
+                  updateField("mediaFiles", files);
+                }}
+              />
             </Field>
             <Field label="Mô tả khách hàng mục tiêu" className="md:col-span-2">
               <Textarea value={form.targetCustomer} onChange={(event) => updateField("targetCustomer", event.target.value)} placeholder="Ai là người mua chính, độ tuổi, nhu cầu, bối cảnh..." />
@@ -207,29 +441,14 @@ export function CampaignBuilderClient() {
               <h3 className="text-lg font-extrabold">Tệp sở thích/hành vi</h3>
               <p className="mt-1 text-sm text-on-surface-variant">Ưu tiên tìm từ Facebook Targeting Search. Nếu lỗi sẽ dùng gợi ý nội bộ.</p>
             </div>
-            <Button onClick={searchInterests} disabled={searching || !selectedAccountId}>
+            <Button onClick={() => void searchInterests()} disabled={searching || !selectedAccountId}>
               <MaterialIcon name="search" />
               {searching ? "Đang tìm..." : "Tìm từ Facebook"}
             </Button>
           </div>
 
-          <Field label="Tài khoản quảng cáo">
-            <select
-              className="h-11 w-full rounded-lg bg-slate-100 px-4 text-sm font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-primary"
-              value={selectedAccountId}
-              onChange={(event) => setSelectedAccountId(event.target.value)}
-            >
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name || account.id} - {account.id}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {interestNotice ? <p className="mt-4 rounded-2xl bg-surface-container-low p-4 text-sm leading-6 text-on-surface-variant">{interestNotice}</p> : null}
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {interestNotice ? <p className="mb-4 rounded-2xl bg-surface-container-low p-4 text-sm leading-6 text-on-surface-variant">{interestNotice}</p> : null}
+          <div className="grid gap-3 md:grid-cols-2">
             {interests.map((interest) => (
               <label key={interest.id} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-outline-variant/70 bg-white p-4">
                 <input
@@ -237,9 +456,7 @@ export function CampaignBuilderClient() {
                   type="checkbox"
                   checked={selectedInterestIds.includes(interest.id)}
                   onChange={(event) =>
-                    setSelectedInterestIds((current) =>
-                      event.target.checked ? [...current, interest.id] : current.filter((id) => id !== interest.id)
-                    )
+                    setSelectedInterestIds((current) => (event.target.checked ? [...current, interest.id] : current.filter((id) => id !== interest.id)))
                   }
                 />
                 <span>
@@ -254,20 +471,38 @@ export function CampaignBuilderClient() {
           </div>
         </Card>
 
+        <Card className="rounded-3xl p-6">
+          <h3 className="text-lg font-extrabold">Checklist trước khi tạo preview</h3>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Còn thiếu {missingCount} mục. Vẫn có thể tạo bản nháp, phần thiếu sẽ bổ sung ở Ads Manager Facebook.
+          </p>
+          <div className="mt-4 space-y-2">
+            {validation.map((item) => (
+              <div key={item.key} className="flex items-start gap-3 rounded-2xl bg-surface-container-low p-3">
+                <MaterialIcon className={item.ok ? "text-emerald-600" : "text-amber-600"} name={item.ok ? "check_circle" : "warning"} />
+                <div>
+                  <p className="font-bold">{item.label}</p>
+                  {item.note ? <p className="text-xs text-on-surface-variant">{item.note}</p> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
         <div className="flex flex-wrap gap-3">
           <Button variant="ai" onClick={generateDraft}>
             <MaterialIcon filled name="auto_awesome" />
             Tạo bản nháp campaign
           </Button>
-          <Button variant="secondary" onClick={saveDraft}>
+          <Button variant="secondary" onClick={() => void saveTemplate()}>
             <MaterialIcon name="save" />
-            Lưu bản nháp
+            Lưu lại chiến dịch
           </Button>
           <Button variant="secondary" onClick={exportJson}>
             <MaterialIcon name="data_object" />
             Xuất JSON
           </Button>
-          <Button variant="secondary" onClick={copyConfig}>
+          <Button variant="secondary" onClick={() => void copyConfig()}>
             <MaterialIcon name="content_copy" />
             Copy cấu hình
           </Button>
@@ -278,7 +513,7 @@ export function CampaignBuilderClient() {
         </div>
       </div>
 
-      <CampaignPreview draft={draft} fallbackDraft={generateCampaignDraft(form, selectedInterests)} />
+      <CampaignPreview draft={draft} fallbackDraft={generateCampaignDraft({ ...form, adAccountId: selectedAccountId }, selectedInterests)} />
     </div>
   );
 }
@@ -294,7 +529,6 @@ function Field({ label, children, className = "" }: { label: string; children: R
 
 function CampaignPreview({ draft, fallbackDraft }: { draft: CampaignDraft | null; fallbackDraft: CampaignDraft }) {
   const data = draft ?? fallbackDraft;
-
   return (
     <div className="space-y-6 xl:sticky xl:top-24 xl:self-start">
       <Card className="rounded-3xl border border-primary/10 p-6">

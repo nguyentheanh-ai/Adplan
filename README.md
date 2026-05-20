@@ -1,31 +1,27 @@
 # AI Ads Planner
 
-Vietnamese MVP web app for guided Facebook Ads planning. A business owner answers 9 guided questions, Gemini returns structured JSON, and Supabase stores the persona plus reviewable ads plan.
+Nền tảng lập kế hoạch và phân tích Meta Ads bằng AI cho SME Việt Nam.
 
-## Stack
+## Tech Stack
 
 - Next.js App Router
 - TypeScript
 - Tailwind CSS
-- Supabase Postgres + service-role server writes
-- Gemini API through server-only API routes
-- n8n webhook handoff route
+- Supabase
+- Gemini API
+- Meta Marketing API
 
-## Setup
+## Cài đặt
 
-1. Install dependencies:
+1. Cài package:
 
 ```bash
 npm install
 ```
 
-2. Create `.env.local` from `.env.example`:
+2. Tạo `.env.local` từ `.env.example`.
 
-```bash
-cp .env.example .env.local
-```
-
-3. Fill these values:
+3. Điền biến môi trường:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
@@ -36,251 +32,82 @@ N8N_WEBHOOK_URL=
 META_APP_ID=
 META_APP_SECRET=
 META_API_VERSION=v23.0
-```
-
-Production app URL:
-
-```bash
 NEXT_PUBLIC_SITE_URL=https://adsplan.theanhmarketing.com
+ADMIN_FACEBOOK_IDS=
+ADMIN_FACEBOOK_PROFILE_URLS=
+ADMIN_FACEBOOK_USERNAMES=
 ```
 
-4. In Supabase SQL editor, run:
+Bạn có thể cấp admin theo 1 trong 3 cách:
+- `ADMIN_FACEBOOK_IDS`: danh sách `facebook_id` cách nhau bởi dấu phẩy
+- `ADMIN_FACEBOOK_PROFILE_URLS`: danh sách URL profile Facebook
+- `ADMIN_FACEBOOK_USERNAMES`: danh sách username Facebook (ví dụ `theanh.marketing`)
+
+4. Chạy SQL:
 
 ```bash
 supabase/schema.sql
 ```
 
-5. Start the app:
+5. Chạy app:
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`.
-
-## Main Routes
-
-- `/login` - Facebook-only login UI using direct Facebook OAuth.
-- `/dashboard` - recent generated plans and empty state
-- `/reports` - advanced Meta Ads reporting with KPI cards, daily chart, breakdown, and CSV export
-- `/campaign-builder` - AI Campaign Builder draft preview for Meta campaign/ad set/ad configuration
-- `/audiences` - audience library placeholder for saved persona and interest sets
-- `/creative` - creative library placeholder for future media assets
-- `/ask` - guided 9-question AI chat flow
-- `/persona/[id]` - generated customer persona
-- `/plan/[id]` - reviewable Facebook Ads campaign plan
-- `/dashboard/meta` - Meta Graph API connection test, campaign list, and paused campaign creation
-- `/history` - generated plan history
-- `/settings` - account and environment status
-
-## Server API
-
-### `POST /api/analyze-ads-plan`
-
-Input:
-
-```json
-{
-  "answers": [
-    { "question": "Bạn đang kinh doanh sản phẩm/dịch vụ gì?", "answer": "Spa chăm sóc da" }
-  ]
-}
-```
-
-The route authenticates the user, stores answers in `question_sessions`, calls Gemini with structured JSON output, validates the JSON with Zod, retries once if parsing fails, stores `persona_json` and `ads_plan_json`, then returns the saved output id.
-
-### `POST /api/send-to-n8n`
-
-Input:
-
-```json
-{
-  "outputId": "uuid"
-}
-```
-
-The route loads the approved plan and forwards it to `N8N_WEBHOOK_URL`. If no webhook is configured, the UI shows a clear setup error.
-
-### `GET /api/meta/adaccounts`
-
-Server-side route that calls:
-
-```text
-https://graph.facebook.com/v23.0/me/adaccounts
-```
-
-After Facebook login, the route uses the server-side Facebook OAuth session token, so it returns the ad accounts owned or accessible by the logged-in Facebook user. If there is no Facebook session token, the route returns `401`.
-
-### `GET /api/meta/campaigns`
-
-Server-side route that calls:
-
-```text
-https://graph.facebook.com/v23.0/{selected_ad_account_id}/campaigns
-```
-
-Fields: `id,name,status,objective,created_time`.
-
-Optional query:
-
-```text
-?ad_account_id=act_1295473488844957
-```
-
-The Meta dashboard page uses the selected ad account id from local UI state.
-The selected account card explicitly shows `ID quảng cáo` (`act_...`) and numeric `Account ID`; the access token is never returned to the browser.
-
-### `POST /api/meta/create-campaign`
-
-Server-only Meta Marketing API route. It always creates campaigns as `PAUSED`.
-
-Input:
-
-```json
-{
-  "ad_account_id": "act_1295473488844957",
-  "name": "AI Ads Planner - Traffic campaign",
-  "objective": "OUTCOME_TRAFFIC"
-}
-```
-
-The route uses the selected `ad_account_id` from the UI and the server-side Facebook session token when available. It sends:
-
-```json
-{
-  "status": "PAUSED",
-  "special_ad_categories": [],
-  "buying_type": "AUCTION"
-}
-```
-
-The app never creates an `ACTIVE` campaign.
-
-### `GET /api/meta/report`
-
-Server-side reporting route for the selected ad account.
-
-Query:
-
-```text
-?ad_account_id=act_1295473488844957&start_date=2026-05-01&end_date=2026-05-20
-```
-
-The route reads the logged-in Facebook session token on the server and returns:
-
-- KPI summary: spend, impressions, reach, CTR, CPC, CPM, results, cost per result, ROAS
-- campaign-level performance
-- daily account insights for the chart
-- rule-based AI insight suggestions
-
-### `GET /api/meta/breakdown`
-
-Server-side breakdown route. Supported values:
-
-```text
-breakdown=age
-breakdown=gender
-breakdown=placement
-```
-
-If Meta does not support a breakdown for the account, permission, or date range, the UI shows a friendly error and does not crash.
-
-### `GET /api/meta/targeting-search`
-
-Server-side Facebook Targeting Search route used by Campaign Builder.
-
-Query:
-
-```text
-?ad_account_id=act_1295473488844957&q=spa%20cham%20soc%20da
-```
-
-If Meta returns an error or no verified interests, the UI falls back to internal suggestions and labels them as not verified by Facebook.
-
-## Reporting and Export
-
-The Ads report page supports:
-
-- ad account selector
-- date presets: today, yesterday, last 7 days, last 30 days, this month, custom range
-- campaign performance table
-- age/gender/placement breakdown where Meta supports it
-- CSV export with account id, date range, KPI summary, and campaign rows
-
-CSV filename format:
-
-```text
-ads-report-{account_id}-{start_date}-{end_date}.csv
-```
-
-XLSX/PDF export is not enabled in this MVP because the project currently avoids extra browser export packages. CSV is the production-safe default.
-
-## Campaign Builder
-
-`/campaign-builder` creates a preview-only campaign draft:
-
-- Campaign: name, objective, budget, schedule, default `PAUSED`
-- Ad Set: audience, age, gender, location, interests, placement, optimization goal, billing event
-- Ads: fanpage, media placeholder, primary text, headline, description, CTA, URL
-- Naming format for campaign, ad set, and ad
-
-The “Launch lên Meta” button is disabled in this MVP. Real launch should keep campaign status `PAUSED` and require a confirm modal before calling Meta create endpoints.
-
-## Meta Setup
-
-Add these values to `.env.local`:
-
-```bash
-META_APP_ID=your_meta_app_id
-META_APP_SECRET=your_meta_app_secret
-META_API_VERSION=v23.0
-```
-
-For real Facebook login, configure Facebook Login for Business in Meta Developer dashboard. The login page requests:
-
-```text
-public_profile,ads_read,ads_management,read_insights
-```
-
-Then open `/login`, continue with Facebook, and the app redirects to `/dashboard/meta`. The page loads ad accounts from `/api/meta/adaccounts`, lets the user choose one, stores that choice in local React state, and uses the selected `ad_account_id` when listing or creating campaigns.
-
-Production Meta access is scoped to the logged-in Facebook session. Do not add a shared user access token to frontend code.
-
-## Security Notes
-
-- `GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `N8N_WEBHOOK_URL`, `META_APP_ID`, and `META_APP_SECRET` are used only in server routes/helpers.
-- Browser code only reads `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-- Supabase RLS policies restrict users to their own projects, sessions, and outputs.
-
-## Verification
+## Tính năng chính
+
+- Đăng nhập Facebook OAuth (server-side token).
+- Dashboard quảng cáo với:
+  - tài khoản mặc định dùng chung toàn app
+  - KPI + biểu đồ theo ngày
+  - biểu đồ đối sánh cùng kỳ
+  - bảng campaign có lọc/sắp xếp.
+- Báo cáo Ads chuyên sâu:
+  - chọn date range
+  - breakdown age/gender/placement
+  - xuất CSV.
+- Tệp khách hàng:
+  - lấy từ dữ liệu ad set/creative
+  - hiển thị tuổi/giới tính/khu vực/sở thích/hành vi
+  - lưu tệp để tái sử dụng khi tạo campaign.
+- Creative:
+  - phễu hiệu suất
+  - bảng creative có lọc campaign/sắp xếp theo lead, tin nhắn, tương tác...
+  - link bài post khi Meta trả về.
+- Tạo Campaign AI nâng cao:
+  - chọn tài khoản quảng cáo ở đầu flow
+  - fanpage chọn từ Facebook pages
+  - mục tiêu Tin nhắn/Tương tác chọn bài viết sẵn có
+  - mục tiêu Lead/Chuyển đổi hỗ trợ media + landing
+  - checklist thiếu dữ liệu (vẫn cho tạo preview)
+  - lưu mẫu chiến dịch để dùng lại
+  - chọn tệp khách hàng đã lưu.
+- Admin web:
+  - quản lý quyền user (owner/manager/member)
+  - khóa/mở từng mục
+  - theo dõi người dùng đăng ký
+  - chuyển phần Meta API test vào khu Admin.
+
+## API mới
+
+- `GET /api/meta/pages`
+- `GET /api/meta/page-posts?page_id=...`
+- `GET/POST /api/campaign-templates`
+- `GET/POST /api/saved-audiences`
+- `GET /api/admin/me`
+- `GET/PATCH /api/admin/users`
+
+## Lưu ý bảo mật
+
+- Không expose `META_ACCESS_TOKEN` hoặc `META_APP_SECRET` ra frontend.
+- Tất cả gọi Meta API thực hiện ở server route.
+- Campaign tạo thật luôn ở trạng thái `PAUSED`.
+
+## Kiểm tra trước deploy
 
 ```bash
 npm run typecheck
 npm run lint
-npm run test
 npm run build
 ```
-
-## Deploy
-
-For Vercel or another Next.js host, add these environment variables in the hosting dashboard:
-
-```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-GEMINI_API_KEY=
-N8N_WEBHOOK_URL=
-META_APP_ID=
-META_APP_SECRET=
-META_API_VERSION=v23.0
-GEMINI_MODEL=gemini-2.0-flash
-```
-
-In Meta Developer dashboard, set the Facebook OAuth redirect URI to the app callback URL:
-
-```text
-https://adsplan.theanhmarketing.com/api/auth/facebook/callback
-```
-
-Do not deploy `.env.local`. It is ignored by git.

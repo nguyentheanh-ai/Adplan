@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
+import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type { AdAccount, CreativePerformance, MetaIntelligenceDashboardData } from "@/lib/meta/types";
+import { formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
 
 type DatePreset = "7d" | "30d" | "month" | "custom";
+type SortKey = "spend" | "lead" | "message" | "engagement" | "ctr";
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -33,9 +35,7 @@ async function readJson<T>(url: string) {
 function splitCreativeName(rawName: string, creativeId: string, adId: string) {
   const normalized = rawName.trim();
   const suffixMatch = normalized.match(/^(.*?)-([A-Za-z0-9]{10,})$/);
-  if (suffixMatch) {
-    return { title: suffixMatch[1].trim(), code: suffixMatch[2] };
-  }
+  if (suffixMatch) return { title: suffixMatch[1].trim(), code: suffixMatch[2] };
   return { title: normalized, code: creativeId || adId };
 }
 
@@ -47,9 +47,23 @@ export function CreativeIntelligenceClient() {
   const [payload, setPayload] = useState<MetaIntelligenceDashboardData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("spend");
+  const [campaignFilter, setCampaignFilter] = useState("ALL");
 
   const currency = payload?.selectedAccount?.currency || "VND";
-  const creatives = useMemo(() => payload?.creatives ?? [], [payload]);
+  const creatives = useMemo(() => payload?.creatives ?? [], [payload?.creatives]);
+
+  const sortedFilteredCreatives = useMemo(() => {
+    const rows = creatives.filter((item) => (campaignFilter === "ALL" ? true : item.campaignName === campaignFilter));
+    const score = (item: CreativePerformance) => {
+      if (sortKey === "lead") return item.leads;
+      if (sortKey === "message") return item.messages;
+      if (sortKey === "engagement") return item.engagements;
+      if (sortKey === "ctr") return item.ctr;
+      return item.spend;
+    };
+    return [...rows].sort((a, b) => score(b) - score(a));
+  }, [creatives, campaignFilter, sortKey]);
 
   const stats = useMemo(() => {
     const withSpend = creatives.filter((item) => item.spend > 0);
@@ -71,42 +85,28 @@ export function CreativeIntelligenceClient() {
     };
   }, [creatives]);
 
-  const topLeads = useMemo(() => [...creatives].sort((a, b) => b.leads - a.leads).slice(0, 5), [creatives]);
-  const topMessages = useMemo(() => [...creatives].sort((a, b) => b.messages - a.messages).slice(0, 5), [creatives]);
-  const topEngagement = useMemo(() => [...creatives].sort((a, b) => b.engagements - a.engagements).slice(0, 5), [creatives]);
-
   useEffect(() => {
     readJson<{ data: AdAccount[] }>("/api/meta/adaccounts")
-      .then((payload) => {
-        setAccounts(payload.data ?? []);
-        setSelectedAccountId(payload.data?.[0]?.id ?? "");
+      .then((res) => {
+        const rows = res.data ?? [];
+        setAccounts(rows);
+        const picked = applyDefaultAdAccount(rows, getDefaultAdAccountId() || rows[0]?.id);
+        setSelectedAccountId(picked);
       })
       .catch((err: Error) => setError(err.message));
   }, []);
-
-  async function loadAccounts() {
-    const accountPayload = await readJson<{ data: AdAccount[] }>("/api/meta/adaccounts");
-    const nextAccounts = accountPayload.data ?? [];
-    setAccounts(nextAccounts);
-    const first = nextAccounts[0]?.id || "";
-    if (!selectedAccountId) setSelectedAccountId(first);
-    return selectedAccountId || first;
-  }
 
   async function loadData(nextAccountId?: string) {
     setLoading(true);
     setError("");
     try {
-      const accountId = nextAccountId || selectedAccountId || (await loadAccounts());
+      const accountId = nextAccountId || selectedAccountId || getDefaultAdAccountId();
       if (!accountId) throw new Error("Chưa có tài khoản quảng cáo.");
-      const query = new URLSearchParams({
-        ad_account_id: accountId,
-        start_date: range.startDate,
-        end_date: range.endDate
-      });
+      const query = new URLSearchParams({ ad_account_id: accountId, start_date: range.startDate, end_date: range.endDate });
       const response = await readJson<{ data: MetaIntelligenceDashboardData }>(`/api/meta/intelligence?${query.toString()}`);
       setPayload(response.data);
       setSelectedAccountId(accountId);
+      setDefaultAdAccountId(accountId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải dữ liệu creative.");
     } finally {
@@ -125,16 +125,21 @@ export function CreativeIntelligenceClient() {
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <label className="space-y-2">
             <span className="text-xs font-extrabold uppercase tracking-wide text-outline">Tài khoản quảng cáo</span>
-            <select className="dashboard-input" value={selectedAccountId} onChange={(event) => setSelectedAccountId(event.target.value)}>
-              {accounts.length ? (
-                accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name || account.id}
-                  </option>
-                ))
-              ) : (
-                <option value="">Chưa có tài khoản</option>
-              )}
+            <select
+              className="dashboard-input"
+              value={selectedAccountId}
+              onChange={(event) => {
+                setSelectedAccountId(event.target.value);
+                setDefaultAdAccountId(event.target.value);
+              }}
+            >
+              {accounts.length
+                ? accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name || account.id}
+                    </option>
+                  ))
+                : <option value="">Chưa có tài khoản</option>}
             </select>
           </label>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -173,7 +178,7 @@ export function CreativeIntelligenceClient() {
             </label>
           </div>
           <div>
-            <Button disabled={loading} onClick={() => loadData()}>
+            <Button disabled={loading} onClick={() => void loadData()}>
               <MaterialIcon name="refresh" />
               {loading ? "Đang tải..." : "Lấy báo cáo creative"}
             </Button>
@@ -188,34 +193,17 @@ export function CreativeIntelligenceClient() {
       ) : null}
 
       {payload?.creativeAccessWarning ? (
-        <Card className="rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-semibold text-yellow-900">
-          {payload.creativeAccessWarning}
-        </Card>
+        <Card className="rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-semibold text-yellow-900">{payload.creativeAccessWarning}</Card>
       ) : null}
 
       {!loading && payload ? (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Card className="rounded-3xl p-5">
-              <p className="text-sm font-bold text-on-surface-variant">Tổng số creative</p>
-              <p className="mt-2 text-3xl font-extrabold">{formatNumber(stats.total)}</p>
-            </Card>
-            <Card className="rounded-3xl p-5">
-              <p className="text-sm font-bold text-on-surface-variant">Tổng lead</p>
-              <p className="mt-2 text-3xl font-extrabold">{formatNumber(stats.totalLeads)}</p>
-            </Card>
-            <Card className="rounded-3xl p-5">
-              <p className="text-sm font-bold text-on-surface-variant">Tổng tin nhắn</p>
-              <p className="mt-2 text-3xl font-extrabold">{formatNumber(stats.totalMessages)}</p>
-            </Card>
-            <Card className="rounded-3xl p-5">
-              <p className="text-sm font-bold text-on-surface-variant">Tổng tương tác</p>
-              <p className="mt-2 text-3xl font-extrabold">{formatNumber(stats.totalEngagements)}</p>
-            </Card>
-            <Card className="rounded-3xl p-5">
-              <p className="text-sm font-bold text-on-surface-variant">Tổng chi tiêu creative</p>
-              <p className="mt-2 text-3xl font-extrabold">{formatMoney(stats.totalSpend, currency)}</p>
-            </Card>
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <StatCard label="Tổng số creative" value={formatNumber(stats.total)} />
+            <StatCard label="Tổng lead" value={formatNumber(stats.totalLeads)} />
+            <StatCard label="Tổng tin nhắn" value={formatNumber(stats.totalMessages)} />
+            <StatCard label="Tổng tương tác" value={formatNumber(stats.totalEngagements)} />
+            <StatCard label="Tổng chi tiêu creative" value={formatMoney(stats.totalSpend, currency)} />
           </section>
 
           <Card className="rounded-3xl p-6">
@@ -228,19 +216,30 @@ export function CreativeIntelligenceClient() {
             </div>
           </Card>
 
-          <section className="grid gap-6 xl:grid-cols-3">
-            <TopCreativeCard title="Top creative theo Lead" rows={topLeads} mode="lead" currency={currency} />
-            <TopCreativeCard title="Top creative theo Tin nhắn" rows={topMessages} mode="message" currency={currency} />
-            <TopCreativeCard title="Top creative theo Tương tác" rows={topEngagement} mode="engagement" currency={currency} />
-          </section>
-
           <Card className="overflow-hidden rounded-3xl p-0">
             <div className="border-b border-outline-variant/70 px-6 py-5">
-              <h3 className="text-lg font-extrabold">Danh sách creative</h3>
-              <p className="text-sm text-on-surface-variant">Tên creative đã tách mã để theo dõi nhanh khi tối ưu.</p>
+              <h3 className="text-lg font-extrabold">Bảng creative</h3>
+              <p className="text-sm text-on-surface-variant">Bạn có thể lọc campaign và sắp xếp theo nhiều định dạng hiệu suất.</p>
+            </div>
+            <div className="flex flex-wrap gap-2 border-b border-outline-variant/70 px-6 py-4">
+              <select className="dashboard-input" value={campaignFilter} onChange={(event) => setCampaignFilter(event.target.value)}>
+                <option value="ALL">Tất cả campaign</option>
+                {Array.from(new Set(creatives.map((item) => item.campaignName))).map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <select className="dashboard-input" value={sortKey} onChange={(event) => setSortKey(event.target.value as SortKey)}>
+                <option value="spend">Sắp xếp theo chi tiêu</option>
+                <option value="lead">Sắp xếp theo lead</option>
+                <option value="message">Sắp xếp theo tin nhắn</option>
+                <option value="engagement">Sắp xếp theo tương tác</option>
+                <option value="ctr">Sắp xếp theo CTR</option>
+              </select>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1020px] text-left text-sm">
+              <table className="w-full min-w-[1120px] text-left text-sm">
                 <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
                   <tr>
                     {["Creative", "Campaign", "Nhóm quảng cáo", "Spend", "Lead", "Tin nhắn", "Tương tác", "CTR", "CPM", "CPC"].map((head) => (
@@ -251,7 +250,7 @@ export function CreativeIntelligenceClient() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/70">
-                  {creatives.map((creative) => {
+                  {sortedFilteredCreatives.map((creative) => {
                     const parsed = splitCreativeName(creative.creativeName, creative.creativeId, creative.adId);
                     return (
                       <tr key={creative.adId}>
@@ -282,17 +281,16 @@ export function CreativeIntelligenceClient() {
           </Card>
         </>
       ) : null}
-
-      {!loading && payload && !creatives.length ? (
-        <Card className="rounded-3xl p-8 text-center">
-          <MaterialIcon className="mx-auto mb-3 text-4xl text-primary" name="palette" />
-          <h3 className="text-xl font-extrabold">Chưa có creative trong kỳ đã chọn</h3>
-          <p className="mx-auto mt-2 max-w-xl text-sm text-on-surface-variant">
-            Có thể tài khoản chưa chạy ads trong giai đoạn này hoặc token thiếu quyền đọc post/creative.
-          </p>
-        </Card>
-      ) : null}
     </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <Card className="rounded-3xl p-5">
+      <p className="text-sm font-bold text-on-surface-variant">{label}</p>
+      <p className="mt-2 text-3xl font-extrabold">{value}</p>
+    </Card>
   );
 }
 
@@ -307,53 +305,5 @@ function FunnelCell({ label, value, total }: { label: string; value: number; tot
       </div>
       <p className="mt-2 text-xs font-semibold text-outline">{percent}% trên tổng creative</p>
     </div>
-  );
-}
-
-function TopCreativeCard({
-  title,
-  rows,
-  mode,
-  currency
-}: {
-  title: string;
-  rows: CreativePerformance[];
-  mode: "lead" | "message" | "engagement";
-  currency: string;
-}) {
-  return (
-    <Card className="rounded-3xl p-5">
-      <h3 className="text-base font-extrabold">{title}</h3>
-      <div className="mt-4 space-y-3">
-        {rows.length ? (
-          rows.map((row) => {
-            const parsed = splitCreativeName(row.creativeName, row.creativeId, row.adId);
-            const metricValue =
-              mode === "lead"
-                ? `${formatNumber(row.leads)} lead`
-                : mode === "message"
-                  ? `${formatNumber(row.messages)} tin nhắn`
-                  : `${formatNumber(row.engagements)} tương tác`;
-            return (
-              <div key={`${mode}-${row.adId}`} className="rounded-2xl bg-surface-container-low p-3">
-                <p className="line-clamp-2 text-sm font-bold text-on-surface">{parsed.title}</p>
-                <p className="mt-1 text-[11px] font-mono text-outline">{parsed.code}</p>
-                <div className="mt-2 flex items-center justify-between text-xs text-on-surface-variant">
-                  <span>{metricValue}</span>
-                  <span>{formatMoney(row.spend, currency)}</span>
-                </div>
-                {row.postUrl ? (
-                  <a className="mt-2 inline-flex text-xs font-bold text-primary hover:underline" href={row.postUrl} rel="noreferrer" target="_blank">
-                    Mở bài post
-                  </a>
-                ) : null}
-              </div>
-            );
-          })
-        ) : (
-          <div className="rounded-2xl bg-surface-container-low p-4 text-sm text-on-surface-variant">Chưa có dữ liệu.</div>
-        )}
-      </div>
-    </Card>
   );
 }

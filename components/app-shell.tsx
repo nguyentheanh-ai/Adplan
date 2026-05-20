@@ -2,19 +2,28 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MaterialIcon } from "@/components/material-icon";
 
-const navItems = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: string;
+  match: string;
+  section?: string;
+  adminOnly?: boolean;
+};
+
+const navItems: NavItem[] = [
   { href: "/dashboard", label: "Tổng quan", icon: "dashboard", match: "/dashboard" },
-  { href: "/reports", label: "Báo cáo Ads", icon: "monitoring", match: "/reports" },
-  { href: "/campaign-builder", label: "Tạo Campaign AI", icon: "auto_awesome", match: "/campaign-builder" },
-  { href: "/audiences", label: "Tệp khách hàng", icon: "groups", match: "/audiences" },
-  { href: "/creative", label: "Creative", icon: "palette", match: "/creative" },
-  { href: "/dashboard/meta", label: "Meta API", icon: "hub", match: "/dashboard/meta" },
+  { href: "/reports", label: "Báo cáo Ads", icon: "monitoring", match: "/reports", section: "reports" },
+  { href: "/campaign-builder", label: "Tạo Campaign AI", icon: "auto_awesome", match: "/campaign-builder", section: "campaign_builder" },
+  { href: "/audiences", label: "Tệp khách hàng", icon: "groups", match: "/audiences", section: "audiences" },
+  { href: "/creative", label: "Creative", icon: "palette", match: "/creative", section: "creative" },
   { href: "/history", label: "Lịch sử", icon: "history", match: "/history" },
-  { href: "/settings", label: "Cài đặt", icon: "settings", match: "/settings" }
+  { href: "/settings", label: "Cài đặt", icon: "settings", match: "/settings" },
+  { href: "/admin", label: "Quản trị", icon: "admin_panel_settings", match: "/admin", adminOnly: true }
 ];
 
 function isActive(pathname: string, match: string) {
@@ -45,6 +54,47 @@ export function AppShell({
       return false;
     }
   });
+  const [permissionLoaded, setPermissionLoaded] = useState(false);
+  const [userRole, setUserRole] = useState<"owner" | "manager" | "member">("member");
+  const [lockedSections, setLockedSections] = useState<string[]>([]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    fetch("/api/admin/me", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then((payload) => {
+        if (isCancelled) return;
+        const role = payload?.data?.permission?.role;
+        const locks = payload?.data?.permission?.locked_sections;
+        if (role === "owner" || role === "manager" || role === "member") {
+          setUserRole(role);
+        }
+        if (Array.isArray(locks)) {
+          setLockedSections(locks);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) setPermissionLoaded(true);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const visibleNavItems = useMemo(() => {
+    return navItems.filter((item) => {
+      if (item.adminOnly) {
+        return userRole === "owner" || userRole === "manager";
+      }
+      if (!item.section) return true;
+      if (userRole === "owner" || userRole === "manager") return true;
+      return !lockedSections.includes(item.section);
+    });
+  }, [userRole, lockedSections]);
 
   function toggleSidebar() {
     setSidebarHidden((current) => {
@@ -62,7 +112,7 @@ export function AppShell({
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
-      // Vẫn đưa user về login nếu API logout tạm thời lỗi.
+      // vẫn chuyển về login nếu logout lỗi tạm thời.
     }
     router.replace("/login");
     router.refresh();
@@ -85,13 +135,13 @@ export function AppShell({
             </div>
             <div>
               <h1 className="text-xl font-extrabold leading-none text-primary">AdPlanner AI</h1>
-              <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-outline">Meta ads cockpit</p>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-outline">Meta Ads Cockpit</p>
             </div>
           </Link>
         </div>
 
         <nav className="custom-scrollbar flex-1 space-y-1 overflow-y-auto px-3">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const active = isActive(pathname, item.match);
             return (
               <Link
@@ -114,6 +164,9 @@ export function AppShell({
             <p className="text-xs font-bold uppercase tracking-wide text-outline">Kết nối</p>
             <p className="mt-1 text-sm font-bold text-on-surface">Facebook Marketing API</p>
             <p className="mt-1 text-xs leading-5 text-on-surface-variant">Campaign thật luôn được giữ PAUSED trước khi duyệt.</p>
+            {!permissionLoaded ? null : (
+              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-outline">Vai trò: {userRole}</p>
+            )}
           </div>
           <button
             onClick={signOut}
@@ -173,7 +226,7 @@ export function AppShell({
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-50 grid h-16 grid-cols-5 border-t border-outline-variant/70 bg-white px-2 md:hidden">
-        {navItems.slice(0, 5).map((item) => {
+        {visibleNavItems.slice(0, 5).map((item) => {
           const active = isActive(pathname, item.match);
           return (
             <Link

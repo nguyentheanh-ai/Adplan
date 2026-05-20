@@ -5,8 +5,9 @@ import { toast } from "sonner";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { exportReportToCSV, formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
+import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type { AdAccount, AdsReport, BreakdownRow, BreakdownType, DailyInsight } from "@/lib/meta/types";
+import { exportReportToCSV, formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
 
 type DatePreset = "today" | "yesterday" | "7d" | "30d" | "month" | "custom";
 type SortKey = "spend" | "ctr" | "cpc";
@@ -21,7 +22,6 @@ function getPresetRange(preset: DatePreset) {
   const now = new Date();
   const start = new Date(now);
   const end = new Date(now);
-
   if (preset === "yesterday") {
     start.setDate(start.getDate() - 1);
     end.setDate(end.getDate() - 1);
@@ -29,7 +29,6 @@ function getPresetRange(preset: DatePreset) {
   if (preset === "7d") start.setDate(start.getDate() - 6);
   if (preset === "30d") start.setDate(start.getDate() - 29);
   if (preset === "month") start.setDate(1);
-
   return { startDate: isoDate(start), endDate: isoDate(end) };
 }
 
@@ -40,16 +39,16 @@ async function readJson<T>(url: string) {
   return payload;
 }
 
-function chartMetricValue(row: DailyInsight, metric: ChartMetric) {
+function metricValue(row: DailyInsight, metric: ChartMetric) {
   if (metric === "ctr") return Number(row.ctr ?? 0);
   if (metric === "cpc") return Number(row.cpc ?? 0);
   return Number(row.spend ?? 0);
 }
 
-function chartMetricLabel(metric: ChartMetric) {
+function metricLabel(metric: ChartMetric) {
   if (metric === "ctr") return "CTR";
   if (metric === "cpc") return "CPC";
-  return "Chi phí quảng cáo";
+  return "Chi tiêu";
 }
 
 function formatMetricValue(value: number, metric: ChartMetric, currency: string) {
@@ -77,8 +76,10 @@ export function AdsReportClient() {
   useEffect(() => {
     readJson<{ data: AdAccount[] }>("/api/meta/adaccounts")
       .then((payload) => {
-        setAccounts(payload.data ?? []);
-        setSelectedAccountId(payload.data?.[0]?.id ?? "");
+        const rows = payload.data ?? [];
+        setAccounts(rows);
+        const preferred = applyDefaultAdAccount(rows, getDefaultAdAccountId() || rows[0]?.id);
+        setSelectedAccountId(preferred);
       })
       .catch((err: Error) => setError(err.message));
   }, []);
@@ -93,7 +94,6 @@ export function AdsReportClient() {
       setError("Chưa chọn tài khoản quảng cáo.");
       return;
     }
-
     setLoading(true);
     setError("");
     setTechnicalError("");
@@ -121,7 +121,6 @@ export function AdsReportClient() {
     setBreakdown(nextBreakdown);
     setBreakdownLoading(true);
     setBreakdownRows([]);
-
     try {
       const query = new URLSearchParams({
         ad_account_id: selectedAccountId,
@@ -152,6 +151,7 @@ export function AdsReportClient() {
   }
 
   const selectedAccount = accounts.find((item) => item.id === selectedAccountId);
+  const currency = selectedAccount?.currency || "VND";
   const sortedCampaigns = useMemo(() => [...(report?.campaigns ?? [])].sort((a, b) => b[sortKey] - a[sortKey]), [report, sortKey]);
 
   return (
@@ -163,17 +163,18 @@ export function AdsReportClient() {
             <select
               className="h-12 w-full rounded-2xl border border-outline-variant bg-white px-4 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
               value={selectedAccountId}
-              onChange={(event) => setSelectedAccountId(event.target.value)}
+              onChange={(event) => {
+                setSelectedAccountId(event.target.value);
+                setDefaultAdAccountId(event.target.value);
+              }}
             >
-              {accounts.length ? (
-                accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name || account.id} - {account.id}
-                  </option>
-                ))
-              ) : (
-                <option>Chưa có tài khoản quảng cáo</option>
-              )}
+              {accounts.length
+                ? accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name || account.id} - {account.id}
+                    </option>
+                  ))
+                : <option>Chưa có tài khoản quảng cáo</option>}
             </select>
           </label>
 
@@ -230,20 +231,6 @@ export function AdsReportClient() {
             </Button>
           </div>
         </div>
-
-        {selectedAccount ? (
-          <div className="mt-4 grid gap-3 text-sm text-on-surface-variant sm:grid-cols-3">
-            <p>
-              <b className="text-on-surface">Đơn vị tiền tệ:</b> {selectedAccount.currency || "Chưa rõ"}
-            </p>
-            <p>
-              <b className="text-on-surface">Múi giờ:</b> {selectedAccount.timezone_name || "Chưa rõ"}
-            </p>
-            <p>
-              <b className="text-on-surface">Trạng thái:</b> {selectedAccount.account_status ?? "Chưa rõ"}
-            </p>
-          </div>
-        ) : null}
       </Card>
 
       {error ? (
@@ -267,7 +254,7 @@ export function AdsReportClient() {
 
       {report ? (
         <>
-          <KpiGrid report={report} currency={selectedAccount?.currency || "VND"} />
+          <KpiGrid report={report} currency={currency} />
 
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <Card className="rounded-3xl p-6">
@@ -278,7 +265,7 @@ export function AdsReportClient() {
                 </div>
                 <div className="flex gap-2">
                   <select className="dashboard-input" value={primaryMetric} onChange={(event) => setPrimaryMetric(event.target.value as ChartMetric)}>
-                    <option value="spend">Chi phí quảng cáo</option>
+                    <option value="spend">Chi tiêu</option>
                     <option value="ctr">CTR</option>
                     <option value="cpc">CPC</option>
                   </select>
@@ -288,12 +275,7 @@ export function AdsReportClient() {
                   </select>
                 </div>
               </div>
-              <DailyMetricChart
-                rows={report.daily}
-                metric={primaryMetric}
-                chartType={chartType}
-                currency={selectedAccount?.currency || "VND"}
-              />
+              <DailyMetricChart rows={report.daily} metric={primaryMetric} chartType={chartType} currency={currency} />
             </Card>
 
             <Card className="rounded-3xl p-6">
@@ -303,12 +285,12 @@ export function AdsReportClient() {
                   <p className="text-sm text-on-surface-variant">Đối sánh thêm một chỉ số khác trong cùng khoảng thời gian.</p>
                 </div>
                 <select className="dashboard-input" value={compareMetric} onChange={(event) => setCompareMetric(event.target.value as ChartMetric)}>
-                  <option value="spend">Chi phí quảng cáo</option>
+                  <option value="spend">Chi tiêu</option>
                   <option value="ctr">CTR</option>
                   <option value="cpc">CPC</option>
                 </select>
               </div>
-              <DailyMetricChart rows={report.daily} metric={compareMetric} chartType="bar" currency={selectedAccount?.currency || "VND"} compact />
+              <DailyMetricChart rows={report.daily} metric={compareMetric} chartType="bar" currency={currency} compact />
             </Card>
           </div>
 
@@ -329,7 +311,7 @@ export function AdsReportClient() {
                   <option value="cpc">Sort theo CPC</option>
                 </select>
               </div>
-              <CampaignTable rows={sortedCampaigns} currency={selectedAccount?.currency || "VND"} />
+              <CampaignTable rows={sortedCampaigns} currency={currency} />
             </Card>
 
             <Card className="rounded-3xl p-6">
@@ -355,13 +337,13 @@ export function AdsReportClient() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {(["age", "gender", "placement"] as BreakdownType[]).map((item) => (
-                  <Button key={item} variant={breakdown === item ? "primary" : "secondary"} onClick={() => loadBreakdown(item)} disabled={breakdownLoading}>
+                  <Button key={item} variant={breakdown === item ? "primary" : "secondary"} onClick={() => void loadBreakdown(item)} disabled={breakdownLoading}>
                     {item === "age" ? "Age" : item === "gender" ? "Gender" : "Placement"}
                   </Button>
                 ))}
               </div>
             </div>
-            <BreakdownTable rows={breakdownRows} loading={breakdownLoading} breakdown={breakdown} currency={selectedAccount?.currency || "VND"} />
+            <BreakdownTable rows={breakdownRows} loading={breakdownLoading} breakdown={breakdown} currency={currency} />
           </Card>
         </>
       ) : !loading ? (
@@ -420,8 +402,7 @@ function DailyMetricChart({
   if (!rows.length) {
     return <div className="rounded-2xl bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">Chưa có dữ liệu theo ngày.</div>;
   }
-
-  const values = rows.map((row) => chartMetricValue(row, metric));
+  const values = rows.map((row) => metricValue(row, metric));
   const max = Math.max(...values, 1);
 
   return (
@@ -465,7 +446,7 @@ function DailyMetricChart({
           <div key={`${metric}-${row.date_start}`} className="rounded-2xl bg-surface-container-low p-4 text-sm">
             <p className="font-bold text-on-surface">{row.date_start}</p>
             <p className="mt-1 text-on-surface-variant">
-              {chartMetricLabel(metric)}: {formatMetricValue(chartMetricValue(row, metric), metric, currency)}
+              {metricLabel(metric)}: {formatMetricValue(metricValue(row, metric), metric, currency)}
             </p>
             <p className="text-on-surface-variant">CTR: {formatPercent(Number(row.ctr ?? 0))}</p>
             <p className="text-on-surface-variant">CPC: {formatMoney(Number(row.cpc ?? 0), currency)}</p>
@@ -486,7 +467,7 @@ function CampaignTable({ rows, currency }: { rows: AdsReport["campaigns"]; curre
       <table className="w-full min-w-[980px] text-left text-sm">
         <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
           <tr>
-            {["Campaign name", "Status", "Objective", "Spend", "Impressions", "Reach", "CTR", "CPC", "CPM", "Results", "Cost/result", "ROAS"].map(
+            {["Campaign", "Status", "Objective", "Spend", "Impressions", "Reach", "CTR", "CPC", "CPM", "Results", "Cost/result", "ROAS"].map(
               (head) => (
                 <th key={head} className="px-5 py-4 font-extrabold">
                   {head}

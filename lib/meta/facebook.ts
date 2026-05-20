@@ -169,7 +169,7 @@ export async function getMetaAdAccounts(accessToken?: string | null) {
   const payload = await metaFetch<{ data: AdAccount[] }>("me/adaccounts", {
     accessToken,
     params: {
-      fields: "id,account_id,name,currency,timezone_name,account_status"
+      fields: "id,account_id,name,currency,timezone_name,account_status,user_tasks"
     }
   });
 
@@ -321,6 +321,40 @@ export async function getMetaAdsWithCreatives(
     params: {
       fields,
       limit: "100"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function getMetaManagedPages(accessToken?: string | null) {
+  const payload = await metaFetch<{
+    data: Array<{ id: string; name: string; category?: string; access_token?: string }>;
+  }>("me/accounts", {
+    accessToken,
+    params: {
+      fields: "id,name,category,access_token",
+      limit: "50"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function getMetaPagePosts({
+  pageId,
+  accessToken
+}: {
+  pageId: string;
+  accessToken?: string | null;
+}) {
+  const payload = await metaFetch<{
+    data: Array<{ id: string; message?: string; created_time?: string; permalink_url?: string }>;
+  }>(`${pageId}/posts`, {
+    accessToken,
+    params: {
+      fields: "id,message,created_time,permalink_url",
+      limit: "20"
     }
   });
 
