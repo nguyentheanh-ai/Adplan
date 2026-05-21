@@ -164,6 +164,14 @@
 - Gợi ý scale ngân sách có thể dựa trên chi phí/kết quả tốt hơn benchmark ngành, không chỉ so với các campaign trong cùng account.
 - Khi benchmark chưa đủ mẫu, engine tự fallback về ngưỡng mặc định để tránh khuyến nghị quá tự tin.
 
+## 2026-05-21 - Autopilot apply readiness
+
+### Đã bổ sung
+
+- Mỗi recommendation trong `Tối ưu Ads` có panel `Kiểm tra trước khi áp dụng`.
+- UI nói rõ khuyến nghị đã duyệt chưa, account đã bật ủy quyền chưa, action có nằm trong phạm vi được phép chưa và thay đổi ngân sách có vượt giới hạn không.
+- Những action chưa có API apply tự động an toàn được ghi rõ là proposal/log, không fake tự chỉnh Meta.
+
 ## 2026-05-21 - Optimization action history UI
 
 ### Đã bổ sung

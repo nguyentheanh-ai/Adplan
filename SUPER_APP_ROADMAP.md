@@ -151,12 +151,12 @@ Ngành ưu tiên:
 
 ### Phase E - Autopilot có kiểm soát
 
-- [ ] Khách bật ủy quyền theo account.
-- [ ] Chọn hành động được phép.
-- [ ] Chọn giới hạn tăng ngân sách/ngày.
+- [x] Khách bật ủy quyền theo account.
+- [x] Chọn hành động được phép.
+- [x] Chọn giới hạn tăng ngân sách/ngày.
 - [ ] Chọn khung giờ app được phép tối ưu.
 - [ ] App chỉ tạo proposal nếu chưa đủ quyền.
-- [ ] App chỉ apply khi authorization hợp lệ.
+- [x] App chỉ apply khi authorization hợp lệ.
 - [ ] Mọi action đều có log, trạng thái, lỗi, rollback note.
 
 ## Nguyên tắc an toàn
@@ -207,6 +207,13 @@ Ngành ưu tiên:
 - [x] Recommendation engine dùng benchmark ngành đủ mẫu để điều chỉnh ngưỡng CTR thấp thay vì luôn dùng CTR < 1%.
 - [x] Campaign có chi phí/kết quả tốt hơn benchmark ngành vẫn được gợi ý scale, kể cả khi mặt bằng account hiện tại chưa lệch nhiều.
 - [x] Khi benchmark chưa đủ mẫu, engine quay về ngưỡng mặc định để tránh phán đoán quá đà.
+
+## Progress 2026-05-21 - Autopilot apply readiness
+
+- [x] Mỗi recommendation có panel `Kiểm tra trước khi áp dụng`.
+- [x] UI hiển thị rõ: đã duyệt chưa, account đã bật ủy quyền chưa, action có nằm trong phạm vi chưa, ngân sách có vượt giới hạn không.
+- [x] Nút áp dụng chỉ bật khi recommendation đã duyệt và account đã bật ủy quyền; backend vẫn là lớp chặn cuối cùng.
+- [x] Các action chưa có API apply an toàn được ghi rõ là proposal/log, không fake tự chỉnh Meta.
 
 ## Progress 2026-05-21 - Optimization next action
 

@@ -30,6 +30,7 @@ type Recommendation = {
   title: string;
   reason: string;
   expected_impact?: string;
+  action_payload?: Record<string, unknown> | null;
   status: string;
   created_at: string;
 };
@@ -132,6 +133,51 @@ function actionStatusLabel(status: ActionLog["status"]) {
   if (status === "blocked") return "Đã chặn";
   if (status === "failed") return "Thất bại";
   return "Chỉ ghi nhận";
+}
+
+function recommendationActionLabel(actionType: string) {
+  return allowedActionOptions.find((item) => item.value === actionType)?.label || actionType;
+}
+
+function getPercentValue(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.abs(number) : 0;
+}
+
+function getApplyReadiness(recommendation: Recommendation, authorization: Authorization | null) {
+  const checks: Array<{ label: string; ok: boolean; tone?: "good" | "warn" | "bad" }> = [];
+  const actionPayload = recommendation.action_payload ?? {};
+  const isBudgetAction = recommendation.recommendation_type === "scale_budget" || recommendation.recommendation_type === "reduce_budget";
+  const requestedBudgetChange = getPercentValue(actionPayload.budget_change_percent ?? actionPayload.suggested_budget_increase_percent);
+  const maxBudgetChange = Number(authorization?.max_daily_budget_change_percent ?? 0);
+  const enabled = authorization?.status === "enabled";
+  const allowedActions = Array.isArray(authorization?.allowed_actions) ? authorization.allowed_actions : [];
+  const actionAllowed = allowedActions.includes(recommendation.recommendation_type);
+  const withinBudgetLimit = !isBudgetAction || requestedBudgetChange === 0 || maxBudgetChange === 0 || requestedBudgetChange <= maxBudgetChange;
+  const isRealBudgetUpdate = recommendation.recommendation_type === "scale_budget" && typeof actionPayload.new_daily_budget === "string";
+
+  checks.push({ label: recommendation.status === "approved" ? "Đã duyệt khuyến nghị" : "Cần duyệt trước khi áp dụng", ok: recommendation.status === "approved" });
+  checks.push({ label: enabled ? "Đã bật ủy quyền cho account" : "Chưa bật ủy quyền account", ok: enabled });
+  checks.push({ label: actionAllowed ? "Hành động nằm trong phạm vi ủy quyền" : `Chưa cho phép: ${recommendationActionLabel(recommendation.recommendation_type)}`, ok: actionAllowed });
+  if (isBudgetAction) {
+    checks.push({
+      label: withinBudgetLimit
+        ? `Trong giới hạn ngân sách (${requestedBudgetChange || 0}% / ${maxBudgetChange || "không giới hạn"}%)`
+        : `Vượt giới hạn ngân sách (${requestedBudgetChange}% > ${maxBudgetChange}%)`,
+      ok: withinBudgetLimit
+    });
+  }
+  checks.push({
+    label: isRealBudgetUpdate ? "Có thể gọi Meta để cập nhật ngân sách" : "Hành động hiện ở dạng proposal/log, chưa tự chỉnh Meta",
+    ok: isRealBudgetUpdate,
+    tone: isRealBudgetUpdate ? "good" : "warn"
+  });
+
+  return {
+    ok: checks.every((item) => item.ok),
+    checks,
+    canClickApply: recommendation.status === "approved" && enabled
+  };
 }
 
 function formatDateTime(value: string) {
@@ -770,45 +816,49 @@ export function OptimizationCenterClient() {
           />
 
           <div className="mt-5 space-y-3">
-            {recommendations.length ? recommendations.map((item) => (
-              <div key={item.id} className="rounded-lg border border-outline-variant bg-white p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityClass(item.priority)}`}>{item.priority.toUpperCase()}</span>
-                      <span className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-bold text-on-surface-variant">{item.recommendation_type}</span>
-                      <span className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-bold text-on-surface-variant">{item.status}</span>
+            {recommendations.length ? recommendations.map((item) => {
+              const readiness = getApplyReadiness(item, authorization);
+              return (
+                <div key={item.id} className="rounded-lg border border-outline-variant bg-white p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityClass(item.priority)}`}>{item.priority.toUpperCase()}</span>
+                        <span className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-bold text-on-surface-variant">{item.recommendation_type}</span>
+                        <span className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-bold text-on-surface-variant">{item.status}</span>
+                      </div>
+                      <h4 className="mt-3 text-base font-extrabold">{item.title}</h4>
+                      <p className="mt-1 text-sm leading-6 text-on-surface-variant">{item.reason}</p>
+                      {item.expected_impact ? <p className="mt-2 text-sm font-semibold text-primary">{item.expected_impact}</p> : null}
+                      <p className="mt-2 text-xs text-outline">{item.entity_name || item.entity_id}</p>
                     </div>
-                    <h4 className="mt-3 text-base font-extrabold">{item.title}</h4>
-                    <p className="mt-1 text-sm leading-6 text-on-surface-variant">{item.reason}</p>
-                    {item.expected_impact ? <p className="mt-2 text-sm font-semibold text-primary">{item.expected_impact}</p> : null}
-                    <p className="mt-2 text-xs text-outline">{item.entity_name || item.entity_id}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 md:justify-end">
-                    {item.status === "draft" ? (
-                      <>
-                        <Button variant="secondary" onClick={() => void updateRecommendationStatus(item.id, "rejected")} disabled={Boolean(busyLabel)}>
-                          Từ chối
+                    <div className="flex flex-wrap gap-2 md:justify-end">
+                      {item.status === "draft" ? (
+                        <>
+                          <Button variant="secondary" onClick={() => void updateRecommendationStatus(item.id, "rejected")} disabled={Boolean(busyLabel)}>
+                            Từ chối
+                          </Button>
+                          <Button onClick={() => void updateRecommendationStatus(item.id, "approved")} disabled={Boolean(busyLabel)}>
+                            Duyệt
+                          </Button>
+                        </>
+                      ) : null}
+                      {item.status === "approved" ? (
+                        <Button onClick={() => void applyRecommendation(item.id)} disabled={Boolean(busyLabel) || !readiness.canClickApply} title={readiness.canClickApply ? "Áp dụng trong phạm vi đã ủy quyền." : "Cần hoàn tất các điều kiện an toàn trước khi áp dụng."}>
+                          Áp dụng
                         </Button>
-                        <Button onClick={() => void updateRecommendationStatus(item.id, "approved")} disabled={Boolean(busyLabel)}>
-                          Duyệt
+                      ) : null}
+                      {item.status === "rejected" ? (
+                        <Button variant="secondary" onClick={() => void updateRecommendationStatus(item.id, "draft")} disabled={Boolean(busyLabel)}>
+                          Mở lại
                         </Button>
-                      </>
-                    ) : null}
-                    {item.status === "approved" ? (
-                      <Button onClick={() => void applyRecommendation(item.id)} disabled={Boolean(busyLabel) || !enabled} title={enabled ? "Áp dụng trong phạm vi đã ủy quyền." : "Cần bật ủy quyền trước khi áp dụng."}>
-                        Áp dụng
-                      </Button>
-                    ) : null}
-                    {item.status === "rejected" ? (
-                      <Button variant="secondary" onClick={() => void updateRecommendationStatus(item.id, "draft")} disabled={Boolean(busyLabel)}>
-                        Mở lại
-                      </Button>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
+                  <ApplyReadinessPanel readiness={readiness} />
                 </div>
-              </div>
-            )) : (
+              );
+            }) : (
               <div className="rounded-lg bg-surface-container-low p-6 text-sm text-on-surface-variant">
                 Chưa có khuyến nghị. Hãy bấm `Đồng bộ dữ liệu`, sau đó bấm `Tạo khuyến nghị`.
               </div>
@@ -932,6 +982,38 @@ function TodayPlanSummary({
           <p className="mt-1 leading-6 text-on-surface-variant">{topRecommendation.reason}</p>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function ApplyReadinessPanel({
+  readiness
+}: {
+  readiness: ReturnType<typeof getApplyReadiness>;
+}) {
+  return (
+    <div className="mt-4 rounded-lg bg-surface-container-low p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs font-bold uppercase tracking-wide text-outline">Kiểm tra trước khi áp dụng</p>
+        <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-bold ${readiness.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+          {readiness.ok ? "Đủ điều kiện" : "Cần kiểm tra"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {readiness.checks.map((check) => {
+          const toneClass = check.ok
+            ? "text-emerald-700"
+            : check.tone === "warn"
+              ? "text-amber-700"
+              : "text-error";
+          return (
+            <div key={check.label} className="flex gap-2 text-sm">
+              <MaterialIcon className={toneClass} name={check.ok ? "check_circle" : check.tone === "warn" ? "info" : "warning"} />
+              <span className="text-on-surface-variant">{check.label}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
