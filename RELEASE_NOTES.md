@@ -102,6 +102,25 @@
 - Bật khung giờ, đặt giờ hiện tại nằm ngoài khung, thử áp dụng recommendation đã duyệt: phải bị chặn và có log.
 - Đặt giờ hiện tại nằm trong khung, thử lại: route tiếp tục qua các lớp kiểm tra quyền/ngân sách như cũ.
 
+## 2026-05-21 - Campaign scale UX, admin-only industry profile
+
+### Đã bổ sung/sửa
+
+- `Hồ sơ ngành hàng` trong `Tối ưu Ads` chỉ hiển thị với Owner/Manager.
+- Thêm suy luận hồ sơ ngành từ dữ liệu Meta đã sync: campaign, creative, bài quảng cáo, target, ngân sách và chỉ số đã lưu.
+- Khách thường không còn phải nhập ngành/mô hình/offer thủ công.
+- Scale camp cũ có nút hành động chính ngay trên khu vực chọn campaign.
+- Bảng campaign trong Scale camp có ô tìm kiếm theo tên/ID và thanh trượt để xem nhanh nhiều chiến dịch.
+- Route `POST /api/meta/scale` không còn phụ thuộc hoàn toàn vào Meta `/copies` khi nhân bản campaign: app tự tạo campaign PAUSED mới và tạo lại các adset nguồn ở trạng thái PAUSED.
+- API key/env status được chuyển sang khu `Quản trị`; trang `Cài đặt` của khách chỉ còn thông tin tài khoản.
+
+### Kiểm tra đã chạy
+
+- `npm.cmd run typecheck`: pass.
+- `npm.cmd run lint`: pass.
+- `npm.cmd test`: pass, 10 files / 37 tests.
+- `npm.cmd run build`: pass.
+
 ## 2026-05-21 - Optimization action audit log
 
 ### Đã bổ sung

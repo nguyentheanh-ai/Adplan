@@ -17,6 +17,12 @@ type AdminUserRow = {
   permission: AdminUserPermission | null;
 };
 
+type IntegrationStatus = {
+  name: string;
+  configured: boolean;
+  purpose: string;
+};
+
 const lockOptions = [
   { key: "reports", label: "Báo cáo Ads" },
   { key: "campaign_builder", label: "Tạo Campaign AI" },
@@ -32,7 +38,7 @@ async function readJson<T>(url: string, init?: RequestInit) {
   return payload;
 }
 
-export function AdminConsoleClient() {
+export function AdminConsoleClient({ integrationStatuses = [] }: { integrationStatuses?: IntegrationStatus[] }) {
   const [rows, setRows] = useState<AdminUserRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState("");
@@ -133,6 +139,30 @@ export function AdminConsoleClient() {
             ))}
           </div>
         ) : null}
+      </Card>
+
+      <Card className="rounded-lg p-0">
+        <div className="border-b border-outline-variant/70 px-6 py-5">
+          <h3 className="text-lg font-extrabold">API key & tích hợp</h3>
+          <p className="text-sm text-on-surface-variant">
+            Chỉ quản trị viên nhìn thấy trạng thái key. App không in giá trị secret ra trình duyệt; khi cần đổi key hãy cập nhật trong Vercel Environment Variables rồi redeploy.
+          </p>
+        </div>
+        <div className="grid gap-3 p-6 md:grid-cols-2">
+          {integrationStatuses.map((item) => (
+            <div key={item.name} className="rounded-lg border border-outline-variant bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-extrabold text-on-surface">{item.name}</p>
+                  <p className="mt-1 text-sm leading-6 text-on-surface-variant">{item.purpose}</p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${item.configured ? "bg-emerald-50 text-emerald-700" : "bg-error-container text-error"}`}>
+                  {item.configured ? "Đã có" : "Thiếu"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </Card>
 
       <Card className="rounded-lg p-0">

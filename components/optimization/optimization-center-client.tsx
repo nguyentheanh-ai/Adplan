@@ -232,7 +232,7 @@ function priorityRank(priority: Recommendation["priority"]) {
   return 1;
 }
 
-export function OptimizationCenterClient() {
+export function OptimizationCenterClient({ canManageIndustryProfile = false }: { canManageIndustryProfile?: boolean }) {
   const [accounts, setAccounts] = useState<AdAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [range, setRange] = useState(defaultRange());
@@ -473,6 +473,20 @@ export function OptimizationCenterClient() {
     }).catch((error: Error) => toast.error(error.message));
   }
 
+  async function inferIndustryProfile() {
+    if (!selectedAccountId) return toast.error("Chọn tài khoản quảng cáo trước.");
+    await withProgress("Đang suy luận ngành từ dữ liệu Meta đã sync...", async () => {
+      const payload = await readJson<{ data: IndustryProfile; source?: { campaigns: number; creatives: number } }>("/api/optimization/industry-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ad_account_id: selectedAccountId })
+      });
+      setIndustryProfile(payload.data);
+      await loadIndustryLearning(payload.data.industry_key, true);
+      toast.success(`Đã suy luận hồ sơ từ ${payload.source?.campaigns ?? 0} campaign và ${payload.source?.creatives ?? 0} creative.`);
+    }).catch((error: Error) => toast.error(error.message));
+  }
+
   async function syncData() {
     if (!selectedAccountId) return toast.error("Chọn tài khoản quảng cáo trước.");
     await withProgress("Đang đồng bộ dữ liệu Meta để học tối ưu...", async () => {
@@ -617,6 +631,7 @@ export function OptimizationCenterClient() {
         </div>
       </Card>
 
+      {canManageIndustryProfile ? (
       <Card className="rounded-xl p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -626,9 +641,9 @@ export function OptimizationCenterClient() {
               Mỗi tài khoản quảng cáo có thể thuộc ngành khác nhau. Lưu ngữ cảnh này giúp app phân tích benchmark, ngân sách và creative winner theo đúng ngành thay vì phán đoán chung chung.
             </p>
           </div>
-          <Button onClick={() => void saveIndustryProfile()} disabled={Boolean(busyLabel) || !selectedAccountId}>
-            <MaterialIcon name="save" />
-            Lưu hồ sơ ngành
+          <Button onClick={() => void inferIndustryProfile()} disabled={Boolean(busyLabel) || !selectedAccountId}>
+            <MaterialIcon name="psychology" />
+            Suy luận từ dữ liệu Meta
           </Button>
         </div>
 
@@ -739,12 +754,13 @@ export function OptimizationCenterClient() {
               </table>
             ) : (
               <div className="rounded-lg bg-white p-4 text-sm text-on-surface-variant">
-                Chưa có benchmark cho ngành này. Hãy đồng bộ dữ liệu Meta, lưu hồ sơ ngành, rồi bấm “Học từ dữ liệu đã sync”.
+                Chưa có benchmark cho ngành này. Hãy đồng bộ dữ liệu Meta, bấm “Suy luận từ dữ liệu Meta”, rồi bấm “Học từ dữ liệu đã sync”.
               </div>
             )}
           </div>
         </div>
       </Card>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
         <Card className="rounded-xl p-6">

@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAppSession } from "@/lib/auth/session";
 import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
-import { cloneMetaObject, metaErrorResponse, updateMetaBudget } from "@/lib/meta/facebook";
+import {
+  cloneMetaObject,
+  createAdsetFromSourceOnMeta,
+  createCampaignOnMeta,
+  getMetaAdsets,
+  getMetaCampaigns,
+  metaErrorResponse,
+  updateMetaBudget
+} from "@/lib/meta/facebook";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const scaleSchema = z.object({
@@ -46,6 +54,56 @@ async function saveCloneLog(payload: {
   if (error && !isMissingTable(error)) throw new Error(error.message);
 }
 
+async function cloneCampaignWithAdsets({
+  adAccountId,
+  sourceCampaignId,
+  quantity,
+  newBudget,
+  accessToken
+}: {
+  adAccountId: string;
+  sourceCampaignId: string;
+  quantity: number;
+  newBudget?: string;
+  accessToken: string;
+}) {
+  const campaigns = await getMetaCampaigns(adAccountId, accessToken);
+  const sourceCampaign = campaigns.find((campaign) => campaign.id === sourceCampaignId);
+  if (!sourceCampaign) {
+    throw new Error("Không tìm thấy campaign nguồn hoặc token không có quyền đọc campaign này.");
+  }
+
+  const sourceAdsets = await getMetaAdsets(adAccountId, accessToken, sourceCampaignId);
+  if (!sourceAdsets.length) {
+    throw new Error("Campaign nguồn không có nhóm quảng cáo hoặc token thiếu quyền đọc adset.");
+  }
+
+  const results: Array<{ id: string; copied_campaign_id: string; adsets: Array<{ id: string; source_adset_id: string }> }> = [];
+  for (let index = 0; index < quantity; index += 1) {
+    const campaign = await createCampaignOnMeta({
+      adAccountId,
+      name: `${sourceCampaign.name} - Bản sao ${index + 1}`,
+      objective: sourceCampaign.objective || "OUTCOME_ENGAGEMENT",
+      accessToken
+    });
+    const adsets = [];
+    for (const sourceAdset of sourceAdsets) {
+      const adset = await createAdsetFromSourceOnMeta({
+        adAccountId,
+        campaignId: campaign.id,
+        sourceAdset,
+        name: `${sourceAdset.name} - Bản sao ${index + 1}`,
+        dailyBudget: newBudget,
+        accessToken
+      });
+      adsets.push({ id: adset.id, source_adset_id: sourceAdset.id });
+    }
+    results.push({ id: campaign.id, copied_campaign_id: campaign.id, adsets });
+  }
+
+  return results;
+}
+
 export async function POST(request: Request) {
   const session = await getAppSession();
   if (!session) return NextResponse.json({ error: "Ban can dang nhap Facebook." }, { status: 401 });
@@ -73,8 +131,21 @@ export async function POST(request: Request) {
     }
 
     const sourceType = body.action === "clone_campaign" ? "campaign" : "adset";
-    const result = await cloneMetaObject({ sourceId, sourceType, quantity: body.quantity, accessToken });
-    const clonedIds = result.map((item) => item.id || item.copied_campaign_id || item.copied_adset_id || "").filter(Boolean);
+    const result = body.action === "clone_campaign"
+      ? await cloneCampaignWithAdsets({
+          adAccountId: body.ad_account_id,
+          sourceCampaignId: sourceId,
+          quantity: body.quantity,
+          newBudget: body.new_budget,
+          accessToken
+        })
+      : await cloneMetaObject({ sourceId, sourceType, quantity: body.quantity, accessToken });
+    const clonedIds = result
+      .map((item) => {
+        const row = item as Record<string, unknown>;
+        return String(row.id || row.copied_campaign_id || row.copied_adset_id || "");
+      })
+      .filter(Boolean);
     await saveCloneLog({
       userId: session.userId,
       accountId: body.ad_account_id,

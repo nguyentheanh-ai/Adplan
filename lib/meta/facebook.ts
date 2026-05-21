@@ -664,6 +664,45 @@ export async function createAdsetOnMeta({
   });
 }
 
+export async function createAdsetFromSourceOnMeta({
+  adAccountId,
+  campaignId,
+  sourceAdset,
+  name,
+  dailyBudget,
+  accessToken
+}: {
+  adAccountId?: string | null;
+  campaignId: string;
+  sourceAdset: AdSet;
+  name: string;
+  dailyBudget?: string | null;
+  accessToken?: string | null;
+}) {
+  const normalizedAdAccountId = resolveAdAccountId(adAccountId);
+  const budget = dailyBudget || sourceAdset.daily_budget || sourceAdset.lifetime_budget || "100000";
+  const targeting = sourceAdset.targeting && Object.keys(sourceAdset.targeting).length
+    ? sourceAdset.targeting
+    : { geo_locations: { countries: ["VN"] }, age_min: 25, age_max: 44 };
+
+  const body = new URLSearchParams({
+    name,
+    campaign_id: campaignId,
+    status: "PAUSED",
+    daily_budget: parseDailyBudget(budget),
+    billing_event: sourceAdset.billing_event || "IMPRESSIONS",
+    optimization_goal: sourceAdset.optimization_goal || "POST_ENGAGEMENT",
+    targeting: JSON.stringify(targeting)
+  });
+
+  return metaFetch<{ id: string }>(`${normalizedAdAccountId}/adsets`, {
+    accessToken,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+}
+
 export async function createPostAdCreativeOnMeta({
   adAccountId,
   name,

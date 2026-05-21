@@ -919,6 +919,9 @@ export function CampaignBuilderClient() {
               selectedCampaign={selectedCampaign}
               selectedAdset={selectedAdset}
               onLoadCampaigns={() => void loadCampaigns(selectedAccountId, true)}
+              onLaunchScale={() => void launchScale()}
+              primaryActionLabel={scalePrimaryLabel()}
+              busy={Boolean(busyLabel)}
             />
           ) : null}
 
@@ -987,12 +990,6 @@ export function CampaignBuilderClient() {
                 <Button variant="secondary" onClick={() => void saveTemplate()}>
                   <MaterialIcon name="save" />
                   Lưu lại chiến dịch
-                </Button>
-              ) : null}
-              {mode === "scale_existing" ? (
-                <Button onClick={() => void launchScale()} disabled={Boolean(busyLabel)}>
-                  <MaterialIcon name="rocket_launch" />
-                  {scalePrimaryLabel()}
                 </Button>
               ) : null}
               {mode === "ab_test" ? (
@@ -1152,8 +1149,24 @@ function ScalePanel(props: {
   selectedCampaign?: Campaign;
   selectedAdset?: AdSet;
   onLoadCampaigns: () => void;
+  onLaunchScale: () => void;
+  primaryActionLabel: string;
+  busy: boolean;
 }) {
   const sourceRows = buildScaleSourceRows(props.campaigns);
+  const [campaignQuery, setCampaignQuery] = useState("");
+  const [rowStart, setRowStart] = useState(0);
+  const filteredRows = useMemo(() => {
+    const query = campaignQuery.trim().toLowerCase();
+    if (!query) return sourceRows;
+    return sourceRows.filter((campaign) =>
+      `${campaign.name} ${campaign.campaignId} ${campaign.objective} ${campaign.status}`.toLowerCase().includes(query)
+    );
+  }, [campaignQuery, sourceRows]);
+  const visibleCount = 8;
+  const maxStart = Math.max(0, filteredRows.length - visibleCount);
+  const safeStart = Math.min(rowStart, maxStart);
+  const visibleRows = filteredRows.slice(safeStart, safeStart + visibleCount);
 
   return (
     <Card className="rounded-lg p-6">
@@ -1162,7 +1175,13 @@ function ScalePanel(props: {
           <h3 className="text-lg font-extrabold">Scale camp cũ</h3>
           <p className="text-sm text-on-surface-variant">Chọn campaign/adset nguồn, preview rồi mới nhân bản hoặc tăng ngân sách.</p>
         </div>
-        <Button variant="secondary" onClick={props.onLoadCampaigns}><MaterialIcon name="refresh" /> Lấy campaign</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={props.onLoadCampaigns} disabled={props.busy}><MaterialIcon name="refresh" /> Lấy campaign</Button>
+          <Button onClick={props.onLaunchScale} disabled={props.busy || !props.sourceCampaignId}>
+            <MaterialIcon name="content_copy" />
+            {props.primaryActionLabel}
+          </Button>
+        </div>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <Field label="Hành động">
@@ -1190,6 +1209,32 @@ function ScalePanel(props: {
           <Input value={props.newBudget} onChange={(event) => props.setNewBudget(event.target.value)} placeholder="VD: 500000" />
         </Field>
       </div>
+      <div className="mt-5 grid gap-3 rounded-lg bg-surface-container-low p-4 md:grid-cols-[1fr_1.2fr] md:items-end">
+        <Field label="Tìm campaign">
+          <Input
+            value={campaignQuery}
+            onChange={(event) => {
+              setCampaignQuery(event.target.value);
+              setRowStart(0);
+            }}
+            placeholder="Nhập tên hoặc ID chiến dịch..."
+          />
+        </Field>
+        <Field label={`Thanh trượt danh sách (${filteredRows.length} campaign)`}>
+          <input
+            className="w-full accent-primary"
+            disabled={filteredRows.length <= visibleCount}
+            max={maxStart}
+            min={0}
+            onChange={(event) => setRowStart(Number(event.target.value))}
+            type="range"
+            value={safeStart}
+          />
+          <p className="text-xs text-on-surface-variant">
+            Đang xem dòng {filteredRows.length ? safeStart + 1 : 0}-{Math.min(safeStart + visibleCount, filteredRows.length)}. Kéo thanh này để lướt nhanh thay vì cuộn dài.
+          </p>
+        </Field>
+      </div>
       <div className="mt-5 overflow-x-auto rounded-lg border border-outline-variant">
         <table className="min-w-full text-sm">
           <thead className="bg-surface-container-low text-xs uppercase text-outline">
@@ -1206,7 +1251,7 @@ function ScalePanel(props: {
             </tr>
           </thead>
           <tbody>
-            {sourceRows.map((campaign) => (
+            {visibleRows.map((campaign) => (
               <tr key={campaign.campaignId} className={campaign.campaignId === props.sourceCampaignId ? "bg-primary-fixed/30" : "border-t border-outline-variant"}>
                 <td className="min-w-64 px-4 py-3">
                   <span className="block font-bold">{campaign.name}</span>
@@ -1231,6 +1276,7 @@ function ScalePanel(props: {
               </tr>
             ))}
             {!props.campaigns.length ? <tr><td className="px-4 py-6 text-center text-on-surface-variant" colSpan={9}>Chưa có dữ liệu campaign. Bấm “Lấy campaign”.</td></tr> : null}
+            {props.campaigns.length && !filteredRows.length ? <tr><td className="px-4 py-6 text-center text-on-surface-variant" colSpan={9}>Không tìm thấy campaign theo từ khóa này.</td></tr> : null}
           </tbody>
         </table>
       </div>
