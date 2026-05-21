@@ -141,7 +141,13 @@ Ngành ưu tiên:
 - [x] UI duyệt hook/angle/post/script.
 - [x] Copy post.
 - [x] Lưu content vào thư viện.
-- [ ] Dùng content đã chọn để tạo campaign preview.
+- [x] Dùng content đã chọn để tạo campaign preview.
+
+## Progress 2026-05-21 - Content Library vào Campaign Builder
+
+- [x] Campaign Builder tải thư viện content đã lưu từ Creator Ads AI.
+- [x] Người dùng có thể chọn content đã lưu để tự điền sản phẩm, ngành, mục tiêu, tệp khách hàng, offer, nội dung mẫu và brief media.
+- [x] Preview campaign dùng lại nội dung content đã chọn, nhưng vẫn không tự launch cho đến khi khách bấm launch PAUSED.
 
 ### Phase E - Autopilot có kiểm soát
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { mapAIPlanMode, mapAIPlanToCampaignInput, type AIConsultantResponse } from "@/lib/ai-consultant-shared";
+import type { AdsContentInput, AdsContentPackage } from "@/lib/ai-content-ads-shared";
 import {
   buildCampaignValidation,
   buildInternalAudienceSuggestions,
@@ -91,12 +92,32 @@ type SimpleABVariant = {
   value: string;
 };
 
+type ContentLibraryItem = {
+  id: string;
+  title: string;
+  product: string;
+  industry: string | null;
+  target_customer: string | null;
+  goal: AdsContentInput["goal"];
+  input_json?: Partial<AdsContentInput> | null;
+  content_json: AdsContentPackage;
+  created_at?: string;
+};
+
 const abTestOptions: Array<{ key: SimpleABTestType; title: string; description: string }> = [
   { key: "copy", title: "Test bài viết/content", description: "Cùng tệp, cùng ngân sách, chỉ đổi bài viết." },
   { key: "creative", title: "Test hình ảnh/video", description: "Cùng nội dung, cùng tệp, chỉ đổi media." },
   { key: "audience", title: "Test tệp khách hàng", description: "Cùng bài viết, cùng ngân sách, chỉ đổi tệp." },
   { key: "placement", title: "Test vị trí hiển thị", description: "Cùng bài viết, cùng tệp, chỉ đổi vị trí hiển thị." }
 ];
+
+const contentGoalToObjective: Record<AdsContentInput["goal"], CampaignBuilderInput["objective"]> = {
+  message: "Tin nhắn",
+  lead: "Lead",
+  traffic: "Traffic",
+  engagement: "Tương tác",
+  sales: "Sales"
+};
 
 async function readJson<T>(url: string, init?: RequestInit & { force?: boolean }) {
   if (!init || !init.method || init.method === "GET") return getCachedJson<T>(url, { force: init?.force });
@@ -138,6 +159,32 @@ function readLocalAudiences(accountId: string) {
   }
 }
 
+function firstContentValue(values?: string[] | null) {
+  return values?.find((value) => value.trim())?.trim() || "";
+}
+
+function contentPackageToNotes(content: AdsContentPackage) {
+  const primaryText = firstContentValue(content.primaryTexts);
+  const headline = firstContentValue(content.headlines);
+  const description = firstContentValue(content.descriptions);
+  const cta = firstContentValue(content.ctas);
+  const angle = firstContentValue(content.angles);
+  const hook = firstContentValue(content.hooks);
+  return [
+    angle ? `Góc bán hàng: ${angle}` : "",
+    hook ? `Hook: ${hook}` : "",
+    primaryText ? `Primary text: ${primaryText}` : "",
+    headline ? `Headline: ${headline}` : "",
+    description ? `Description: ${description}` : "",
+    cta ? `CTA: ${cta}` : "",
+    content.recommendedTestPlan ? `Kế hoạch test: ${content.recommendedTestPlan}` : ""
+  ].filter(Boolean).join("\n\n");
+}
+
+function contentPackageToMediaNote(content: AdsContentPackage) {
+  return firstContentValue(content.creativeBriefs) || "Chọn media sau";
+}
+
 export function CampaignBuilderClient() {
   const [mode, setMode] = useState<CampaignBuilderMode>("new_campaign");
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -151,6 +198,8 @@ export function CampaignBuilderClient() {
   const [templates, setTemplates] = useState<CampaignTemplate[]>([]);
   const [savedAudiences, setSavedAudiences] = useState<SavedAudience[]>([]);
   const [selectedSavedAudienceId, setSelectedSavedAudienceId] = useState("");
+  const [contentLibrary, setContentLibrary] = useState<ContentLibraryItem[]>([]);
+  const [selectedContentId, setSelectedContentId] = useState("");
   const [form, setForm] = useState<CampaignBuilderInput>(defaultInput);
   const [interests, setInterests] = useState<AudienceSuggestion[]>([]);
   const [selectedInterestIds, setSelectedInterestIds] = useState<string[]>([]);
@@ -203,6 +252,8 @@ export function CampaignBuilderClient() {
       posts: FacebookPagePost[];
       templates: CampaignTemplate[];
       savedAudiences: SavedAudience[];
+      contentLibrary: ContentLibraryItem[];
+      selectedContentId: string;
       form: CampaignBuilderInput;
       interests: AudienceSuggestion[];
       selectedInterestIds: string[];
@@ -220,6 +271,8 @@ export function CampaignBuilderClient() {
         setPosts(cached.posts);
         setTemplates(cached.templates);
         setSavedAudiences(cached.savedAudiences);
+        setContentLibrary(cached.contentLibrary ?? []);
+        setSelectedContentId(cached.selectedContentId ?? "");
         setForm(cached.form);
         setInterests(cached.interests);
         setSelectedInterestIds(cached.selectedInterestIds);
@@ -246,12 +299,14 @@ export function CampaignBuilderClient() {
       posts,
       templates,
       savedAudiences,
+      contentLibrary,
+      selectedContentId,
       form,
       interests,
       selectedInterestIds,
       draft
     });
-  }, [mode, step, accounts, selectedAccountId, campaigns, adsets, pages, posts, templates, savedAudiences, form, interests, selectedInterestIds, draft]);
+  }, [mode, step, accounts, selectedAccountId, campaigns, adsets, pages, posts, templates, savedAudiences, contentLibrary, selectedContentId, form, interests, selectedInterestIds, draft]);
 
   async function loadInitialData() {
     await withProgress("Đang tải tài khoản quảng cáo...", async () => {
@@ -261,8 +316,21 @@ export function CampaignBuilderClient() {
       setAccounts(rows);
       setSelectedAccountId(accountId);
       setForm((current) => ({ ...current, adAccountId: accountId }));
+      await loadContentLibrary(false);
       if (accountId) await Promise.all([loadTemplates(accountId), loadSavedAudiences(accountId), loadCampaigns(accountId, false), loadPages(false)]);
     }).catch((error: Error) => setNotice(error.message));
+  }
+
+  async function loadContentLibrary(force = true) {
+    try {
+      const payload = await readJson<{ data: ContentLibraryItem[]; storage?: string }>("/api/ai/content-library", { force });
+      setContentLibrary(payload.data ?? []);
+      if (payload.storage === "missing_schema") setNotice("Chưa có bảng ads_content_library. Hãy chạy migration 202605210007 để dùng thư viện content.");
+    } catch (error) {
+      setContentLibrary([]);
+      const message = error instanceof Error ? error.message : "Không tải được thư viện content đã lưu.";
+      setNotice(message);
+    }
   }
 
   async function loadTemplates(accountId: string) {
@@ -458,6 +526,32 @@ export function CampaignBuilderClient() {
       setInterests(rows);
       setSelectedInterestIds(rows.map((item) => item.id));
     }
+  }
+
+  function applyContentLibraryItem(contentId: string) {
+    setSelectedContentId(contentId);
+    const item = contentLibrary.find((content) => content.id === contentId);
+    if (!item) return;
+
+    const input = item.input_json ?? {};
+    const content = item.content_json;
+    const primaryText = firstContentValue(content.primaryTexts);
+    const notes = contentPackageToNotes(content);
+    const mediaNote = contentPackageToMediaNote(content);
+
+    setForm((current) => ({
+      ...current,
+      productName: current.productName || item.product || input.product || "",
+      industry: current.industry || item.industry || input.industry || "",
+      targetCustomer: current.targetCustomer || item.target_customer || input.targetCustomer || "",
+      objective: contentGoalToObjective[item.goal] || current.objective,
+      offer: current.offer || input.offer || firstContentValue(content.headlines),
+      notes: notes || current.notes,
+      postMessage: current.postMessage || primaryText,
+      mediaNote: mediaNote || current.mediaNote
+    }));
+    setDraft(null);
+    toast.success("Đã đưa content đã lưu vào form tạo campaign.");
   }
 
   function onPageChange(pageId: string) {
@@ -835,6 +929,8 @@ export function CampaignBuilderClient() {
               posts={posts}
               savedAudiences={savedAudiences}
               selectedSavedAudienceId={selectedSavedAudienceId}
+              contentLibrary={contentLibrary}
+              selectedContentId={selectedContentId}
               interests={interests}
               selectedInterestIds={selectedInterestIds}
               needsPost={needsPost}
@@ -845,6 +941,8 @@ export function CampaignBuilderClient() {
               onPageChange={onPageChange}
               onPostChange={onPostChange}
               applySavedAudience={applySavedAudience}
+              applyContentLibraryItem={applyContentLibraryItem}
+              refreshContentLibrary={() => void loadContentLibrary(true)}
               searchInterests={() => void searchInterests()}
               checkFanpagePermission={() => void checkFanpagePermission()}
               setSelectedInterestIds={setSelectedInterestIds}
@@ -1146,6 +1244,8 @@ function NewCampaignPanel(props: {
   posts: FacebookPagePost[];
   savedAudiences: SavedAudience[];
   selectedSavedAudienceId: string;
+  contentLibrary: ContentLibraryItem[];
+  selectedContentId: string;
   interests: AudienceSuggestion[];
   selectedInterestIds: string[];
   needsPost: boolean;
@@ -1156,6 +1256,8 @@ function NewCampaignPanel(props: {
   onPageChange: (value: string) => void;
   onPostChange: (value: string) => void;
   applySavedAudience: (value: string) => void;
+  applyContentLibraryItem: (value: string) => void;
+  refreshContentLibrary: () => void;
   searchInterests: () => void;
   checkFanpagePermission: () => void;
   setSelectedInterestIds: React.Dispatch<React.SetStateAction<string[]>>;
@@ -1164,6 +1266,29 @@ function NewCampaignPanel(props: {
     <div className="space-y-6">
       <Card className="rounded-lg p-6">
         <h3 className="text-lg font-extrabold">Tạo camp mới</h3>
+        <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+            <Field label="Content quảng cáo đã lưu">
+              <select className="dashboard-input" value={props.selectedContentId} onChange={(event) => props.applyContentLibraryItem(event.target.value)}>
+                <option value="">Chọn content từ Creative để đổ vào form</option>
+                {props.contentLibrary.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title || item.product} · {item.product}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Button variant="secondary" onClick={props.refreshContentLibrary}>
+              <MaterialIcon name="refresh" />
+              Tải lại content
+            </Button>
+          </div>
+          <p className="mt-2 text-sm text-on-surface-variant">
+            {props.contentLibrary.length
+              ? "Chọn một gói content đã lưu để tự điền sản phẩm, mục tiêu, offer, nội dung mẫu và brief media."
+              : "Chưa có content đã lưu. Vào trang Creative để tạo content bằng Creator Ads AI rồi lưu vào thư viện."}
+          </p>
+        </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <Field label="Tên sản phẩm/dịch vụ"><Input value={props.form.productName} onChange={(event) => props.updateField("productName", event.target.value)} /></Field>
           <Field label="Ngành hàng"><Input value={props.form.industry} onChange={(event) => props.updateField("industry", event.target.value)} /></Field>

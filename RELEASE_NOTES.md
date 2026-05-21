@@ -140,6 +140,14 @@
 - Trang `Creative` có nút `Lưu vào thư viện` và danh sách content đã lưu.
 - Thư viện content là bước đệm để sau này chọn lại content thắng và đưa vào Campaign Builder.
 
+## 2026-05-21 - Content library trong Campaign Builder
+
+### Đã bổ sung
+
+- Trang `Tạo Campaign AI` tải content đã lưu từ Creator Ads AI.
+- Form `Tạo camp mới` có selector `Content quảng cáo đã lưu` để đổ nhanh sản phẩm, ngành, mục tiêu, khách hàng, offer, nội dung mẫu và brief media vào cấu hình campaign.
+- Preview vẫn là bước review an toàn, không tự launch Meta cho đến khi khách bấm `Launch lên Meta PAUSED`.
+
 ## 2026-05-21 - Optimization action history UI
 
 ### Đã bổ sung
