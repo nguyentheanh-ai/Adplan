@@ -1,5 +1,13 @@
 # AI Ads Planner - Release notes vận hành
 
+## 2026-05-21 - Scale campaign tree and background Meta learning
+
+- Thêm API server-side `GET /api/meta/campaign-tree` để đọc cây Campaign -> Adset -> Ads của campaign nguồn và báo rõ phần nào không đọc được vì thiếu quyền hoặc thiếu dữ liệu.
+- Sửa UI `Scale camp cũ`: tìm kiếm campaign, thanh trượt dọc để lướt danh sách, khung thông tin campaign nguồn, và nút nhân bản nằm cạnh thông tin campaign.
+- Sửa clone campaign/adset theo hướng tự dựng lại cấu trúc `PAUSED`: tạo Campaign/Adset mới, sau đó cố tạo lại Ads từ creative nguồn nếu token đọc được creative.
+- Nếu không đọc được ads/creative, app không fake success; UI sẽ báo số quảng cáo cần kiểm tra quyền hoặc bổ sung thủ công trong Ads Manager.
+- Tách sync Meta thành service server-only và kích hoạt sau khi khách đăng nhập Facebook để bắt đầu lưu dữ liệu học tối ưu từ các tài khoản quảng cáo khách có quyền truy cập.
+
 ## 2026-05-21
 
 ### Đã hoàn thành trong vòng hiện tại

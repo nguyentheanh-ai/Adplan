@@ -3,14 +3,16 @@ import { z } from "zod";
 import { getAppSession } from "@/lib/auth/session";
 import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
 import {
-  cloneMetaObject,
+  createAdOnMeta,
   createAdsetFromSourceOnMeta,
   createCampaignOnMeta,
+  getMetaAds,
   getMetaAdsets,
   getMetaCampaigns,
   metaErrorResponse,
   updateMetaBudget
 } from "@/lib/meta/facebook";
+import type { AdSet, MetaAd } from "@/lib/meta/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const scaleSchema = z.object({
@@ -73,13 +75,25 @@ async function cloneCampaignWithAdsets({
     throw new Error("Không tìm thấy campaign nguồn hoặc token không có quyền đọc campaign này.");
   }
 
-  const sourceAdsets = await getMetaAdsets(adAccountId, accessToken, sourceCampaignId);
+  let sourceAdsets: AdSet[];
+  try {
+    sourceAdsets = await getMetaAdsets(adAccountId, accessToken, sourceCampaignId);
+  } catch (error) {
+    const response = metaErrorResponse(error);
+    throw new Error(`Không đọc được nhóm quảng cáo của campaign nguồn: ${response.body.error || "thiếu quyền đọc adset."}`);
+  }
   if (!sourceAdsets.length) {
     throw new Error("Campaign nguồn không có nhóm quảng cáo hoặc token thiếu quyền đọc adset.");
   }
 
-  const results: Array<{ id: string; copied_campaign_id: string; adsets: Array<{ id: string; source_adset_id: string }> }> = [];
+  const results: Array<{
+    id: string;
+    copied_campaign_id: string;
+    adsets: Array<{ id: string; source_adset_id: string; ads: Array<{ id?: string; source_ad_id: string; error?: string }> }>;
+    warnings: string[];
+  }> = [];
   for (let index = 0; index < quantity; index += 1) {
+    const warnings: string[] = [];
     const campaign = await createCampaignOnMeta({
       adAccountId,
       name: `${sourceCampaign.name} - Bản sao ${index + 1}`,
@@ -96,9 +110,136 @@ async function cloneCampaignWithAdsets({
         dailyBudget: newBudget,
         accessToken
       });
-      adsets.push({ id: adset.id, source_adset_id: sourceAdset.id });
+      const ads = await cloneAdsForAdset({
+        adAccountId,
+        sourceAdset,
+        targetAdsetId: adset.id,
+        copyIndex: index,
+        accessToken
+      });
+      ads.filter((item) => item.error).forEach((item) => warnings.push(`Ads ${item.source_ad_id}: ${item.error}`));
+      adsets.push({ id: adset.id, source_adset_id: sourceAdset.id, ads });
     }
-    results.push({ id: campaign.id, copied_campaign_id: campaign.id, adsets });
+    results.push({ id: campaign.id, copied_campaign_id: campaign.id, adsets, warnings });
+  }
+
+  return results;
+}
+
+async function cloneAdsForAdset({
+  adAccountId,
+  sourceAdset,
+  targetAdsetId,
+  copyIndex,
+  accessToken
+}: {
+  adAccountId: string;
+  sourceAdset: AdSet;
+  targetAdsetId: string;
+  copyIndex: number;
+  accessToken: string;
+}) {
+  let sourceAds: MetaAd[];
+  try {
+    sourceAds = await getMetaAds(adAccountId, accessToken, sourceAdset.id);
+  } catch (error) {
+    const response = metaErrorResponse(error);
+    return [
+      {
+        source_ad_id: "unknown",
+        error: response.body.error || "Không đọc được quảng cáo nguồn. Có thể thiếu ads_read/pages_read_engagement hoặc không có quyền với Page."
+      }
+    ];
+  }
+  const results: Array<{ id?: string; source_ad_id: string; error?: string }> = [];
+
+  for (const sourceAd of sourceAds) {
+    const creativeId = sourceAd.creative?.id;
+    if (!creativeId) {
+      results.push({
+        source_ad_id: sourceAd.id,
+        error: "Không đọc được creative_id của quảng cáo nguồn. Có thể thiếu quyền đọc creative/post của Page."
+      });
+      continue;
+    }
+
+    try {
+      const ad = await createAdOnMeta({
+        adAccountId,
+        adsetId: targetAdsetId,
+        name: `${sourceAd.name || "Quảng cáo"} - Bản sao ${copyIndex + 1}`,
+        creativeId,
+        accessToken
+      });
+      results.push({ id: ad.id, source_ad_id: sourceAd.id });
+    } catch (error) {
+      const response = metaErrorResponse(error);
+      results.push({
+        source_ad_id: sourceAd.id,
+        error: response.body.error || "Không tạo được quảng cáo từ creative nguồn."
+      });
+    }
+  }
+
+  return results;
+}
+
+async function cloneAdsetWithAds({
+  adAccountId,
+  sourceAdsetId,
+  quantity,
+  newBudget,
+  accessToken
+}: {
+  adAccountId: string;
+  sourceAdsetId: string;
+  quantity: number;
+  newBudget?: string;
+  accessToken: string;
+}) {
+  let adsets: AdSet[];
+  try {
+    adsets = await getMetaAdsets(adAccountId, accessToken);
+  } catch (error) {
+    const response = metaErrorResponse(error);
+    throw new Error(`Không đọc được danh sách nhóm quảng cáo: ${response.body.error || "thiếu quyền đọc adset."}`);
+  }
+  const sourceAdset = adsets.find((adset) => adset.id === sourceAdsetId);
+  if (!sourceAdset) {
+    throw new Error("Không tìm thấy nhóm quảng cáo nguồn hoặc token không có quyền đọc adset này.");
+  }
+  if (!sourceAdset.campaign_id) {
+    throw new Error("Không đọc được campaign_id của nhóm quảng cáo nguồn nên chưa thể nhân bản.");
+  }
+
+  const results: Array<{
+    id: string;
+    copied_adset_id: string;
+    ads: Array<{ id?: string; source_ad_id: string; error?: string }>;
+    warnings: string[];
+  }> = [];
+  for (let index = 0; index < quantity; index += 1) {
+    const adset = await createAdsetFromSourceOnMeta({
+      adAccountId,
+      campaignId: sourceAdset.campaign_id,
+      sourceAdset,
+      name: `${sourceAdset.name} - Bản sao ${index + 1}`,
+      dailyBudget: newBudget,
+      accessToken
+    });
+    const ads = await cloneAdsForAdset({
+      adAccountId,
+      sourceAdset,
+      targetAdsetId: adset.id,
+      copyIndex: index,
+      accessToken
+    });
+    results.push({
+      id: adset.id,
+      copied_adset_id: adset.id,
+      ads,
+      warnings: ads.filter((item) => item.error).map((item) => `Ads ${item.source_ad_id}: ${item.error}`)
+    });
   }
 
   return results;
@@ -139,7 +280,13 @@ export async function POST(request: Request) {
           newBudget: body.new_budget,
           accessToken
         })
-      : await cloneMetaObject({ sourceId, sourceType, quantity: body.quantity, accessToken });
+      : await cloneAdsetWithAds({
+          adAccountId: body.ad_account_id,
+          sourceAdsetId: sourceId,
+          quantity: body.quantity,
+          newBudget: body.new_budget,
+          accessToken
+        });
     const clonedIds = result
       .map((item) => {
         const row = item as Record<string, unknown>;

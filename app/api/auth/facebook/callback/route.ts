@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import {
   ensureFacebookSupabaseProfile,
   exchangeFacebookCode,
@@ -8,6 +8,7 @@ import {
   getSiteUrl
 } from "@/lib/auth/facebook-oauth";
 import { APP_SESSION_COOKIE, encodeAppSession, getAppSessionCookieOptions } from "@/lib/auth/session";
+import { isMissingMetaSyncTable, syncMetaInsightsForUser } from "@/lib/meta/sync-insights";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -57,6 +58,19 @@ export async function GET(request: Request) {
       }),
       getAppSessionCookieOptions(maxAge)
     );
+
+    after(async () => {
+      try {
+        await syncMetaInsightsForUser({
+          userId,
+          accessToken: token.accessToken
+        });
+      } catch (syncError) {
+        if (!isMissingMetaSyncTable(syncError as { message?: string; code?: string })) {
+          console.error("Background Meta sync after Facebook login failed", syncError);
+        }
+      }
+    });
 
     return response;
   } catch (error) {

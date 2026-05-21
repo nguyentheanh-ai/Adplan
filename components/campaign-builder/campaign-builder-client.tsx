@@ -32,6 +32,7 @@ import type {
   CampaignTemplate,
   FacebookPage,
   FacebookPagePost,
+  MetaAd,
   SavedAudience,
   ScaleAction,
   ScaleCampaignInput
@@ -90,6 +91,20 @@ type SimpleABVariant = {
   id: string;
   label: string;
   value: string;
+};
+
+type ScaleTreeError = {
+  layer: "campaign" | "adsets" | "ads";
+  object_id?: string;
+  object_name?: string;
+  message: string;
+};
+
+type ScaleCampaignTree = {
+  campaign: Campaign;
+  adsets: AdSet[];
+  ads_by_adset: Record<string, MetaAd[]>;
+  errors: ScaleTreeError[];
 };
 
 type ContentLibraryItem = {
@@ -210,6 +225,8 @@ export function CampaignBuilderClient() {
   const [scaleRange, setScaleRange] = useState(defaultDateRange());
   const [sourceCampaignId, setSourceCampaignId] = useState("");
   const [sourceAdsetId, setSourceAdsetId] = useState("");
+  const [scaleTree, setScaleTree] = useState<ScaleCampaignTree | null>(null);
+  const [scaleTreeError, setScaleTreeError] = useState("");
   const [cloneQuantity, setCloneQuantity] = useState(1);
   const [newBudget, setNewBudget] = useState("");
   const [abTestType, setAbTestType] = useState<SimpleABTestType>("copy");
@@ -371,13 +388,23 @@ export function CampaignBuilderClient() {
     }).catch((error: Error) => setNotice(error.message));
   }
 
-  async function loadAdsets(campaignId = sourceCampaignId) {
+  async function loadScaleCampaignTree(campaignId: string) {
     if (!selectedAccountId || !campaignId) return;
-    await withProgress("Đang lấy nhóm quảng cáo...", async () => {
+    setScaleTree(null);
+    setScaleTreeError("");
+    await withProgress("Đang đọc Campaign > Nhóm quảng cáo > Quảng cáo...", async () => {
       const query = new URLSearchParams({ ad_account_id: selectedAccountId, campaign_id: campaignId });
-      const payload = await readJson<{ data: AdSet[] }>(`/api/meta/adsets?${query.toString()}`, { force: true });
-      setAdsets(payload.data ?? []);
-    }).catch((error: Error) => setNotice(error.message));
+      const payload = await readJson<{ data: ScaleCampaignTree }>(`/api/meta/campaign-tree?${query.toString()}`, { force: true });
+      setScaleTree(payload.data);
+      setAdsets(payload.data.adsets ?? []);
+      if (payload.data.errors?.length) {
+        setNotice("Có một số phần của campaign không đọc được. Xem báo cáo ngay trong khung thông tin chiến dịch nguồn.");
+      }
+    }).catch((error: Error) => {
+      setScaleTreeError(error.message);
+      setAdsets([]);
+      setNotice(error.message);
+    });
   }
 
   async function loadPosts(pageId: string) {
@@ -394,6 +421,8 @@ export function CampaignBuilderClient() {
     setForm((current) => ({ ...current, adAccountId: accountId }));
     setCampaigns([]);
     setAdsets([]);
+    setScaleTree(null);
+    setScaleTreeError("");
     await withProgress("Đang đổi tài khoản...", async () => {
       await Promise.all([loadTemplates(accountId), loadSavedAudiences(accountId), loadCampaigns(accountId, true)]);
     });
@@ -712,7 +741,7 @@ export function CampaignBuilderClient() {
     if (!sourceCampaignId) return toast.error("Bạn cần chọn campaign nguồn trước.");
     if (scaleAction === "clone_adset" && !sourceAdsetId) return toast.error("Bạn cần chọn nhóm quảng cáo nguồn.");
     await withProgress("Đang gửi yêu cầu scale sang Meta...", async () => {
-      const response = await readJson<{ data: { cloned_ids?: string[] } }>("/api/meta/scale", {
+      const response = await readJson<{ data: { cloned_ids?: string[]; result?: Array<{ warnings?: string[] }> } }>("/api/meta/scale", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -724,7 +753,13 @@ export function CampaignBuilderClient() {
           new_budget: newBudget || undefined
         })
       });
-      toast.success(`Meta đã xử lý. ID mới: ${(response.data.cloned_ids ?? []).join(", ") || "đã cập nhật"}`);
+      const warnings = (response.data.result ?? []).flatMap((item) => item.warnings ?? []);
+      if (warnings.length) {
+        toast.warning(`Đã nhân bản phần đọc được, nhưng ${warnings.length} quảng cáo/creative cần kiểm tra quyền hoặc bổ sung trong Ads Manager.`);
+        setNotice(warnings.slice(0, 3).join(" | "));
+      } else {
+        toast.success(`Meta đã xử lý. ID mới: ${(response.data.cloned_ids ?? []).join(", ") || "đã cập nhật"}`);
+      }
       await loadCampaigns(selectedAccountId, true);
     }).catch((error: Error) => toast.error(error.message));
   }
@@ -908,7 +943,7 @@ export function CampaignBuilderClient() {
               setSourceCampaignId={(id) => {
                 setSourceCampaignId(id);
                 setSourceAdsetId("");
-                void loadAdsets(id);
+                void loadScaleCampaignTree(id);
               }}
               sourceAdsetId={sourceAdsetId}
               setSourceAdsetId={setSourceAdsetId}
@@ -918,6 +953,8 @@ export function CampaignBuilderClient() {
               setNewBudget={setNewBudget}
               selectedCampaign={selectedCampaign}
               selectedAdset={selectedAdset}
+              scaleTree={scaleTree}
+              scaleTreeError={scaleTreeError}
               onLoadCampaigns={() => void loadCampaigns(selectedAccountId, true)}
               onLaunchScale={() => void launchScale()}
               primaryActionLabel={scalePrimaryLabel()}
@@ -1148,6 +1185,8 @@ function ScalePanel(props: {
   setNewBudget: (value: string) => void;
   selectedCampaign?: Campaign;
   selectedAdset?: AdSet;
+  scaleTree: ScaleCampaignTree | null;
+  scaleTreeError: string;
   onLoadCampaigns: () => void;
   onLaunchScale: () => void;
   primaryActionLabel: string;
@@ -1167,6 +1206,9 @@ function ScalePanel(props: {
   const maxStart = Math.max(0, filteredRows.length - visibleCount);
   const safeStart = Math.min(rowStart, maxStart);
   const visibleRows = filteredRows.slice(safeStart, safeStart + visibleCount);
+  const treeAdsets = props.scaleTree?.adsets ?? [];
+  const totalAds = Object.values(props.scaleTree?.ads_by_adset ?? {}).reduce((sum, ads) => sum + ads.length, 0);
+  const selectedCampaignForDetail = props.scaleTree?.campaign ?? props.selectedCampaign;
 
   return (
     <Card className="rounded-lg p-6">
@@ -1177,10 +1219,6 @@ function ScalePanel(props: {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={props.onLoadCampaigns} disabled={props.busy}><MaterialIcon name="refresh" /> Lấy campaign</Button>
-          <Button onClick={props.onLaunchScale} disabled={props.busy || !props.sourceCampaignId}>
-            <MaterialIcon name="content_copy" />
-            {props.primaryActionLabel}
-          </Button>
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
@@ -1209,7 +1247,65 @@ function ScalePanel(props: {
           <Input value={props.newBudget} onChange={(event) => props.setNewBudget(event.target.value)} placeholder="VD: 500000" />
         </Field>
       </div>
-      <div className="mt-5 grid gap-3 rounded-lg bg-surface-container-low p-4 md:grid-cols-[1fr_1.2fr] md:items-end">
+      <div className="mt-5 rounded-lg border border-outline-variant bg-surface-container-low p-4">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+          <div>
+            <p className="text-xs font-bold uppercase text-outline">Thông tin chiến dịch nguồn</p>
+            {selectedCampaignForDetail ? (
+              <div className="mt-3 grid gap-3 md:grid-cols-4">
+                <InfoTile label="Campaign" value={selectedCampaignForDetail.name} note={selectedCampaignForDetail.id} />
+                <InfoTile label="Objective / Status" value={selectedCampaignForDetail.objective || "Không có dữ liệu"} note={selectedCampaignForDetail.status || "UNKNOWN"} />
+                <InfoTile label="Nhóm quảng cáo đọc được" value={String(treeAdsets.length)} note={treeAdsets.length ? "Có thể nhân bản" : "Chưa đọc được adset"} />
+                <InfoTile label="Quảng cáo đọc được" value={String(totalAds)} note={totalAds ? "Có thể copy ads nếu creative hợp lệ" : "Chưa đọc được ads/creative"} />
+              </div>
+            ) : (
+              <div className="mt-3 rounded-md bg-surface p-4 text-sm text-on-surface-variant">
+                Chọn một campaign trong bảng bên dưới. App sẽ đọc tiếp nhóm quảng cáo và quảng cáo để bạn biết campaign này có thể nhân bản được tới đâu.
+              </div>
+            )}
+            {props.scaleTreeError ? <Notice tone="danger" message={props.scaleTreeError} /> : null}
+            {props.scaleTree?.errors?.length ? (
+              <div className="mt-3 space-y-2">
+                {props.scaleTree.errors.map((error, index) => (
+                  <Notice key={`${error.layer}-${error.object_id || index}`} tone="warning" message={`${error.object_name || error.layer}: ${error.message}`} />
+                ))}
+              </div>
+            ) : null}
+            {treeAdsets.length ? (
+              <div className="mt-4 rounded-md bg-surface p-3">
+                <p className="text-xs font-bold uppercase text-outline">Cây Campaign → Nhóm → Ads</p>
+                <div className="mt-2 space-y-2 text-sm">
+                  {treeAdsets.map((adset) => {
+                    const ads = props.scaleTree?.ads_by_adset?.[adset.id] ?? [];
+                    return (
+                      <div key={adset.id} className="rounded-md border border-outline-variant p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-bold">{adset.name}</span>
+                          <span className="rounded-full bg-primary-fixed px-2 py-1 text-xs font-bold text-primary">{ads.length} ads</span>
+                        </div>
+                        <p className="mt-1 text-xs text-on-surface-variant">{adset.id} · {adset.status || "UNKNOWN"} · {adset.daily_budget ? formatVnd(Number(adset.daily_budget)) : "Không có ngân sách đọc được"}</p>
+                        {ads.length ? (
+                          <ul className="mt-2 space-y-1 text-xs text-on-surface-variant">
+                            {ads.slice(0, 4).map((ad) => <li key={ad.id}>• {ad.name || ad.id} · {ad.creative?.id ? `Creative ${ad.creative.id}` : "Không đọc được creative"}</li>)}
+                            {ads.length > 4 ? <li>• Và {ads.length - 4} quảng cáo khác</li> : null}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-xs text-on-surface-variant">Không đọc được quảng cáo trong nhóm này hoặc nhóm chưa có ads.</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <Button onClick={props.onLaunchScale} disabled={props.busy || !props.sourceCampaignId} className="lg:min-w-56">
+            <MaterialIcon name="content_copy" />
+            {props.primaryActionLabel}
+          </Button>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 rounded-lg bg-surface-container-low p-4 md:grid-cols-[1fr_auto] md:items-end">
         <Field label="Tìm campaign">
           <Input
             value={campaignQuery}
@@ -1220,9 +1316,59 @@ function ScalePanel(props: {
             placeholder="Nhập tên hoặc ID chiến dịch..."
           />
         </Field>
-        <Field label={`Thanh trượt danh sách (${filteredRows.length} campaign)`}>
+        <div className="text-sm text-on-surface-variant">
+          Đang xem {filteredRows.length ? safeStart + 1 : 0}-{Math.min(safeStart + visibleCount, filteredRows.length)} / {filteredRows.length} campaign.
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
+        <div className="overflow-x-auto rounded-lg border border-outline-variant">
+          <table className="min-w-full text-sm">
+            <thead className="bg-surface-container-low text-xs uppercase text-outline">
+              <tr>
+                <th className="px-4 py-3 text-left">Tên chiến dịch</th>
+                <th className="px-4 py-3">Objective</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Ngân sách</th>
+                <th className="px-4 py-3 text-right">Chi tiêu</th>
+                <th className="px-4 py-3 text-right">Kết quả</th>
+                <th className="px-4 py-3 text-right">Hiển thị</th>
+                <th className="px-4 py-3">Ngày tạo</th>
+                <th className="px-4 py-3">Chọn</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((campaign) => (
+                <tr key={campaign.campaignId} className={campaign.campaignId === props.sourceCampaignId ? "bg-primary-fixed/30" : "border-t border-outline-variant"}>
+                  <td className="min-w-64 px-4 py-3">
+                    <span className="block font-bold">{campaign.name}</span>
+                    <span className="text-xs text-on-surface-variant">{campaign.campaignId}</span>
+                  </td>
+                  <td className="px-4 py-3">{campaign.objective}</td>
+                  <td className="px-4 py-3">{campaign.status}</td>
+                  <td className="px-4 py-3 text-right">{campaign.budget ? formatVnd(campaign.budget) : "Không có dữ liệu"}</td>
+                  <td className="px-4 py-3 text-right">{formatVnd(campaign.spend)}</td>
+                  <td className="px-4 py-3 text-right">{campaign.results}</td>
+                  <td className="px-4 py-3 text-right">{campaign.impressions.toLocaleString("vi-VN")}</td>
+                  <td className="px-4 py-3">{campaign.createdTime || "Không có dữ liệu"}</td>
+                  <td className="px-4 py-3 text-center">
+                    <input
+                      aria-label={`Chọn ${campaign.name}`}
+                      type="radio"
+                      name="sourceCampaign"
+                      checked={campaign.campaignId === props.sourceCampaignId}
+                      onChange={() => props.setSourceCampaignId(campaign.campaignId)}
+                    />
+                  </td>
+                </tr>
+              ))}
+              {!props.campaigns.length ? <tr><td className="px-4 py-6 text-center text-on-surface-variant" colSpan={9}>Chưa có dữ liệu campaign. Bấm “Lấy campaign”.</td></tr> : null}
+              {props.campaigns.length && !filteredRows.length ? <tr><td className="px-4 py-6 text-center text-on-surface-variant" colSpan={9}>Không tìm thấy campaign theo từ khóa này.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+        <Field label={`Thanh trượt dọc (${filteredRows.length})`} className="flex md:w-24 md:flex-col md:items-center">
           <input
-            className="w-full accent-primary"
+            className="h-full min-h-72 accent-primary [writing-mode:vertical-lr]"
             disabled={filteredRows.length <= visibleCount}
             max={maxStart}
             min={0}
@@ -1230,55 +1376,10 @@ function ScalePanel(props: {
             type="range"
             value={safeStart}
           />
-          <p className="text-xs text-on-surface-variant">
-            Đang xem dòng {filteredRows.length ? safeStart + 1 : 0}-{Math.min(safeStart + visibleCount, filteredRows.length)}. Kéo thanh này để lướt nhanh thay vì cuộn dài.
+          <p className="mt-2 text-center text-xs text-on-surface-variant">
+            Kéo dọc để lướt nhanh.
           </p>
         </Field>
-      </div>
-      <div className="mt-5 overflow-x-auto rounded-lg border border-outline-variant">
-        <table className="min-w-full text-sm">
-          <thead className="bg-surface-container-low text-xs uppercase text-outline">
-            <tr>
-              <th className="px-4 py-3 text-left">Tên chiến dịch</th>
-              <th className="px-4 py-3">Objective</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Ngân sách</th>
-              <th className="px-4 py-3 text-right">Chi tiêu</th>
-              <th className="px-4 py-3 text-right">Kết quả</th>
-              <th className="px-4 py-3 text-right">Hiển thị</th>
-              <th className="px-4 py-3">Ngày tạo</th>
-              <th className="px-4 py-3">Chọn</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((campaign) => (
-              <tr key={campaign.campaignId} className={campaign.campaignId === props.sourceCampaignId ? "bg-primary-fixed/30" : "border-t border-outline-variant"}>
-                <td className="min-w-64 px-4 py-3">
-                  <span className="block font-bold">{campaign.name}</span>
-                  <span className="text-xs text-on-surface-variant">{campaign.campaignId}</span>
-                </td>
-                <td className="px-4 py-3">{campaign.objective}</td>
-                <td className="px-4 py-3">{campaign.status}</td>
-                <td className="px-4 py-3 text-right">{campaign.budget ? formatVnd(campaign.budget) : "Không có dữ liệu"}</td>
-                <td className="px-4 py-3 text-right">{formatVnd(campaign.spend)}</td>
-                <td className="px-4 py-3 text-right">{campaign.results}</td>
-                <td className="px-4 py-3 text-right">{campaign.impressions.toLocaleString("vi-VN")}</td>
-                <td className="px-4 py-3">{campaign.createdTime || "Không có dữ liệu"}</td>
-                <td className="px-4 py-3 text-center">
-                  <input
-                    aria-label={`Chọn ${campaign.name}`}
-                    type="radio"
-                    name="sourceCampaign"
-                    checked={campaign.campaignId === props.sourceCampaignId}
-                    onChange={() => props.setSourceCampaignId(campaign.campaignId)}
-                  />
-                </td>
-              </tr>
-            ))}
-            {!props.campaigns.length ? <tr><td className="px-4 py-6 text-center text-on-surface-variant" colSpan={9}>Chưa có dữ liệu campaign. Bấm “Lấy campaign”.</td></tr> : null}
-            {props.campaigns.length && !filteredRows.length ? <tr><td className="px-4 py-6 text-center text-on-surface-variant" colSpan={9}>Không tìm thấy campaign theo từ khóa này.</td></tr> : null}
-          </tbody>
-        </table>
       </div>
     </Card>
   );
@@ -1514,6 +1615,27 @@ function ABTestPanel(props: {
           ))}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function InfoTile({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className="rounded-md bg-surface p-3">
+      <p className="text-[11px] font-bold uppercase text-outline">{label}</p>
+      <p className="mt-1 break-words text-sm font-extrabold">{value}</p>
+      {note ? <p className="mt-1 break-words text-xs text-on-surface-variant">{note}</p> : null}
+    </div>
+  );
+}
+
+function Notice({ tone, message }: { tone: "warning" | "danger"; message: string }) {
+  const classes = tone === "danger" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800";
+  const icon = tone === "danger" ? "error" : "warning";
+  return (
+    <div className={`mt-3 flex gap-2 rounded-md p-3 text-sm font-semibold ${classes}`}>
+      <MaterialIcon name={icon} />
+      <span>{message}</span>
     </div>
   );
 }
