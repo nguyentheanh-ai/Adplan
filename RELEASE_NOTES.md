@@ -112,6 +112,15 @@
 - Đây là nền để Autopilot học benchmark theo ngành, không dùng một bộ quy tắc chung cho mọi tài khoản.
 - Recommendation engine đã gắn hồ sơ ngành vào reason/evidence khi tạo khuyến nghị mới.
 
+## 2026-05-21 - Industry benchmark learning
+
+### Đã bổ sung
+
+- Thêm `lib/optimization/industry-learning.ts` để tính median CTR/CPC/CPM/CPL theo ngành và objective.
+- Thêm `GET/POST /api/optimization/industry-learning`.
+- Trang `Tối ưu Ads` có bảng `Benchmark ngành` và nút `Học từ dữ liệu đã sync`.
+- Dữ liệu benchmark chỉ là aggregate ẩn danh, không hiển thị account/campaign của khách khác.
+
 ## 2026-05-21 - Optimization action history UI
 
 ### Đã bổ sung

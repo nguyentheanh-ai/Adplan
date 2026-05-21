@@ -57,6 +57,19 @@ type IndustryProfile = {
   notes?: string | null;
 };
 
+type IndustryLearningRow = {
+  id: string;
+  industry_key: string;
+  objective: string;
+  sample_size: number;
+  median_ctr?: number | null;
+  median_cpc?: number | null;
+  median_cpm?: number | null;
+  median_cpl?: number | null;
+  median_cost_per_message?: number | null;
+  updated_at: string;
+};
+
 type SyncResult = {
   sync_run_id: string;
   account_count: number;
@@ -133,12 +146,23 @@ function formatDateTime(value: string) {
   }
 }
 
+function formatNumber(value?: number | null, suffix = "") {
+  if (value === null || value === undefined) return "Chưa có";
+  return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(Number(value) || 0)}${suffix}`;
+}
+
+function formatMoney(value?: number | null) {
+  if (value === null || value === undefined) return "Chưa có";
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(Number(value) || 0);
+}
+
 export function OptimizationCenterClient() {
   const [accounts, setAccounts] = useState<AdAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [range, setRange] = useState(defaultRange());
   const [authorization, setAuthorization] = useState<Authorization | null>(null);
   const [industryProfile, setIndustryProfile] = useState<IndustryProfile | null>(null);
+  const [industryLearning, setIndustryLearning] = useState<IndustryLearningRow[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
@@ -157,6 +181,7 @@ export function OptimizationCenterClient() {
       range: { startDate: string; endDate: string };
       authorization: Authorization | null;
       industryProfile?: IndustryProfile | null;
+      industryLearning?: IndustryLearningRow[];
       recommendations: Recommendation[];
       actionLogs?: ActionLog[];
       lastSync: SyncResult | null;
@@ -168,6 +193,7 @@ export function OptimizationCenterClient() {
         setRange(cached.range);
         setAuthorization(cached.authorization);
         setIndustryProfile(cached.industryProfile ?? null);
+        setIndustryLearning(cached.industryLearning ?? []);
         setRecommendations(cached.recommendations);
         setActionLogs(cached.actionLogs ?? []);
         setLastSync(cached.lastSync);
@@ -181,8 +207,8 @@ export function OptimizationCenterClient() {
 
   useEffect(() => {
     if (!selectedAccountId) return;
-    setCachedState(cacheKey, { accounts, selectedAccountId, range, authorization, industryProfile, recommendations, actionLogs, lastSync });
-  }, [accounts, selectedAccountId, range, authorization, industryProfile, recommendations, actionLogs, lastSync]);
+    setCachedState(cacheKey, { accounts, selectedAccountId, range, authorization, industryProfile, industryLearning, recommendations, actionLogs, lastSync });
+  }, [accounts, selectedAccountId, range, authorization, industryProfile, industryLearning, recommendations, actionLogs, lastSync]);
 
   async function withProgress<T>(label: string, fn: () => Promise<T>) {
     setBusyLabel(label);
@@ -204,6 +230,7 @@ export function OptimizationCenterClient() {
         await Promise.all([
           loadAuthorization(accountId, true),
           loadIndustryProfile(accountId, true),
+          loadIndustryLearning("unknown", true),
           loadRecommendations(accountId, true),
           loadActionLogs(accountId, true)
         ]);
@@ -246,6 +273,19 @@ export function OptimizationCenterClient() {
         notes: ""
       }
     );
+    await loadIndustryLearning(payload.data?.industry_key ?? "unknown", force);
+  }
+
+  async function loadIndustryLearning(industryKey = industryProfile?.industry_key ?? "unknown", force = false) {
+    if (!industryKey || industryKey === "unknown") {
+      setIndustryLearning([]);
+      return;
+    }
+    const payload = await readJson<{ data: IndustryLearningRow[]; storage?: string }>(
+      `/api/optimization/industry-learning?industry_key=${encodeURIComponent(industryKey)}`,
+      { force }
+    );
+    setIndustryLearning(payload.data ?? []);
   }
 
   async function loadRecommendations(accountId = selectedAccountId, force = false) {
@@ -270,6 +310,7 @@ export function OptimizationCenterClient() {
     setSelectedAccountId(accountId);
     setDefaultAdAccountId(accountId);
     setIndustryProfile(null);
+    setIndustryLearning([]);
     setRecommendations([]);
     setActionLogs([]);
     setLastSync(null);
@@ -277,6 +318,7 @@ export function OptimizationCenterClient() {
       await Promise.all([
         loadAuthorization(accountId, true),
         loadIndustryProfile(accountId, true),
+        loadIndustryLearning("unknown", true),
         loadRecommendations(accountId, true),
         loadActionLogs(accountId, true)
       ]);
@@ -327,7 +369,22 @@ export function OptimizationCenterClient() {
         body: JSON.stringify(current)
       });
       setIndustryProfile(payload.data);
+      await loadIndustryLearning(payload.data.industry_key, true);
       toast.success("Đã lưu hồ sơ ngành cho tài khoản quảng cáo.");
+    }).catch((error: Error) => toast.error(error.message));
+  }
+
+  async function rebuildIndustryLearning() {
+    const industryKey = industryProfile?.industry_key;
+    if (!industryKey || industryKey === "unknown") return toast.error("Chọn ngành hàng trước khi học benchmark.");
+    await withProgress("Đang gom dữ liệu ngành và tính benchmark ẩn danh...", async () => {
+      const payload = await readJson<{ data: IndustryLearningRow[]; sample_size?: number }>("/api/optimization/industry-learning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ industry_key: industryKey })
+      });
+      setIndustryLearning(payload.data ?? []);
+      toast.success(`Đã cập nhật benchmark ngành từ ${payload.sample_size ?? 0} mẫu campaign.`);
     }).catch((error: Error) => toast.error(error.message));
   }
 
@@ -537,6 +594,62 @@ export function OptimizationCenterClient() {
               onChange={(event) => updateIndustryProfile({ notes: event.target.value })}
             />
           </label>
+        </div>
+
+        <div className="mt-6 rounded-xl bg-surface-container-low p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h4 className="font-extrabold">Benchmark ngành</h4>
+              <p className="mt-1 text-sm text-on-surface-variant">
+                Dữ liệu được gom ẩn danh từ các campaign đã đồng bộ thuộc cùng ngành. Khi mẫu còn ít, app chỉ dùng để tham khảo, chưa tự quyết định thay khách.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => void loadIndustryLearning(industryProfile?.industry_key ?? "unknown", true)} disabled={Boolean(busyLabel) || !industryProfile?.industry_key || industryProfile.industry_key === "unknown"}>
+                <MaterialIcon name="refresh" />
+                Tải benchmark
+              </Button>
+              <Button onClick={() => void rebuildIndustryLearning()} disabled={Boolean(busyLabel) || !industryProfile?.industry_key || industryProfile.industry_key === "unknown"}>
+                <MaterialIcon name="psychology" />
+                Học từ dữ liệu đã sync
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto">
+            {industryLearning.length ? (
+              <table className="min-w-full text-left text-sm">
+                <thead className="text-xs font-bold uppercase text-outline">
+                  <tr>
+                    <th className="px-3 py-2">Mục tiêu</th>
+                    <th className="px-3 py-2">Mẫu</th>
+                    <th className="px-3 py-2">CTR giữa</th>
+                    <th className="px-3 py-2">CPC giữa</th>
+                    <th className="px-3 py-2">CPM giữa</th>
+                    <th className="px-3 py-2">CPL giữa</th>
+                    <th className="px-3 py-2">Cost/message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {industryLearning.map((row) => (
+                    <tr key={row.id} className="border-t border-outline-variant">
+                      <td className="px-3 py-3 font-bold">{row.objective}</td>
+                      <td className="px-3 py-3">{row.sample_size}</td>
+                      <td className="px-3 py-3">{formatNumber(row.median_ctr, "%")}</td>
+                      <td className="px-3 py-3">{formatMoney(row.median_cpc)}</td>
+                      <td className="px-3 py-3">{formatMoney(row.median_cpm)}</td>
+                      <td className="px-3 py-3">{formatMoney(row.median_cpl)}</td>
+                      <td className="px-3 py-3">{formatMoney(row.median_cost_per_message)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="rounded-lg bg-white p-4 text-sm text-on-surface-variant">
+                Chưa có benchmark cho ngành này. Hãy đồng bộ dữ liệu Meta, lưu hồ sơ ngành, rồi bấm “Học từ dữ liệu đã sync”.
+              </div>
+            )}
+          </div>
         </div>
       </Card>
 

@@ -184,4 +184,5 @@ Ngành ưu tiên:
 - [x] Add server route `GET/PATCH /api/optimization/industry-profile`.
 - [x] Add Optimization Center form for account industry, business model, offer, average order value, target customer and notes.
 - [x] Use account industry context inside recommendation reason/evidence.
+- [x] Add anonymized industry benchmark rebuild from synced Meta campaign snapshots.
 - [ ] Use account industry context directly inside scoring thresholds and content generation.
