@@ -109,4 +109,40 @@ describe("optimization recommendations", () => {
     expect(rows[0]?.reason).toContain("education_course");
     expect(rows[0]?.evidence.account_context).toMatchObject({ industryKey: "education_course" });
   });
+
+  it("uses industry benchmark in campaign recommendation evidence", () => {
+    const rows = buildOptimizationRecommendations({
+      campaigns: [
+        campaign({
+          campaignId: "winner",
+          campaignName: "Winner",
+          objective: "OUTCOME_MESSAGES",
+          spend: 500000,
+          results: 20,
+          costPerResult: 25000,
+          ctr: 3.6,
+          cpc: 2500,
+          cpm: 90000
+        }),
+        campaign({ campaignId: "average", campaignName: "Average", objective: "OUTCOME_MESSAGES", spend: 600000, results: 10, costPerResult: 60000, ctr: 1.5 })
+      ],
+      creatives: [],
+      context: {
+        industryKey: "education_course",
+        benchmarks: [
+          {
+            objective: "OUTCOME_MESSAGES",
+            sampleSize: 8,
+            medianCtr: 2,
+            medianCpc: 5000,
+            medianCpm: 120000
+          }
+        ]
+      }
+    });
+
+    const winner = rows.find((item) => item.entityId === "winner");
+    expect(winner?.reason).toContain("CTR cao hơn mặt bằng ngành");
+    expect(winner?.evidence.industry_benchmark).toMatchObject({ objective: "OUTCOME_MESSAGES" });
+  });
 });

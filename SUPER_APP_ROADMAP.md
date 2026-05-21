@@ -185,4 +185,5 @@ Ngành ưu tiên:
 - [x] Add Optimization Center form for account industry, business model, offer, average order value, target customer and notes.
 - [x] Use account industry context inside recommendation reason/evidence.
 - [x] Add anonymized industry benchmark rebuild from synced Meta campaign snapshots.
+- [x] Use industry benchmark context inside recommendation evidence/reason.
 - [ ] Use account industry context directly inside scoring thresholds and content generation.

@@ -12,7 +12,8 @@ function isMissingTable(error: { message?: string; code?: string } | null) {
     error?.code === "42P01" ||
     message.includes("schema cache") ||
     message.includes("optimization_recommendations") ||
-    message.includes("account_industry_profiles")
+    message.includes("account_industry_profiles") ||
+    message.includes("industry_learning_profiles")
   );
 }
 
@@ -188,6 +189,31 @@ export async function POST(request: Request) {
   }
 
   const profile = industryProfileResult.data as Record<string, unknown> | null;
+  let benchmarks: Array<{
+    objective: string;
+    sampleSize: number;
+    medianCtr: number | null;
+    medianCpc: number | null;
+    medianCpm: number | null;
+    medianCpl: number | null;
+    medianCostPerMessage: number | null;
+  }> = [];
+  if (profile?.industry_key && String(profile.industry_key) !== "unknown") {
+    const { data: benchmarkRows, error: benchmarkError } = await admin
+      .from("industry_learning_profiles")
+      .select("objective,sample_size,median_ctr,median_cpc,median_cpm,median_cpl,median_cost_per_message")
+      .eq("industry_key", String(profile.industry_key));
+    if (benchmarkError && !isMissingTable(benchmarkError)) return NextResponse.json({ error: benchmarkError.message }, { status: 500 });
+    benchmarks = (benchmarkRows ?? []).map((row) => ({
+      objective: String(row.objective || "UNKNOWN"),
+      sampleSize: Number(row.sample_size || 0),
+      medianCtr: row.median_ctr === null || row.median_ctr === undefined ? null : Number(row.median_ctr),
+      medianCpc: row.median_cpc === null || row.median_cpc === undefined ? null : Number(row.median_cpc),
+      medianCpm: row.median_cpm === null || row.median_cpm === undefined ? null : Number(row.median_cpm),
+      medianCpl: row.median_cpl === null || row.median_cpl === undefined ? null : Number(row.median_cpl),
+      medianCostPerMessage: row.median_cost_per_message === null || row.median_cost_per_message === undefined ? null : Number(row.median_cost_per_message)
+    }));
+  }
 
   const recommendations = buildOptimizationRecommendations({
     campaigns: (campaignResult.data ?? []).map((row) => campaignFromSnapshot(row as Record<string, unknown>)),
@@ -198,7 +224,8 @@ export async function POST(request: Request) {
           businessModel: profile.business_model ? String(profile.business_model) : null,
           offerType: profile.offer_type ? String(profile.offer_type) : null,
           averageOrderValue: profile.average_order_value === null || profile.average_order_value === undefined ? null : Number(profile.average_order_value),
-          targetCustomer: profile.target_customer ? String(profile.target_customer) : null
+          targetCustomer: profile.target_customer ? String(profile.target_customer) : null,
+          benchmarks
         }
       : undefined
   });

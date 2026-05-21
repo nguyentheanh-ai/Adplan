@@ -120,6 +120,7 @@
 - Thêm `GET/POST /api/optimization/industry-learning`.
 - Trang `Tối ưu Ads` có bảng `Benchmark ngành` và nút `Học từ dữ liệu đã sync`.
 - Dữ liệu benchmark chỉ là aggregate ẩn danh, không hiển thị account/campaign của khách khác.
+- Recommendation engine dùng benchmark ngành để thêm nhận định như CTR/CPC/CPM tốt hơn hoặc kém hơn mặt bằng ngành vào reason/evidence.
 
 ## 2026-05-21 - Optimization action history UI
 

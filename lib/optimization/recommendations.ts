@@ -19,6 +19,17 @@ export type OptimizationRecommendationContext = {
   offerType?: string | null;
   averageOrderValue?: number | null;
   targetCustomer?: string | null;
+  benchmarks?: IndustryBenchmark[];
+};
+
+export type IndustryBenchmark = {
+  objective: string;
+  sampleSize: number;
+  medianCtr?: number | null;
+  medianCpc?: number | null;
+  medianCpm?: number | null;
+  medianCpl?: number | null;
+  medianCostPerMessage?: number | null;
 };
 
 function money(value: number) {
@@ -53,8 +64,30 @@ function attachContext(
   }));
 }
 
+function findBenchmark(context: OptimizationRecommendationContext | undefined, objective: string | undefined) {
+  if (!context?.benchmarks?.length) return null;
+  return context.benchmarks.find((item) => item.objective === (objective || "UNKNOWN")) ?? null;
+}
+
+function benchmarkNote(campaign: NormalizedCampaignPerformance, benchmark: IndustryBenchmark | null) {
+  if (!benchmark || benchmark.sampleSize < 3) return "";
+  const notes: string[] = [];
+  if (benchmark.medianCtr && campaign.ctr > 0) {
+    if (campaign.ctr >= benchmark.medianCtr * 1.2) notes.push(`CTR cao hơn mặt bằng ngành (${campaign.ctr.toFixed(2)}% so với ${benchmark.medianCtr.toFixed(2)}%).`);
+    if (campaign.ctr <= benchmark.medianCtr * 0.7) notes.push(`CTR thấp hơn mặt bằng ngành (${campaign.ctr.toFixed(2)}% so với ${benchmark.medianCtr.toFixed(2)}%).`);
+  }
+  if (benchmark.medianCpc && campaign.cpc > 0 && campaign.cpc <= benchmark.medianCpc * 0.8) {
+    notes.push(`CPC rẻ hơn benchmark ngành (${money(campaign.cpc)} so với ${money(benchmark.medianCpc)}).`);
+  }
+  if (benchmark.medianCpm && campaign.cpm > 0 && campaign.cpm >= benchmark.medianCpm * 1.3) {
+    notes.push(`CPM cao hơn benchmark ngành (${money(campaign.cpm)} so với ${money(benchmark.medianCpm)}).`);
+  }
+  return notes.join(" ");
+}
+
 export function buildCampaignOptimizationRecommendations(
-  campaigns: NormalizedCampaignPerformance[]
+  campaigns: NormalizedCampaignPerformance[],
+  context?: OptimizationRecommendationContext
 ): OptimizationRecommendationDraft[] {
   if (!campaigns.length) {
     return [
@@ -79,6 +112,7 @@ export function buildCampaignOptimizationRecommendations(
     campaignsWithResult.reduce((sum, item) => sum + item.spend, 0) /
     Math.max(1, campaignsWithResult.reduce((sum, item) => sum + item.results, 0));
   const best = [...campaignsWithResult].sort((a, b) => a.costPerResult - b.costPerResult)[0];
+  const bestBenchmark = best ? findBenchmark(context, best.objective) : null;
 
   if (best && best.costPerResult > 0 && (averageCostPerResult === 0 || best.costPerResult <= averageCostPerResult * 0.8)) {
     recommendations.push({
@@ -88,14 +122,15 @@ export function buildCampaignOptimizationRecommendations(
       recommendationType: "scale_budget",
       priority: "high",
       title: "Nên tăng ngân sách campaign thắng",
-      reason: `"${best.campaignName}" đang có chi phí/kết quả ${money(best.costPerResult)}, tốt hơn mặt bằng hiện tại.`,
+      reason: `"${best.campaignName}" đang có chi phí/kết quả ${money(best.costPerResult)}, tốt hơn mặt bằng hiện tại. ${benchmarkNote(best, bestBenchmark)}`.trim(),
       expectedImpact: "Tăng ngân sách từng bước 10-20% giúp mở rộng kết quả mà vẫn hạn chế sốc thuật toán.",
       actionPayload: { suggested_budget_increase_percent: 15, status_after_apply: "PAUSED_REVIEW_REQUIRED" },
-      evidence: best
+      evidence: { ...best, industry_benchmark: bestBenchmark }
     });
   }
 
   for (const campaign of campaigns) {
+    const benchmark = findBenchmark(context, campaign.objective);
     if (campaign.spend > 0 && campaign.results === 0) {
       recommendations.push({
         entityType: "campaign",
@@ -104,10 +139,10 @@ export function buildCampaignOptimizationRecommendations(
         recommendationType: "pause_review",
         priority: "high",
         title: "Campaign đang chi nhưng chưa ra kết quả",
-        reason: `"${campaign.campaignName}" đã chi ${money(campaign.spend)} nhưng chưa có lead/tin nhắn/purchase/link click được ghi nhận.`,
+        reason: `"${campaign.campaignName}" đã chi ${money(campaign.spend)} nhưng chưa có lead/tin nhắn/purchase/link click được ghi nhận. ${benchmarkNote(campaign, benchmark)}`.trim(),
         expectedImpact: "Kiểm tra offer, tệp khách hàng và creative trước khi tiếp tục tăng chi.",
         actionPayload: { suggested_action: "review_or_pause", require_manual_approval: true },
-        evidence: campaign
+        evidence: { ...campaign, industry_benchmark: benchmark }
       });
     }
 
@@ -119,10 +154,10 @@ export function buildCampaignOptimizationRecommendations(
         recommendationType: "refresh_creative",
         priority: "medium",
         title: "CTR thấp, cần đổi hook/creative",
-        reason: `"${campaign.campaignName}" có CTR ${campaign.ctr.toFixed(2)}%, dấu hiệu mẫu quảng cáo chưa đủ hút.`,
+        reason: `"${campaign.campaignName}" có CTR ${campaign.ctr.toFixed(2)}%, dấu hiệu mẫu quảng cáo chưa đủ hút. ${benchmarkNote(campaign, benchmark)}`.trim(),
         expectedImpact: "Viết lại 3 hook đầu, đổi thumbnail/video mở đầu để tăng tỷ lệ nhấp.",
         actionPayload: { suggested_action: "create_new_creative_variants", variant_count: 3 },
-        evidence: campaign
+        evidence: { ...campaign, industry_benchmark: benchmark }
       });
     }
 
@@ -137,7 +172,7 @@ export function buildCampaignOptimizationRecommendations(
         reason: `"${campaign.campaignName}" có frequency ${campaign.frequency.toFixed(2)}, khách có thể đã thấy quảng cáo nhiều lần.`,
         expectedImpact: "Thêm creative mới hoặc mở rộng tệp để giảm mỏi quảng cáo.",
         actionPayload: { suggested_action: "refresh_creative_or_expand_audience" },
-        evidence: campaign
+        evidence: { ...campaign, industry_benchmark: benchmark }
       });
     }
   }
@@ -196,7 +231,7 @@ export function buildOptimizationRecommendations({
   context?: OptimizationRecommendationContext;
 }) {
   return attachContext(
-    [...buildCampaignOptimizationRecommendations(campaigns), ...buildCreativeOptimizationRecommendations(creatives)].slice(0, 30),
+    [...buildCampaignOptimizationRecommendations(campaigns, context), ...buildCreativeOptimizationRecommendations(creatives)].slice(0, 30),
     context
   );
 }
