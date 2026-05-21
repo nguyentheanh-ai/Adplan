@@ -8,9 +8,11 @@ import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type { AdAccount, CreativePerformance, MetaIntelligenceDashboardData } from "@/lib/meta/types";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
+import type { AdsContentPackage } from "@/lib/ai-content-ads-shared";
 
 type DatePreset = "7d" | "30d" | "month" | "custom";
 type SortKey = "spend" | "lead" | "message" | "engagement" | "ctr";
+type ContentGoal = "message" | "lead" | "traffic" | "engagement" | "sales";
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -49,6 +51,19 @@ export function CreativeIntelligenceClient() {
   const [error, setError] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("spend");
   const [campaignFilter, setCampaignFilter] = useState("ALL");
+  const [contentForm, setContentForm] = useState({
+    product: "",
+    industry: "",
+    targetCustomer: "",
+    offer: "",
+    salesPolicy: "",
+    objections: "",
+    tone: "thẳng, dễ hiểu, có lực bán hàng",
+    goal: "message" as ContentGoal
+  });
+  const [contentPackage, setContentPackage] = useState<(AdsContentPackage & { raw?: string }) | null>(null);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentError, setContentError] = useState("");
 
   const currency = payload?.selectedAccount?.currency || "VND";
   const creatives = useMemo(() => payload?.creatives ?? [], [payload?.creatives]);
@@ -138,8 +153,105 @@ export function CreativeIntelligenceClient() {
     if (next !== "custom") setRange(presetRange(next));
   }
 
+  async function generateContentPackage() {
+    setContentLoading(true);
+    setContentError("");
+    try {
+      const response = await fetch("/api/ai/content-ads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(contentForm)
+      });
+      const json = (await response.json().catch(() => ({}))) as { data?: AdsContentPackage & { raw?: string }; error?: string };
+      if (!response.ok || !json.data) throw new Error(json.error || "Không thể tạo content quảng cáo.");
+      setContentPackage(json.data);
+    } catch (err) {
+      setContentError(err instanceof Error ? err.message : "Không thể tạo content quảng cáo.");
+    } finally {
+      setContentLoading(false);
+    }
+  }
+
+  async function copyContent(text: string) {
+    await navigator.clipboard.writeText(text);
+  }
+
   return (
     <div className="space-y-6">
+      <Card className="rounded-lg p-6">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs font-extrabold uppercase tracking-wide text-outline">Creator Ads AI</p>
+            <h3 className="mt-2 text-xl font-extrabold">Viết content quảng cáo để test</h3>
+            <p className="mt-1 text-sm leading-6 text-on-surface-variant">
+              Nhập sản phẩm, chính sách bán hàng và khuyến mãi. AI sẽ tạo hook, nội dung chính, headline, CTA và brief hình/video. Phần này chỉ tạo nội dung để review/copy, chưa tự đăng bài.
+            </p>
+          </div>
+          <Button onClick={() => void generateContentPackage()} disabled={contentLoading || !contentForm.product.trim()}>
+            <MaterialIcon filled name="auto_awesome" />
+            {contentLoading ? "Đang viết..." : "Tạo content ads"}
+          </Button>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Sản phẩm/dịch vụ</span>
+            <input className="dashboard-input" value={contentForm.product} onChange={(event) => setContentForm((item) => ({ ...item, product: event.target.value }))} placeholder="Ví dụ: khóa học AI cho chủ shop" />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Ngành</span>
+            <input className="dashboard-input" value={contentForm.industry} onChange={(event) => setContentForm((item) => ({ ...item, industry: event.target.value }))} placeholder="Spa, khóa học, ecommerce..." />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Mục tiêu</span>
+            <select className="dashboard-input" value={contentForm.goal} onChange={(event) => setContentForm((item) => ({ ...item, goal: event.target.value as ContentGoal }))}>
+              <option value="message">Tin nhắn</option>
+              <option value="lead">Lead</option>
+              <option value="traffic">Traffic</option>
+              <option value="engagement">Tương tác</option>
+              <option value="sales">Sales</option>
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Khách hàng mục tiêu</span>
+            <input className="dashboard-input" value={contentForm.targetCustomer} onChange={(event) => setContentForm((item) => ({ ...item, targetCustomer: event.target.value }))} placeholder="Nữ 25-44, chủ shop..." />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Offer/khuyến mãi</span>
+            <input className="dashboard-input" value={contentForm.offer} onChange={(event) => setContentForm((item) => ({ ...item, offer: event.target.value }))} placeholder="Giảm giá, tặng quà..." />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Chính sách bán hàng</span>
+            <input className="dashboard-input" value={contentForm.salesPolicy} onChange={(event) => setContentForm((item) => ({ ...item, salesPolicy: event.target.value }))} placeholder="Bảo hành, trả góp, tư vấn..." />
+          </label>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Lý do khách phân vân</span>
+            <textarea className="dashboard-input min-h-24" value={contentForm.objections} onChange={(event) => setContentForm((item) => ({ ...item, objections: event.target.value }))} placeholder="Đắt, sợ không hiệu quả, chưa tin..." />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Giọng văn</span>
+            <textarea className="dashboard-input min-h-24" value={contentForm.tone} onChange={(event) => setContentForm((item) => ({ ...item, tone: event.target.value }))} />
+          </label>
+        </div>
+
+        {contentError ? <div className="mt-4 rounded-lg border border-error-container bg-error-container/70 p-4 text-sm font-bold text-error">{contentError}</div> : null}
+
+        {contentPackage ? (
+          <div className="mt-6 grid gap-4 xl:grid-cols-2">
+            <ContentBlock title="Tóm tắt chiến lược" items={[contentPackage.summary]} />
+            <ContentBlock title="Góc quảng cáo" items={contentPackage.angles} />
+            <ContentBlock title="Hook mở đầu" items={contentPackage.hooks} />
+            <ContentBlock title="Headline" items={contentPackage.headlines} />
+            <ContentBlock title="Nội dung chính" items={contentPackage.primaryTexts} onCopy={copyContent} large />
+            <ContentBlock title="Brief hình/video" items={contentPackage.creativeBriefs} />
+            <ContentBlock title="CTA" items={contentPackage.ctas} />
+            <ContentBlock title="Kế hoạch test" items={[contentPackage.recommendedTestPlan]} />
+          </div>
+        ) : null}
+      </Card>
+
       <Card className="rounded-lg p-5">
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <label className="space-y-2">
@@ -323,6 +435,39 @@ function FunnelCell({ label, value, total }: { label: string; value: number; tot
         <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
       </div>
       <p className="mt-2 text-xs font-semibold text-outline">{percent}% trên tổng creative</p>
+    </div>
+  );
+}
+
+function ContentBlock({
+  title,
+  items,
+  large,
+  onCopy
+}: {
+  title: string;
+  items: string[];
+  large?: boolean;
+  onCopy?: (text: string) => Promise<void>;
+}) {
+  return (
+    <div className={`rounded-lg bg-surface-container-low p-4 ${large ? "xl:col-span-2" : ""}`}>
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="font-extrabold">{title}</h4>
+        {onCopy && items.length ? (
+          <Button className="h-9 px-3 text-xs" variant="secondary" onClick={() => void onCopy(items.join("\n\n"))}>
+            <MaterialIcon name="content_copy" />
+            Copy
+          </Button>
+        ) : null}
+      </div>
+      <div className="mt-3 space-y-2">
+        {items.map((item, index) => (
+          <div key={`${title}-${index}`} className="rounded-md bg-white p-3 text-sm leading-6 text-on-surface-variant">
+            {item}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

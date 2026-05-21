@@ -122,6 +122,15 @@
 - Dữ liệu benchmark chỉ là aggregate ẩn danh, không hiển thị account/campaign của khách khác.
 - Recommendation engine dùng benchmark ngành để thêm nhận định như CTR/CPC/CPM tốt hơn hoặc kém hơn mặt bằng ngành vào reason/evidence.
 
+## 2026-05-21 - Creator Ads AI foundation
+
+### Đã bổ sung
+
+- Thêm `POST /api/ai/content-ads`, gọi Gemini server-side để tạo gói content quảng cáo.
+- Thêm schema/test cho gói content: angle, hook, primary text, headline, CTA, creative brief, compliance notes và kế hoạch test.
+- Trang `Creative` có khu vực `Creator Ads AI`, cho nhập sản phẩm, ngành, khách hàng mục tiêu, offer, chính sách bán hàng và lý do khách phân vân.
+- Content được tạo chỉ để review/copy, chưa tự đăng post và chưa tự launch campaign.
+
 ## 2026-05-21 - Optimization action history UI
 
 ### Đã bổ sung

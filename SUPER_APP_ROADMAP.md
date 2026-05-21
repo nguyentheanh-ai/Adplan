@@ -135,11 +135,11 @@ Ngành ưu tiên:
 
 ### Phase D - Creator Ads Skill
 
-- [ ] Form nhập sản phẩm/chính sách/khuyến mãi.
-- [ ] Prompt Gemini chuyên creator ads tiếng Việt.
-- [ ] JSON schema cho content package.
-- [ ] UI duyệt hook/angle/post/script.
-- [ ] Copy post.
+- [x] Form nhập sản phẩm/chính sách/khuyến mãi.
+- [x] Prompt Gemini chuyên creator ads tiếng Việt.
+- [x] JSON schema cho content package.
+- [x] UI duyệt hook/angle/post/script.
+- [x] Copy post.
 - [ ] Lưu content vào thư viện.
 - [ ] Dùng content đã chọn để tạo campaign preview.
 
