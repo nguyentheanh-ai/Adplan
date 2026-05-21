@@ -221,6 +221,7 @@ export function CampaignBuilderClient() {
   const [notice, setNotice] = useState("");
   const [fanpageUrl, setFanpageUrl] = useState("");
   const [draft, setDraft] = useState<CampaignPlannerDraft | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [scaleAction, setScaleAction] = useState<ScaleAction>("clone_adset");
   const [scaleRange, setScaleRange] = useState(defaultDateRange());
   const [sourceCampaignId, setSourceCampaignId] = useState("");
@@ -457,6 +458,7 @@ export function CampaignBuilderClient() {
     setMode(nextMode);
     setForm(nextForm);
     setDraft(null);
+    setPreviewOpen(false);
     setStep(2);
 
     if (nextMode !== "new_campaign") {
@@ -486,6 +488,7 @@ export function CampaignBuilderClient() {
         }
       });
       setStep(3);
+      setPreviewOpen(true);
       toast.success("Đã tạo preview từ đề xuất AI. Chưa launch lên Meta.");
     }).catch((error: Error) => toast.error(error.message));
   }
@@ -495,6 +498,7 @@ export function CampaignBuilderClient() {
     setMode(nextMode);
     setStep(2);
     setDraft(null);
+    setPreviewOpen(false);
     window.setTimeout(() => setBusyLabel(""), 250);
   }
 
@@ -622,6 +626,7 @@ export function CampaignBuilderClient() {
       };
       setDraft(generateScalePreview(scaleInput));
       setStep(3);
+      setPreviewOpen(true);
       toast.success("Đã tạo preview scale.");
       return;
     }
@@ -648,6 +653,7 @@ export function CampaignBuilderClient() {
           metaPayload: { ab_test: abDraft, status: "DRAFT_ONLY" }
         });
         setStep(3);
+        setPreviewOpen(true);
         return;
       }
       setDraft({
@@ -664,6 +670,7 @@ export function CampaignBuilderClient() {
         }
       });
       setStep(3);
+      setPreviewOpen(true);
       toast.success("Đã tạo preview A/B test.");
       return;
     }
@@ -689,6 +696,7 @@ export function CampaignBuilderClient() {
         }
       });
       setStep(3);
+      setPreviewOpen(true);
       toast.success("Đã tạo preview Campaign > Adset > Ads.");
     }).catch((error: Error) => toast.error(error.message));
   }
@@ -929,7 +937,7 @@ export function CampaignBuilderClient() {
         </div>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+      <div className="grid gap-6">
         <div className="space-y-6">
           {mode === "scale_existing" ? (
             <ScalePanel
@@ -1014,11 +1022,18 @@ export function CampaignBuilderClient() {
           ) : null}
 
           <Card className="rounded-lg p-5">
+            <CompactChecklist validation={getChecklist()} />
             <div className="flex flex-wrap gap-3">
               <Button variant="ai" onClick={() => void createPreview()}>
                 <MaterialIcon filled name="auto_awesome" />
                 Tạo preview
               </Button>
+              {draft ? (
+                <Button variant="secondary" onClick={() => setPreviewOpen(true)}>
+                  <MaterialIcon name="visibility" />
+                  Xem preview
+                </Button>
+              ) : null}
               <Button variant="secondary" onClick={() => void saveDraft()}>
                 <MaterialIcon name="save" />
                 Lưu bản nháp
@@ -1051,9 +1066,16 @@ export function CampaignBuilderClient() {
             </div>
           </Card>
         </div>
-
-        <PreviewPanel draft={draft} fallback={null} validation={getChecklist()} mode={mode} />
       </div>
+      {previewOpen ? (
+        <PreviewModal
+          draft={draft}
+          fallback={null}
+          validation={getChecklist()}
+          mode={mode}
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1640,7 +1662,33 @@ function Notice({ tone, message }: { tone: "warning" | "danger"; message: string
   );
 }
 
-function PreviewPanel({ draft, fallback, validation, mode }: { draft: CampaignPlannerDraft | null; fallback: CampaignPlannerDraft | null; validation: Array<{ key: string; label: string; ok: boolean; note?: string }>; mode: CampaignBuilderMode }) {
+function CompactChecklist({ validation }: { validation: Array<{ key: string; label: string; ok: boolean; note?: string }> }) {
+  const completed = validation.filter((item) => item.ok).length;
+  return (
+    <div className="mb-4 rounded-lg bg-surface-container-low p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-extrabold">Checklist nhanh</p>
+          <p className="text-xs text-on-surface-variant">{completed}/{validation.length} mục đã đủ. Mục thiếu sẽ sáng vàng để khách biết cần bổ sung.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {validation.map((item) => (
+            <span
+              key={item.key}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${item.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+              title={item.note || item.label}
+            >
+              <MaterialIcon className="text-[16px]" name={item.ok ? "check_circle" : "warning"} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewModal({ draft, fallback, validation, mode, onClose }: { draft: CampaignPlannerDraft | null; fallback: CampaignPlannerDraft | null; validation: Array<{ key: string; label: string; ok: boolean; note?: string }>; mode: CampaignBuilderMode; onClose: () => void }) {
   const data = draft ?? fallback;
   const emptyMessage =
     mode === "scale_existing"
@@ -1649,27 +1697,43 @@ function PreviewPanel({ draft, fallback, validation, mode }: { draft: CampaignPl
         ? "Chọn loại test, nhập 2 biến thể khác nhau rồi bấm Tạo preview."
         : "Nhập thông tin cơ bản rồi bấm Tạo preview để xem cây Campaign > Nhóm quảng cáo > Quảng cáo.";
   return (
-    <div className="space-y-6 xl:sticky xl:top-24 xl:self-start">
-      <Card className="rounded-lg p-6">
-        <h3 className="text-lg font-extrabold">Preview & Launch</h3>
-        <p className="mt-1 text-sm text-on-surface-variant">Preview chỉ để kiểm tra. Không tự tạo campaign ACTIVE.</p>
-        {!data ? <div className="mt-5 rounded-md bg-surface-container-low p-5 text-sm text-on-surface-variant">{emptyMessage}</div> : null}
-        {data ? (
-          <div className="mt-5 space-y-4">
-            <PreviewSection title="Tổng quan" rows={{ mode: data.mode, accountId: data.accountId, title: data.title }} />
-            {data.campaignDraft ? <CampaignTreePreview draft={data.campaignDraft} /> : null}
-            {data.scale ? <PreviewSection title="Scale camp cũ" rows={data.metaPayload} /> : null}
-            {data.abTest ? <ABPreview draft={data.abTest} /> : null}
-            {data.warnings.length ? <PreviewSection title="Cần kiểm tra" rows={Object.fromEntries(data.warnings.map((item, index) => [`warning_${index + 1}`, item]))} /> : null}
+    <div className="fixed inset-0 z-[80] bg-black/45 p-4 backdrop-blur-sm md:p-8" role="dialog" aria-modal="true">
+      <div className="mx-auto flex max-h-[92vh] max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-outline-variant p-5">
+          <div>
+            <h3 className="text-xl font-extrabold">Preview & Launch</h3>
+            <p className="mt-1 text-sm text-on-surface-variant">Preview chỉ để kiểm tra. Không tự tạo campaign ACTIVE.</p>
           </div>
-        ) : null}
-      </Card>
-      <Card className="rounded-lg p-6">
-        <h3 className="text-lg font-extrabold">Checklist</h3>
-        <div className="mt-4 space-y-2">
-          {validation.map((item) => <div key={item.key} className="flex gap-3 rounded-md bg-surface-container-low p-3"><MaterialIcon className={item.ok ? "text-emerald-600" : "text-amber-600"} name={item.ok ? "check_circle" : "warning"} /><span><span className="block font-bold">{item.label}</span>{item.note ? <span className="text-xs text-on-surface-variant">{item.note}</span> : null}</span></div>)}
+          <button
+            aria-label="Đóng preview"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-outline-variant text-on-surface-variant hover:bg-surface-container hover:text-primary"
+            onClick={onClose}
+            type="button"
+          >
+            <MaterialIcon name="close" />
+          </button>
         </div>
-      </Card>
+        <div className="custom-scrollbar grid gap-5 overflow-y-auto p-5 lg:grid-cols-[1fr_320px]">
+          <div>
+            {!data ? <div className="rounded-md bg-surface-container-low p-5 text-sm text-on-surface-variant">{emptyMessage}</div> : null}
+            {data ? (
+              <div className="space-y-4">
+                <PreviewSection title="Tổng quan" rows={{ mode: data.mode, accountId: data.accountId, title: data.title }} />
+                {data.campaignDraft ? <CampaignTreePreview draft={data.campaignDraft} /> : null}
+                {data.scale ? <PreviewSection title="Scale camp cũ" rows={data.metaPayload} /> : null}
+                {data.abTest ? <ABPreview draft={data.abTest} /> : null}
+                {data.warnings.length ? <PreviewSection title="Cần kiểm tra" rows={Object.fromEntries(data.warnings.map((item, index) => [`warning_${index + 1}`, item]))} /> : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-lg border border-outline-variant p-4">
+            <h3 className="text-base font-extrabold">Checklist</h3>
+            <div className="mt-3 space-y-2">
+              {validation.map((item) => <div key={item.key} className="flex gap-2 rounded-md bg-surface-container-low p-2 text-sm"><MaterialIcon className={item.ok ? "text-emerald-600" : "text-amber-600"} name={item.ok ? "check_circle" : "warning"} /><span><span className="block font-bold">{item.label}</span>{item.note ? <span className="text-xs text-on-surface-variant">{item.note}</span> : null}</span></div>)}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

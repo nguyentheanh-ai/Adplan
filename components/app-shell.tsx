@@ -119,7 +119,7 @@ export function AppShell({
     router.refresh();
   }
 
-  const isDashboardPage = pathname === "/dashboard";
+  const isFullWidthPage = pathname === "/dashboard" || pathname === "/campaign-builder";
 
   return (
     <div className="min-h-screen bg-background text-on-background">
@@ -208,7 +208,7 @@ export function AppShell({
       </header>
 
       <main className={cn("min-h-screen transition-all", sidebarHidden ? "md:ml-0" : "md:ml-[240px]", contentClassName)}>
-        <div className={cn("mx-auto", sidebarHidden || isDashboardPage ? "max-w-[1440px]" : "max-w-[1280px]")}>
+        <div className={cn("mx-auto", isFullWidthPage ? "max-w-none" : sidebarHidden ? "max-w-[1440px]" : "max-w-[1280px]")}>
           {title ? (
             <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
