@@ -269,11 +269,13 @@ export async function getMetaAds(adAccountIdInput: string | null | undefined, ac
 export async function cloneMetaObject({
   sourceId,
   sourceType,
+  campaignId,
   quantity,
   accessToken
 }: {
   sourceId: string;
   sourceType: "campaign" | "adset";
+  campaignId?: string | null;
   quantity: number;
   accessToken?: string | null;
 }) {
@@ -282,13 +284,23 @@ export async function cloneMetaObject({
 
   for (let index = 0; index < safeQuantity; index += 1) {
     const body = new URLSearchParams({
-      deep_copy: sourceType === "campaign" ? "true" : "false",
+      deep_copy: "true",
       status_option: "PAUSED",
       rename_options: JSON.stringify({
         rename_strategy: "DEEP_RENAME",
         append_copy_number: true
       })
     });
+    if (sourceType === "adset") {
+      if (!campaignId) {
+        throw new MetaApiError({
+          status: 400,
+          message: "Missing campaign_id for adset copy",
+          userMessage: "Không đọc được campaign_id của nhóm quảng cáo nguồn nên chưa thể nhân bản nhóm quảng cáo."
+        });
+      }
+      body.set("campaign_id", campaignId);
+    }
     const result = await metaFetch<{ id?: string; copied_campaign_id?: string; copied_adset_id?: string }>(`${sourceId}/copies`, {
       accessToken,
       method: "POST",

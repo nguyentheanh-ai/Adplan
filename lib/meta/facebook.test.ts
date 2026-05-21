@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyMetaError, createPausedMetaCampaign, getMetaAdAccounts, getMetaCampaigns } from "./facebook";
+import { classifyMetaError, cloneMetaObject, createPausedMetaCampaign, getMetaAdAccounts, getMetaCampaigns } from "./facebook";
 
 const originalFetch = globalThis.fetch;
 
@@ -108,5 +108,26 @@ describe("classifyMetaError", () => {
     expect(headers.Authorization).toBe("Bearer facebook-provider-token");
     expect(String(requestInit.body)).toContain("status=PAUSED");
     expect(String(requestInit.body)).toContain("buying_type=AUCTION");
+  });
+
+  it("copies an adset through Meta copies endpoint with campaign_id and deep copy", async () => {
+    vi.stubEnv("META_API_VERSION", "v23.0");
+    const fetchMock = vi.fn(async () => Response.json({ copied_adset_id: "adset_copy_1" }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await cloneMetaObject({
+      sourceId: "source_adset_1",
+      sourceType: "adset",
+      campaignId: "campaign_1",
+      quantity: 1,
+      accessToken: "facebook-provider-token"
+    });
+
+    const firstCall = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(firstCall[0].href).toContain("/v23.0/source_adset_1/copies");
+    expect(firstCall[1].method).toBe("POST");
+    expect(String(firstCall[1].body)).toContain("campaign_id=campaign_1");
+    expect(String(firstCall[1].body)).toContain("deep_copy=true");
+    expect(String(firstCall[1].body)).toContain("status_option=PAUSED");
   });
 });
