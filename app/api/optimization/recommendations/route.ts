@@ -3,6 +3,7 @@ import { getAppSession } from "@/lib/auth/session";
 import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
 import { metaErrorResponse, updateMetaBudget } from "@/lib/meta/facebook";
 import type { CreativePerformance, NormalizedCampaignPerformance } from "@/lib/meta/types";
+import { isWithinOptimizationWindow } from "@/lib/optimization/authorization-window";
 import { buildOptimizationRecommendations } from "@/lib/optimization/recommendations";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -358,6 +359,22 @@ export async function PUT(request: Request) {
         errorMessage: "Hành động ngoài phạm vi ủy quyền."
       }).catch(() => undefined);
       return NextResponse.json({ error: "Loại hành động này chưa nằm trong phạm vi khách ủy quyền." }, { status: 403 });
+    }
+
+    const windowStatus = isWithinOptimizationWindow(authorization.optimization_window);
+    if (!windowStatus.ok) {
+      await saveOptimizationActionLog({
+        userId: session.userId,
+        adAccountId: recommendation.ad_account_id,
+        recommendationId: recommendation.id,
+        actionType: recommendation.recommendation_type,
+        entityType: recommendation.entity_type,
+        entityId: recommendation.entity_id,
+        status: "blocked",
+        request: { ...body, optimizationWindow: windowStatus.window, currentTime: windowStatus.currentTime },
+        errorMessage: windowStatus.label
+      }).catch(() => undefined);
+      return NextResponse.json({ error: windowStatus.label }, { status: 403 });
     }
 
     const actionPayload = (recommendation.action_payload ?? {}) as Record<string, unknown>;

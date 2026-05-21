@@ -85,6 +85,23 @@
 - `npm.cmd test`: pass.
 - `npm.cmd run build`: pass.
 
+## 2026-05-21 - Autopilot schedule guard
+
+### Đã bổ sung
+
+- Thêm migration `202605210008_add_optimization_authorization_window.sql`.
+- UI `Tối ưu Ads` cho khách bật/tắt khung giờ app được phép tối ưu theo từng tài khoản quảng cáo.
+- API lưu ủy quyền nhận thêm `optimization_window` nhưng vẫn fallback an toàn nếu production chưa chạy migration mới.
+- `PUT /api/optimization/recommendations` kiểm tra khung giờ ở server trước khi gọi Meta hoặc ghi proposal.
+- Nếu ngoài khung giờ, app không fake success: trả lỗi rõ và ghi log `blocked` vào lịch sử tối ưu.
+- Panel `Kiểm tra trước khi áp dụng` hiển thị thêm điều kiện khung giờ để khách hiểu vì sao nút áp dụng đang bật/tắt.
+
+### Kiểm tra cần chạy lại sau migration
+
+- Chạy migration mới trong Supabase production.
+- Bật khung giờ, đặt giờ hiện tại nằm ngoài khung, thử áp dụng recommendation đã duyệt: phải bị chặn và có log.
+- Đặt giờ hiện tại nằm trong khung, thử lại: route tiếp tục qua các lớp kiểm tra quyền/ngân sách như cũ.
+
 ## 2026-05-21 - Optimization action audit log
 
 ### Đã bổ sung

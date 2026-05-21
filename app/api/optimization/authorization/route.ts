@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAppSession } from "@/lib/auth/session";
+import { defaultOptimizationWindow, normalizeOptimizationWindow } from "@/lib/optimization/authorization-window";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const authorizationSchema = z.object({
@@ -9,12 +10,25 @@ const authorizationSchema = z.object({
   allowed_actions: z.array(z.string()).default([]),
   max_daily_budget_change_percent: z.coerce.number().min(0).max(100).default(20),
   max_daily_budget_change_amount: z.coerce.number().min(0).optional().nullable(),
-  require_manual_approval: z.boolean().default(true)
+  require_manual_approval: z.boolean().default(true),
+  optimization_window: z
+    .object({
+      enabled: z.boolean().default(defaultOptimizationWindow.enabled),
+      start: z.string().trim().default(defaultOptimizationWindow.start),
+      end: z.string().trim().default(defaultOptimizationWindow.end),
+      timezone: z.string().trim().default(defaultOptimizationWindow.timezone)
+    })
+    .optional()
 });
 
 function isMissingTable(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() || "";
   return error?.code === "42P01" || message.includes("schema cache") || message.includes("optimization_authorizations");
+}
+
+function isMissingOptimizationWindowColumn(error: { message?: string; code?: string } | null) {
+  const message = error?.message?.toLowerCase() || "";
+  return error?.code === "PGRST204" || message.includes("optimization_window");
 }
 
 export async function GET(request: Request) {
@@ -59,6 +73,7 @@ export async function PATCH(request: Request) {
         max_daily_budget_change_percent: body.max_daily_budget_change_percent,
         max_daily_budget_change_amount: body.max_daily_budget_change_amount ?? null,
         require_manual_approval: body.require_manual_approval,
+        optimization_window: normalizeOptimizationWindow(body.optimization_window),
         authorized_by: session.name || session.facebookId,
         authorized_at: body.status === "enabled" ? now : null,
         revoked_at: body.status === "disabled" ? now : null
@@ -69,6 +84,12 @@ export async function PATCH(request: Request) {
     .single();
 
   if (error) {
+    if (isMissingOptimizationWindowColumn(error)) {
+      return NextResponse.json(
+        { error: "Chưa có cột khung giờ tối ưu. Hãy chạy migration 202605210008_add_optimization_authorization_window.sql trong Supabase." },
+        { status: 500 }
+      );
+    }
     if (isMissingTable(error)) {
       return NextResponse.json(
         { error: "Chưa có bảng ủy quyền tối ưu. Hãy chạy migration 202605210004_create_meta_optimization_tables.sql." },

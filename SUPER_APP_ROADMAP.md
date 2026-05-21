@@ -154,7 +154,7 @@ Ngành ưu tiên:
 - [x] Khách bật ủy quyền theo account.
 - [x] Chọn hành động được phép.
 - [x] Chọn giới hạn tăng ngân sách/ngày.
-- [ ] Chọn khung giờ app được phép tối ưu.
+- [x] Chọn khung giờ app được phép tối ưu.
 - [ ] App chỉ tạo proposal nếu chưa đủ quyền.
 - [x] App chỉ apply khi authorization hợp lệ.
 - [ ] Mọi action đều có log, trạng thái, lỗi, rollback note.
@@ -220,3 +220,11 @@ Ngành ưu tiên:
 - [x] Thêm summary `Ưu tiên hôm nay` trong Optimization Center.
 - [x] Hiển thị số việc ưu tiên cao, chờ duyệt, sẵn sàng áp dụng và số hành động bị chặn/lỗi.
 - [x] Chỉ gợi ý áp dụng khi khuyến nghị đã được duyệt và tài khoản đã bật ủy quyền.
+
+## Progress 2026-05-21 - Autopilot schedule guard
+
+- [x] Thêm migration `202605210008_add_optimization_authorization_window.sql`.
+- [x] Authorization theo account có khung giờ cho phép tối ưu, mặc định tắt để không làm khách bị bất ngờ.
+- [x] UI `Tối ưu Ads` cho chọn giờ bắt đầu, giờ kết thúc và múi giờ.
+- [x] Backend `PUT /api/optimization/recommendations` chặn apply ngoài khung giờ và ghi log `blocked`.
+- [x] Panel `Kiểm tra trước khi áp dụng` hiển thị rõ recommendation có đang trong khung giờ được phép không.

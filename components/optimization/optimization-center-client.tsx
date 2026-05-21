@@ -9,6 +9,11 @@ import { Input } from "@/components/ui/input";
 import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client-cache";
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
 import type { AdAccount } from "@/lib/meta/types";
+import {
+  defaultOptimizationWindow,
+  isWithinOptimizationWindow,
+  type OptimizationWindow
+} from "@/lib/optimization/authorization-window";
 
 type Authorization = {
   id?: string;
@@ -18,6 +23,7 @@ type Authorization = {
   max_daily_budget_change_percent: number;
   max_daily_budget_change_amount?: number | null;
   require_manual_approval: boolean;
+  optimization_window?: OptimizationWindow | null;
 };
 
 type Recommendation = {
@@ -108,6 +114,18 @@ function defaultRange() {
   return { startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) };
 }
 
+function defaultAuthorization(accountId: string): Authorization {
+  return {
+    ad_account_id: accountId,
+    status: "disabled",
+    allowed_actions: [],
+    max_daily_budget_change_percent: 20,
+    max_daily_budget_change_amount: null,
+    require_manual_approval: true,
+    optimization_window: defaultOptimizationWindow
+  };
+}
+
 async function readJson<T>(url: string, init?: RequestInit & { force?: boolean }) {
   if (!init || !init.method || init.method === "GET") return getCachedJson<T>(url, { force: init?.force });
   const response = await fetch(url, { cache: "no-store", ...init });
@@ -155,6 +173,7 @@ function getApplyReadiness(recommendation: Recommendation, authorization: Author
   const actionAllowed = allowedActions.includes(recommendation.recommendation_type);
   const withinBudgetLimit = !isBudgetAction || requestedBudgetChange === 0 || maxBudgetChange === 0 || requestedBudgetChange <= maxBudgetChange;
   const isRealBudgetUpdate = recommendation.recommendation_type === "scale_budget" && typeof actionPayload.new_daily_budget === "string";
+  const windowStatus = isWithinOptimizationWindow(authorization?.optimization_window);
 
   checks.push({ label: recommendation.status === "approved" ? "Đã duyệt khuyến nghị" : "Cần duyệt trước khi áp dụng", ok: recommendation.status === "approved" });
   checks.push({ label: enabled ? "Đã bật ủy quyền cho account" : "Chưa bật ủy quyền account", ok: enabled });
@@ -168,6 +187,11 @@ function getApplyReadiness(recommendation: Recommendation, authorization: Author
     });
   }
   checks.push({
+    label: windowStatus.label,
+    ok: windowStatus.ok,
+    tone: windowStatus.window.enabled ? (windowStatus.ok ? "good" : "bad") : "warn"
+  });
+  checks.push({
     label: isRealBudgetUpdate ? "Có thể gọi Meta để cập nhật ngân sách" : "Hành động hiện ở dạng proposal/log, chưa tự chỉnh Meta",
     ok: isRealBudgetUpdate,
     tone: isRealBudgetUpdate ? "good" : "warn"
@@ -176,7 +200,7 @@ function getApplyReadiness(recommendation: Recommendation, authorization: Author
   return {
     ok: checks.every((item) => item.ok),
     checks,
-    canClickApply: recommendation.status === "approved" && enabled
+    canClickApply: recommendation.status === "approved" && enabled && actionAllowed && withinBudgetLimit && windowStatus.ok
   };
 }
 
@@ -318,16 +342,7 @@ export function OptimizationCenterClient() {
       `/api/optimization/authorization?ad_account_id=${encodeURIComponent(accountId)}`,
       { force }
     );
-    setAuthorization(
-      payload.data ?? {
-        ad_account_id: accountId,
-        status: "disabled",
-        allowed_actions: [],
-        max_daily_budget_change_percent: 20,
-        max_daily_budget_change_amount: null,
-        require_manual_approval: true
-      }
-    );
+    setAuthorization(payload.data ? { ...defaultAuthorization(accountId), ...payload.data } : defaultAuthorization(accountId));
   }
 
   async function loadIndustryProfile(accountId = selectedAccountId, force = false) {
@@ -402,14 +417,10 @@ export function OptimizationCenterClient() {
   async function saveAuthorization(next?: Partial<Authorization>) {
     if (!selectedAccountId) return toast.error("Chọn tài khoản quảng cáo trước.");
     const current = {
-      ad_account_id: selectedAccountId,
-      status: "disabled" as const,
-      allowed_actions: [],
-      max_daily_budget_change_percent: 20,
-      max_daily_budget_change_amount: null,
-      require_manual_approval: true,
+      ...defaultAuthorization(selectedAccountId),
       ...(authorization ?? {}),
-      ...(next ?? {})
+      ...(next ?? {}),
+      optimization_window: next?.optimization_window ?? authorization?.optimization_window ?? defaultOptimizationWindow
     };
 
     await withProgress("Đang lưu ủy quyền tối ưu...", async () => {
@@ -532,15 +543,23 @@ export function OptimizationCenterClient() {
     const current = authorization?.allowed_actions ?? [];
     const next = current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
     setAuthorization((item) => ({
-      ...(item ?? {
-        ad_account_id: selectedAccountId,
-        status: "disabled",
-        max_daily_budget_change_percent: 20,
-        max_daily_budget_change_amount: null,
-        require_manual_approval: true
-      }),
+      ...(item ?? defaultAuthorization(selectedAccountId)),
       allowed_actions: next
     }));
+  }
+
+  function updateOptimizationWindow(next: Partial<OptimizationWindow>) {
+    setAuthorization((item) => {
+      const current = item ?? defaultAuthorization(selectedAccountId);
+      return {
+        ...current,
+        optimization_window: {
+          ...defaultOptimizationWindow,
+          ...(current.optimization_window ?? {}),
+          ...next
+        }
+      };
+    });
   }
 
   function updateIndustryProfile(next: Partial<IndustryProfile>) {
@@ -759,17 +778,58 @@ export function OptimizationCenterClient() {
                 min={0}
                 max={100}
                 value={authorization?.max_daily_budget_change_percent ?? 20}
-                onChange={(event) => setAuthorization((item) => ({ ...(item as Authorization), max_daily_budget_change_percent: Number(event.target.value) }))}
+                onChange={(event) => setAuthorization((item) => ({ ...(item ?? defaultAuthorization(selectedAccountId)), max_daily_budget_change_percent: Number(event.target.value) }))}
               />
             </label>
             <label className="flex items-center gap-3 rounded-lg bg-surface-container-low p-4 text-sm font-bold">
               <input
                 type="checkbox"
                 checked={authorization?.require_manual_approval ?? true}
-                onChange={(event) => setAuthorization((item) => ({ ...(item as Authorization), require_manual_approval: event.target.checked }))}
+                onChange={(event) => setAuthorization((item) => ({ ...(item ?? defaultAuthorization(selectedAccountId)), require_manual_approval: event.target.checked }))}
               />
               Luôn cần duyệt thủ công
             </label>
+          </div>
+
+          <div className="mt-5 rounded-lg bg-surface-container-low p-4">
+            <label className="flex items-center gap-3 text-sm font-bold">
+              <input
+                type="checkbox"
+                checked={authorization?.optimization_window?.enabled ?? false}
+                onChange={(event) => updateOptimizationWindow({ enabled: event.target.checked })}
+              />
+              Chỉ cho app tối ưu trong khung giờ được phép
+            </label>
+            <p className="mt-2 text-sm leading-6 text-on-surface-variant">
+              Khi bật, server sẽ chặn mọi lệnh áp dụng ngoài khung giờ này, kể cả khi có người gọi API trực tiếp.
+            </p>
+            {authorization?.optimization_window?.enabled ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-outline">Bắt đầu</span>
+                  <Input
+                    type="time"
+                    value={authorization.optimization_window.start}
+                    onChange={(event) => updateOptimizationWindow({ start: event.target.value })}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-outline">Kết thúc</span>
+                  <Input
+                    type="time"
+                    value={authorization.optimization_window.end}
+                    onChange={(event) => updateOptimizationWindow({ end: event.target.value })}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-outline">Múi giờ</span>
+                  <Input
+                    value={authorization.optimization_window.timezone}
+                    onChange={(event) => updateOptimizationWindow({ timezone: event.target.value })}
+                  />
+                </label>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
