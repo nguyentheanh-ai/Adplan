@@ -172,7 +172,7 @@ export function CreativeIntelligenceClient() {
       const response = await fetch("/api/ai/content-ads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(contentForm)
+        body: JSON.stringify({ ...contentForm, ad_account_id: selectedAccountId || getDefaultAdAccountId() || undefined })
       });
       const json = (await response.json().catch(() => ({}))) as { data?: AdsContentPackage & { raw?: string }; error?: string };
       if (!response.ok || !json.data) throw new Error(json.error || "Không thể tạo content quảng cáo.");

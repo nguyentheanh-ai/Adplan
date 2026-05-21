@@ -148,6 +148,14 @@
 - Form `Tạo camp mới` có selector `Content quảng cáo đã lưu` để đổ nhanh sản phẩm, ngành, mục tiêu, khách hàng, offer, nội dung mẫu và brief media vào cấu hình campaign.
 - Preview vẫn là bước review an toàn, không tự launch Meta cho đến khi khách bấm `Launch lên Meta PAUSED`.
 
+## 2026-05-21 - Creator Ads AI dùng hồ sơ ngành
+
+### Đã bổ sung
+
+- `POST /api/ai/content-ads` có thể nhận `ad_account_id` và tự đọc hồ sơ ngành của đúng user/account ở server.
+- Prompt Gemini được bổ sung ngữ cảnh ngành, mô hình bán hàng, loại offer, giá trị đơn trung bình, khách hàng mục tiêu và ghi chú tối ưu nếu đã lưu ở `Tối ưu Ads`.
+- Nếu chưa có bảng/hồ sơ ngành, chức năng vẫn fallback an toàn và không crash.
+
 ## 2026-05-21 - Optimization action history UI
 
 ### Đã bổ sung

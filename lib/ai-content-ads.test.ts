@@ -18,6 +18,25 @@ describe("AI ads content", () => {
     expect(prompt).not.toContain("GEMINI_API_KEY");
   });
 
+  it("adds account industry context to the prompt when available", () => {
+    const input = adsContentInputSchema.parse({
+      product: "Liệu trình chăm sóc da",
+      industry: "spa",
+      goal: "lead"
+    });
+
+    const prompt = buildAdsContentPrompt(input, {
+      industryKey: "spa_beauty",
+      businessModel: "đặt lịch tư vấn",
+      offerType: "soi da miễn phí",
+      targetCustomer: "nữ 25-44"
+    });
+
+    expect(prompt).toContain("Hồ sơ ngành");
+    expect(prompt).toContain("spa_beauty");
+    expect(prompt).toContain("soi da miễn phí");
+  });
+
   it("validates generated content package shape", () => {
     const parsed = adsContentPackageSchema.parse({
       summary: "Test content theo 3 góc.",
