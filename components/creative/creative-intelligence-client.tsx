@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client-cache";
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
-import type { AdAccount, CreativePerformance, MetaIntelligenceDashboardData } from "@/lib/meta/types";
+import type { AdAccount, AdSet, CreativePerformance, MetaAd, MetaIntelligenceDashboardData } from "@/lib/meta/types";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
 import type { AdsContentPackage } from "@/lib/ai-content-ads-shared";
 
@@ -21,6 +21,27 @@ type ContentLibraryItem = {
   goal?: string | null;
   content_json: AdsContentPackage;
   created_at: string;
+};
+type CloneStep = {
+  key: string;
+  label: string;
+  status: "pass" | "warning" | "fail";
+  message: string;
+  details?: Record<string, unknown>;
+};
+type CloneDiagnostics = {
+  ok: boolean;
+  steps: CloneStep[];
+};
+type CloneResult = {
+  ok: boolean;
+  method?: "copies" | "reuse_creative" | "recreate_creative";
+  diagnostics: CloneDiagnostics;
+  copiedAdId?: string;
+  copiedAd?: MetaAd;
+  metaError?: Record<string, unknown>;
+  fallbackError?: Record<string, unknown>;
+  calledEndpoints: string[];
 };
 
 function isoDate(date: Date) {
@@ -41,6 +62,17 @@ const CREATIVE_CACHE_KEY = "creative:intelligence";
 
 async function readJson<T>(url: string, options?: { force?: boolean }) {
   return getCachedJson<T>(url, options);
+}
+
+async function postJson<T>(url: string, body: Record<string, unknown>) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const json = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) throw new Error(json.error || "Không thể gọi API.");
+  return json;
 }
 
 function splitCreativeName(rawName: string, creativeId: string, adId: string) {
@@ -75,6 +107,13 @@ export function CreativeIntelligenceClient() {
   const [contentError, setContentError] = useState("");
   const [contentLibrary, setContentLibrary] = useState<ContentLibraryItem[]>([]);
   const [contentSaving, setContentSaving] = useState(false);
+  const [cloneCreative, setCloneCreative] = useState<CreativePerformance | null>(null);
+  const [targetAdsets, setTargetAdsets] = useState<AdSet[]>([]);
+  const [targetAdSetId, setTargetAdSetId] = useState("");
+  const [cloneDiagnostics, setCloneDiagnostics] = useState<CloneDiagnostics | null>(null);
+  const [cloneResult, setCloneResult] = useState<CloneResult | null>(null);
+  const [cloneLoading, setCloneLoading] = useState<"diagnostics" | "clone" | "adsets" | "">("");
+  const [cloneError, setCloneError] = useState("");
 
   const currency = payload?.selectedAccount?.currency || "VND";
   const creatives = useMemo(() => payload?.creatives ?? [], [payload?.creatives]);
@@ -163,6 +202,64 @@ export function CreativeIntelligenceClient() {
   function updatePreset(next: DatePreset) {
     setPreset(next);
     if (next !== "custom") setRange(presetRange(next));
+  }
+
+  async function openCloneModal(creative: CreativePerformance) {
+    setCloneCreative(creative);
+    setTargetAdSetId("");
+    setCloneDiagnostics(null);
+    setCloneResult(null);
+    setCloneError("");
+    setCloneLoading("adsets");
+    try {
+      const accountId = selectedAccountId || getDefaultAdAccountId();
+      if (!accountId) throw new Error("Chưa chọn tài khoản quảng cáo.");
+      const response = await readJson<{ data: AdSet[] }>(`/api/meta/adsets?ad_account_id=${encodeURIComponent(accountId)}`, { force: true });
+      setTargetAdsets(response.data ?? []);
+    } catch (err) {
+      setCloneError(err instanceof Error ? err.message : "Không thể tải danh sách nhóm quảng cáo đích.");
+    } finally {
+      setCloneLoading("");
+    }
+  }
+
+  function clonePayload() {
+    const accountId = selectedAccountId || getDefaultAdAccountId();
+    if (!accountId) throw new Error("Chưa chọn tài khoản quảng cáo.");
+    if (!cloneCreative?.adId) throw new Error("Creative này không có ad_id thật để nhân bản.");
+    return {
+      ad_account_id: accountId,
+      source_ad_id: cloneCreative.adId,
+      target_adset_id: targetAdSetId || null
+    };
+  }
+
+  async function runCloneDiagnostics() {
+    setCloneLoading("diagnostics");
+    setCloneError("");
+    setCloneResult(null);
+    try {
+      const response = await postJson<{ data: CloneDiagnostics }>("/api/meta/ads-clone/diagnostics", clonePayload());
+      setCloneDiagnostics(response.data);
+    } catch (err) {
+      setCloneError(err instanceof Error ? err.message : "Không thể kiểm tra trước khi nhân bản.");
+    } finally {
+      setCloneLoading("");
+    }
+  }
+
+  async function runCloneAd() {
+    setCloneLoading("clone");
+    setCloneError("");
+    try {
+      const response = await postJson<{ data: CloneResult }>("/api/meta/ads-clone", clonePayload());
+      setCloneResult(response.data);
+      setCloneDiagnostics(response.data.diagnostics);
+    } catch (err) {
+      setCloneError(err instanceof Error ? err.message : "Không thể nhân bản quảng cáo.");
+    } finally {
+      setCloneLoading("");
+    }
   }
 
   async function generateContentPackage() {
@@ -456,7 +553,7 @@ export function CreativeIntelligenceClient() {
               <table className="w-full min-w-[1120px] text-left text-sm">
                 <thead className="bg-surface-container-low text-xs uppercase tracking-wide text-on-surface-variant">
                   <tr>
-                    {["Creative", "Campaign", "Nhóm quảng cáo", "Spend", "Lead", "Tin nhắn", "Tương tác", "CTR", "CPM", "CPC"].map((head) => (
+                    {["Creative", "Campaign", "Nhóm quảng cáo", "Spend", "Lead", "Tin nhắn", "Tương tác", "CTR", "CPM", "CPC", "Thao tác"].map((head) => (
                       <th key={head} className="px-4 py-3 font-extrabold">
                         {head}
                       </th>
@@ -486,6 +583,12 @@ export function CreativeIntelligenceClient() {
                         <td className="px-4 py-3">{formatPercent(creative.ctr)}</td>
                         <td className="px-4 py-3">{formatMoney(creative.cpm, currency)}</td>
                         <td className="px-4 py-3">{formatMoney(creative.cpc, currency)}</td>
+                        <td className="px-4 py-3">
+                          <Button className="h-9 px-3 text-xs" variant="secondary" onClick={() => void openCloneModal(creative)}>
+                            <MaterialIcon name="content_copy" />
+                            Nhân bản
+                          </Button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -495,6 +598,203 @@ export function CreativeIntelligenceClient() {
           </Card>
         </>
       ) : null}
+      {cloneCreative ? (
+        <CloneAdModal
+          adsets={targetAdsets}
+          cloneCreative={cloneCreative}
+          diagnostics={cloneDiagnostics}
+          error={cloneError}
+          loading={cloneLoading}
+          onClose={() => {
+            setCloneCreative(null);
+            setCloneDiagnostics(null);
+            setCloneResult(null);
+            setCloneError("");
+          }}
+          onDiagnostics={() => void runCloneDiagnostics()}
+          onClone={() => void runCloneAd()}
+          result={cloneResult}
+          targetAdSetId={targetAdSetId}
+          setTargetAdSetId={setTargetAdSetId}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CloneAdModal({
+  adsets,
+  cloneCreative,
+  diagnostics,
+  error,
+  loading,
+  onClose,
+  onDiagnostics,
+  onClone,
+  result,
+  targetAdSetId,
+  setTargetAdSetId
+}: {
+  adsets: AdSet[];
+  cloneCreative: CreativePerformance;
+  diagnostics: CloneDiagnostics | null;
+  error: string;
+  loading: "diagnostics" | "clone" | "adsets" | "";
+  onClose: () => void;
+  onDiagnostics: () => void;
+  onClone: () => void;
+  result: CloneResult | null;
+  targetAdSetId: string;
+  setTargetAdSetId: (value: string) => void;
+}) {
+  const canClone = Boolean(diagnostics?.ok) && loading !== "clone";
+  const directError = result?.metaError || result?.fallbackError;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+      <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-outline-variant bg-white px-6 py-5">
+          <div>
+            <p className="text-xs font-extrabold uppercase tracking-wide text-outline">Nhân bản quảng cáo Meta Ads</p>
+            <h3 className="mt-1 text-2xl font-extrabold">{cloneCreative.adName || cloneCreative.creativeName}</h3>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              App chỉ dùng ad_id thật và mặc định tạo bản copy ở trạng thái tạm dừng.
+            </p>
+          </div>
+          <button className="rounded-full p-2 hover:bg-surface-container-low" type="button" onClick={onClose} aria-label="Đóng">
+            <MaterialIcon name="close" />
+          </button>
+        </div>
+
+        <div className="grid gap-5 p-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-4">
+            <div className="rounded-lg border border-outline-variant p-4">
+              <h4 className="font-extrabold">Quảng cáo nguồn</h4>
+              <dl className="mt-3 space-y-2 text-sm">
+                <InfoRow label="Ad ID" value={cloneCreative.adId} mono />
+                <InfoRow label="Creative ID" value={cloneCreative.creativeId || "Không có dữ liệu"} mono />
+                <InfoRow label="Campaign" value={cloneCreative.campaignName} />
+                <InfoRow label="Nhóm quảng cáo" value={cloneCreative.adsetName} />
+              </dl>
+            </div>
+
+            <div className="rounded-lg border border-outline-variant p-4">
+              <label className="space-y-2">
+                <span className="text-sm font-extrabold">Nhóm quảng cáo đích</span>
+                <select
+                  className="dashboard-input"
+                  value={targetAdSetId}
+                  onChange={(event) => setTargetAdSetId(event.target.value)}
+                  disabled={loading === "adsets"}
+                >
+                  <option value="">Giữ nguyên nhóm quảng cáo gốc</option>
+                  {adsets.map((adset) => (
+                    <option key={adset.id} value={adset.id}>
+                      {adset.name} ({adset.id})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="mt-4 flex items-center gap-2 rounded-lg bg-surface-container-low p-3 text-sm font-semibold">
+                <input checked readOnly type="checkbox" />
+                Tạo bản copy ở trạng thái tạm dừng
+              </label>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Button variant="secondary" disabled={Boolean(loading)} onClick={onDiagnostics}>
+                  <MaterialIcon name="fact_check" />
+                  {loading === "diagnostics" ? "Đang kiểm tra..." : "Kiểm tra trước khi nhân bản"}
+                </Button>
+                <Button disabled={!canClone || Boolean(loading)} onClick={onClone}>
+                  <MaterialIcon name="content_copy" />
+                  {loading === "clone" ? "Đang nhân bản..." : "Nhân bản"}
+                </Button>
+              </div>
+            </div>
+
+            {error ? <div className="rounded-lg border border-error-container bg-error-container/70 p-4 text-sm font-bold text-error">{error}</div> : null}
+            {result?.ok ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+                <p className="font-extrabold">Nhân bản thành công</p>
+                <p className="mt-1">Ad mới: <span className="font-mono">{result.copiedAdId}</span></p>
+                <p>Trạng thái: <span className="font-bold">{result.copiedAd?.status || "PAUSED"}</span></p>
+                <p>Phương thức: <span className="font-bold">{result.method === "copies" ? "Meta /copies" : "Fallback tạo ad PAUSED"}</span></p>
+              </div>
+            ) : null}
+            {directError ? (
+              <div className="rounded-lg bg-surface-container-low p-4 text-xs">
+                <p className="font-extrabold">Chi tiết lỗi Meta</p>
+                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3">
+                  {JSON.stringify(directError, null, 2)}
+                </pre>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-lg border border-outline-variant p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="font-extrabold">Checklist trước khi clone</h4>
+                <p className="mt-1 text-sm text-on-surface-variant">Fail ở bước nào thì xử lý đúng bước đó, không đoán mò.</p>
+              </div>
+              {loading ? <span className="h-2 w-28 overflow-hidden rounded-full bg-surface-container-low"><span className="block h-full w-1/2 animate-pulse rounded-full bg-primary" /></span> : null}
+            </div>
+            <div className="mt-4 space-y-2">
+              {(diagnostics?.steps ?? defaultCloneSteps()).map((step) => (
+                <CloneStepRow key={step.key} step={step} />
+              ))}
+            </div>
+            {!diagnostics ? (
+              <div className="mt-4 rounded-lg bg-surface-container-low p-4 text-sm text-on-surface-variant">
+                Bấm “Kiểm tra trước khi nhân bản” để app kiểm tra token, quyền tài khoản, ad gốc, creative và adset đích trước khi gọi Meta.
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function defaultCloneSteps(): CloneStep[] {
+  return [
+    ["token_valid", "Token hợp lệ"],
+    ["ads_management", "Token có ads_management"],
+    ["ad_account_visible", "Token nhìn thấy ad account"],
+    ["user_ad_account_permission", "User có quyền quản lý"],
+    ["ad_account_status", "Ad account không bị hạn chế"],
+    ["source_ad", "Đọc được ad gốc"],
+    ["creative", "Đọc được creative gốc"],
+    ["target_adset", "Đọc được adset đích"],
+    ["clone_result", "Clone endpoint hoặc fallback"]
+  ].map(([key, label]) => ({ key, label, status: "warning", message: "Chưa kiểm tra." as const }));
+}
+
+function CloneStepRow({ step }: { step: CloneStep }) {
+  const icon = step.status === "pass" ? "check_circle" : step.status === "warning" ? "warning" : "error";
+  const color = step.status === "pass" ? "text-green-700" : step.status === "warning" ? "text-amber-700" : "text-error";
+  return (
+    <details className="rounded-lg bg-surface-container-low p-3">
+      <summary className="flex cursor-pointer list-none items-start gap-3">
+        <MaterialIcon className={color} name={icon} />
+        <span>
+          <span className="block font-extrabold">{step.label}</span>
+          <span className="block text-sm text-on-surface-variant">{step.message}</span>
+        </span>
+      </summary>
+      {step.details ? (
+        <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-xs">
+          {JSON.stringify(step.details, null, 2)}
+        </pre>
+      ) : null}
+    </details>
+  );
+}
+
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="grid grid-cols-[120px_1fr] gap-3">
+      <dt className="font-bold text-on-surface-variant">{label}</dt>
+      <dd className={mono ? "break-all font-mono text-xs" : "font-semibold"}>{value}</dd>
     </div>
   );
 }
