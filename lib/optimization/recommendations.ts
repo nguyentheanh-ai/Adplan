@@ -69,8 +69,30 @@ function findBenchmark(context: OptimizationRecommendationContext | undefined, o
   return context.benchmarks.find((item) => item.objective === (objective || "UNKNOWN")) ?? null;
 }
 
+function hasReliableBenchmark(benchmark: IndustryBenchmark | null) {
+  return Boolean(benchmark && benchmark.sampleSize >= 3);
+}
+
+function lowCtrThreshold(benchmark: IndustryBenchmark | null) {
+  if (hasReliableBenchmark(benchmark) && benchmark?.medianCtr) return benchmark.medianCtr * 0.7;
+  return 1;
+}
+
+function benchmarkResultCost(benchmark: IndustryBenchmark | null, objective?: string) {
+  if (!hasReliableBenchmark(benchmark)) return null;
+  const normalizedObjective = (objective || "").toLowerCase();
+  if (normalizedObjective.includes("message") && benchmark?.medianCostPerMessage) return benchmark.medianCostPerMessage;
+  if ((normalizedObjective.includes("lead") || normalizedObjective.includes("conversion")) && benchmark?.medianCpl) return benchmark.medianCpl;
+  return benchmark?.medianCpl || benchmark?.medianCostPerMessage || null;
+}
+
+function beatsIndustryResultCost(campaign: NormalizedCampaignPerformance, benchmark: IndustryBenchmark | null) {
+  const cost = benchmarkResultCost(benchmark, campaign.objective);
+  return Boolean(cost && campaign.costPerResult > 0 && campaign.costPerResult <= cost * 0.85);
+}
+
 function benchmarkNote(campaign: NormalizedCampaignPerformance, benchmark: IndustryBenchmark | null) {
-  if (!benchmark || benchmark.sampleSize < 3) return "";
+  if (!benchmark || !hasReliableBenchmark(benchmark)) return "";
   const notes: string[] = [];
   if (benchmark.medianCtr && campaign.ctr > 0) {
     if (campaign.ctr >= benchmark.medianCtr * 1.2) notes.push(`CTR cao hơn mặt bằng ngành (${campaign.ctr.toFixed(2)}% so với ${benchmark.medianCtr.toFixed(2)}%).`);
@@ -114,7 +136,10 @@ export function buildCampaignOptimizationRecommendations(
   const best = [...campaignsWithResult].sort((a, b) => a.costPerResult - b.costPerResult)[0];
   const bestBenchmark = best ? findBenchmark(context, best.objective) : null;
 
-  if (best && best.costPerResult > 0 && (averageCostPerResult === 0 || best.costPerResult <= averageCostPerResult * 0.8)) {
+  const bestBeatsCurrentAccount = Boolean(best && best.costPerResult > 0 && (averageCostPerResult === 0 || best.costPerResult <= averageCostPerResult * 0.8));
+  const bestBeatsIndustry = best ? beatsIndustryResultCost(best, bestBenchmark) : false;
+
+  if (best && best.costPerResult > 0 && (bestBeatsCurrentAccount || bestBeatsIndustry)) {
     recommendations.push({
       entityType: "campaign",
       entityId: best.campaignId,
@@ -122,7 +147,7 @@ export function buildCampaignOptimizationRecommendations(
       recommendationType: "scale_budget",
       priority: "high",
       title: "Nên tăng ngân sách campaign thắng",
-      reason: `"${best.campaignName}" đang có chi phí/kết quả ${money(best.costPerResult)}, tốt hơn mặt bằng hiện tại. ${benchmarkNote(best, bestBenchmark)}`.trim(),
+      reason: `"${best.campaignName}" đang có chi phí/kết quả ${money(best.costPerResult)}, ${bestBeatsCurrentAccount ? "tốt hơn mặt bằng hiện tại" : "tốt hơn benchmark ngành đã lưu"}. ${benchmarkNote(best, bestBenchmark)}`.trim(),
       expectedImpact: "Tăng ngân sách từng bước 10-20% giúp mở rộng kết quả mà vẫn hạn chế sốc thuật toán.",
       actionPayload: { suggested_budget_increase_percent: 15, status_after_apply: "PAUSED_REVIEW_REQUIRED" },
       evidence: { ...best, industry_benchmark: bestBenchmark }
@@ -146,7 +171,8 @@ export function buildCampaignOptimizationRecommendations(
       });
     }
 
-    if (campaign.ctr > 0 && campaign.ctr < 1 && campaign.spend > 0) {
+    const ctrThreshold = lowCtrThreshold(benchmark);
+    if (campaign.ctr > 0 && campaign.ctr < ctrThreshold && campaign.spend > 0) {
       recommendations.push({
         entityType: "campaign",
         entityId: campaign.campaignId,
@@ -154,7 +180,7 @@ export function buildCampaignOptimizationRecommendations(
         recommendationType: "refresh_creative",
         priority: "medium",
         title: "CTR thấp, cần đổi hook/creative",
-        reason: `"${campaign.campaignName}" có CTR ${campaign.ctr.toFixed(2)}%, dấu hiệu mẫu quảng cáo chưa đủ hút. ${benchmarkNote(campaign, benchmark)}`.trim(),
+        reason: `"${campaign.campaignName}" có CTR ${campaign.ctr.toFixed(2)}%, thấp hơn ngưỡng cần kiểm tra ${ctrThreshold.toFixed(2)}%. ${benchmarkNote(campaign, benchmark)}`.trim(),
         expectedImpact: "Viết lại 3 hook đầu, đổi thumbnail/video mở đầu để tăng tỷ lệ nhấp.",
         actionPayload: { suggested_action: "create_new_creative_variants", variant_count: 3 },
         evidence: { ...campaign, industry_benchmark: benchmark }

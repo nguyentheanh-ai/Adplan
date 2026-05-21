@@ -145,4 +145,72 @@ describe("optimization recommendations", () => {
     expect(winner?.reason).toContain("CTR cao hơn mặt bằng ngành");
     expect(winner?.evidence.industry_benchmark).toMatchObject({ objective: "OUTCOME_MESSAGES" });
   });
+
+  it("uses industry benchmark thresholds instead of fixed CTR threshold", () => {
+    const rows = buildOptimizationRecommendations({
+      campaigns: [
+        campaign({
+          campaignId: "low-but-normal",
+          campaignName: "Low but normal",
+          objective: "OUTCOME_TRAFFIC",
+          spend: 200000,
+          results: 1,
+          costPerResult: 200000,
+          ctr: 0.8
+        })
+      ],
+      creatives: [],
+      context: {
+        industryKey: "b2b_service",
+        benchmarks: [
+          {
+            objective: "OUTCOME_TRAFFIC",
+            sampleSize: 10,
+            medianCtr: 0.9
+          }
+        ]
+      }
+    });
+
+    expect(rows.some((item) => item.recommendationType === "refresh_creative" && item.entityId === "low-but-normal")).toBe(false);
+  });
+
+  it("can recommend scaling when a campaign beats industry cost benchmark", () => {
+    const rows = buildOptimizationRecommendations({
+      campaigns: [
+        campaign({
+          campaignId: "industry-winner",
+          campaignName: "Industry winner",
+          objective: "OUTCOME_MESSAGES",
+          spend: 300000,
+          results: 10,
+          costPerResult: 30000,
+          ctr: 2
+        }),
+        campaign({
+          campaignId: "close-peer",
+          campaignName: "Close peer",
+          objective: "OUTCOME_MESSAGES",
+          spend: 320000,
+          results: 10,
+          costPerResult: 32000,
+          ctr: 1.8
+        })
+      ],
+      creatives: [],
+      context: {
+        industryKey: "education_course",
+        benchmarks: [
+          {
+            objective: "OUTCOME_MESSAGES",
+            sampleSize: 12,
+            medianCostPerMessage: 50000
+          }
+        ]
+      }
+    });
+
+    const recommendation = rows.find((item) => item.recommendationType === "scale_budget" && item.entityId === "industry-winner");
+    expect(recommendation?.reason).toContain("benchmark ngành");
+  });
 });

@@ -156,6 +156,14 @@
 - Prompt Gemini được bổ sung ngữ cảnh ngành, mô hình bán hàng, loại offer, giá trị đơn trung bình, khách hàng mục tiêu và ghi chú tối ưu nếu đã lưu ở `Tối ưu Ads`.
 - Nếu chưa có bảng/hồ sơ ngành, chức năng vẫn fallback an toàn và không crash.
 
+## 2026-05-21 - Recommendation scoring theo benchmark ngành
+
+### Đã bổ sung
+
+- Recommendation engine không còn chỉ dùng ngưỡng cứng `CTR < 1%`; nếu có benchmark ngành đủ mẫu, ngưỡng CTR thấp sẽ tính theo median ngành.
+- Gợi ý scale ngân sách có thể dựa trên chi phí/kết quả tốt hơn benchmark ngành, không chỉ so với các campaign trong cùng account.
+- Khi benchmark chưa đủ mẫu, engine tự fallback về ngưỡng mặc định để tránh khuyến nghị quá tự tin.
+
 ## 2026-05-21 - Optimization action history UI
 
 ### Đã bổ sung

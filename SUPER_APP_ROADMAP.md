@@ -192,7 +192,7 @@ Ngành ưu tiên:
 - [x] Use account industry context inside recommendation reason/evidence.
 - [x] Add anonymized industry benchmark rebuild from synced Meta campaign snapshots.
 - [x] Use industry benchmark context inside recommendation evidence/reason.
-- [ ] Use account industry context directly inside scoring thresholds.
+- [x] Use account industry context directly inside scoring thresholds.
 - [x] Use account industry context directly inside content generation.
 
 ## Progress 2026-05-21 - Industry context trong Creator Ads AI
@@ -201,6 +201,12 @@ Ngành ưu tiên:
 - [x] API đọc `account_industry_profiles` của đúng user/account và đưa vào prompt Gemini.
 - [x] Nếu chưa có bảng/hồ sơ ngành, Creator Ads AI vẫn chạy với thông tin sản phẩm như cũ.
 - [x] Trang Creative gửi account đang chọn để content được viết sát ngành, mô hình bán hàng, offer và khách hàng mục tiêu hơn.
+
+## Progress 2026-05-21 - Industry scoring thresholds
+
+- [x] Recommendation engine dùng benchmark ngành đủ mẫu để điều chỉnh ngưỡng CTR thấp thay vì luôn dùng CTR < 1%.
+- [x] Campaign có chi phí/kết quả tốt hơn benchmark ngành vẫn được gợi ý scale, kể cả khi mặt bằng account hiện tại chưa lệch nhiều.
+- [x] Khi benchmark chưa đủ mẫu, engine quay về ngưỡng mặc định để tránh phán đoán quá đà.
 
 ## Progress 2026-05-21 - Optimization next action
 
