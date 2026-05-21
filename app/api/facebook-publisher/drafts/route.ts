@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAppSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -36,13 +36,14 @@ async function resolveUserId(request: Request, bodyUserId?: string) {
 
 export async function GET() {
   const session = await getAppSession();
-  if (!session) return NextResponse.json({ error: "Bạn cần đăng nhập Facebook." }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Báº¡n cáº§n Ä‘Äƒng nháº­p Facebook." }, { status: 401 });
 
+  const visibleUserIds = Array.from(new Set([session.userId, process.env.AGENT_INGEST_USER_ID].filter(Boolean)));
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("facebook_post_drafts")
     .select("id,page_id,status,draft_json,created_at,updated_at")
-    .eq("user_id", session.userId)
+    .in("user_id", visibleUserIds)
     .in("status", ["draft", "queued", "failed"])
     .order("updated_at", { ascending: false })
     .limit(30);
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
     const userId = await resolveUserId(request, body.user_id);
     if (!userId) {
       return NextResponse.json(
-        { error: "Thiếu phiên đăng nhập hoặc x-agent-ingest-key/AGENT_INGEST_USER_ID để Agent tự nạp draft." },
+        { error: "Thiáº¿u phiÃªn Ä‘Äƒng nháº­p hoáº·c x-agent-ingest-key/AGENT_INGEST_USER_ID Ä‘á»ƒ Agent tá»± náº¡p draft." },
         { status: 401 }
       );
     }
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
     if (error) {
       if (isMissingTable(error)) {
         return NextResponse.json(
-          { error: "Chưa có bảng facebook_post_drafts. Hãy chạy migration 202605210010_create_facebook_post_drafts.sql." },
+          { error: "ChÆ°a cÃ³ báº£ng facebook_post_drafts. HÃ£y cháº¡y migration 202605210010_create_facebook_post_drafts.sql." },
           { status: 500 }
         );
       }
@@ -94,8 +95,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ data: normalizeFacebookDraftRow(data) });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: "Draft Agent không hợp lệ.", details: error.issues }, { status: 400 });
+      return NextResponse.json({ error: "Draft Agent khÃ´ng há»£p lá»‡.", details: error.issues }, { status: 400 });
     }
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Không thể nạp draft từ Agent." }, { status: 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "KhÃ´ng thá»ƒ náº¡p draft tá»« Agent." }, { status: 400 });
   }
 }
+
