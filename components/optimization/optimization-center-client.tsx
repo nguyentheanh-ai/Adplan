@@ -46,6 +46,17 @@ type ActionLog = {
   created_at: string;
 };
 
+type IndustryProfile = {
+  id?: string;
+  ad_account_id: string;
+  industry_key: string;
+  business_model?: string | null;
+  offer_type?: string | null;
+  average_order_value?: number | string | null;
+  target_customer?: string | null;
+  notes?: string | null;
+};
+
 type SyncResult = {
   sync_run_id: string;
   account_count: number;
@@ -61,6 +72,19 @@ const allowedActionOptions = [
   { value: "pause_review", label: "Đề xuất tạm dừng để kiểm tra" },
   { value: "duplicate_winner", label: "Nhân bản campaign/creative thắng" },
   { value: "refresh_creative", label: "Tạo yêu cầu làm mới creative" }
+];
+
+const industryOptions = [
+  { value: "unknown", label: "Chưa xác định" },
+  { value: "spa_beauty", label: "Spa / thẩm mỹ" },
+  { value: "education_course", label: "Khóa học / đào tạo" },
+  { value: "fashion_cosmetics", label: "Thời trang / mỹ phẩm" },
+  { value: "restaurant_cafe", label: "Nhà hàng / cafe" },
+  { value: "real_estate", label: "Bất động sản" },
+  { value: "clinic_health", label: "Phòng khám / sức khỏe" },
+  { value: "local_service", label: "Dịch vụ địa phương" },
+  { value: "b2b_service", label: "Dịch vụ B2B" },
+  { value: "ecommerce", label: "Bán hàng online / ecommerce" }
 ];
 
 function defaultRange() {
@@ -114,6 +138,7 @@ export function OptimizationCenterClient() {
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [range, setRange] = useState(defaultRange());
   const [authorization, setAuthorization] = useState<Authorization | null>(null);
+  const [industryProfile, setIndustryProfile] = useState<IndustryProfile | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [actionLogs, setActionLogs] = useState<ActionLog[]>([]);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
@@ -131,6 +156,7 @@ export function OptimizationCenterClient() {
       selectedAccountId: string;
       range: { startDate: string; endDate: string };
       authorization: Authorization | null;
+      industryProfile?: IndustryProfile | null;
       recommendations: Recommendation[];
       actionLogs?: ActionLog[];
       lastSync: SyncResult | null;
@@ -141,6 +167,7 @@ export function OptimizationCenterClient() {
         setSelectedAccountId(cached.selectedAccountId);
         setRange(cached.range);
         setAuthorization(cached.authorization);
+        setIndustryProfile(cached.industryProfile ?? null);
         setRecommendations(cached.recommendations);
         setActionLogs(cached.actionLogs ?? []);
         setLastSync(cached.lastSync);
@@ -154,8 +181,8 @@ export function OptimizationCenterClient() {
 
   useEffect(() => {
     if (!selectedAccountId) return;
-    setCachedState(cacheKey, { accounts, selectedAccountId, range, authorization, recommendations, actionLogs, lastSync });
-  }, [accounts, selectedAccountId, range, authorization, recommendations, actionLogs, lastSync]);
+    setCachedState(cacheKey, { accounts, selectedAccountId, range, authorization, industryProfile, recommendations, actionLogs, lastSync });
+  }, [accounts, selectedAccountId, range, authorization, industryProfile, recommendations, actionLogs, lastSync]);
 
   async function withProgress<T>(label: string, fn: () => Promise<T>) {
     setBusyLabel(label);
@@ -174,7 +201,12 @@ export function OptimizationCenterClient() {
       setAccounts(rows);
       setSelectedAccountId(accountId);
       if (accountId) {
-        await Promise.all([loadAuthorization(accountId, true), loadRecommendations(accountId, true), loadActionLogs(accountId, true)]);
+        await Promise.all([
+          loadAuthorization(accountId, true),
+          loadIndustryProfile(accountId, true),
+          loadRecommendations(accountId, true),
+          loadActionLogs(accountId, true)
+        ]);
       }
     }).catch((error: Error) => toast.error(error.message));
   }
@@ -193,6 +225,25 @@ export function OptimizationCenterClient() {
         max_daily_budget_change_percent: 20,
         max_daily_budget_change_amount: null,
         require_manual_approval: true
+      }
+    );
+  }
+
+  async function loadIndustryProfile(accountId = selectedAccountId, force = false) {
+    if (!accountId) return;
+    const payload = await readJson<{ data: IndustryProfile | null; storage?: string }>(
+      `/api/optimization/industry-profile?ad_account_id=${encodeURIComponent(accountId)}`,
+      { force }
+    );
+    setIndustryProfile(
+      payload.data ?? {
+        ad_account_id: accountId,
+        industry_key: "unknown",
+        business_model: "",
+        offer_type: "",
+        average_order_value: "",
+        target_customer: "",
+        notes: ""
       }
     );
   }
@@ -218,11 +269,17 @@ export function OptimizationCenterClient() {
   async function onAccountChange(accountId: string) {
     setSelectedAccountId(accountId);
     setDefaultAdAccountId(accountId);
+    setIndustryProfile(null);
     setRecommendations([]);
     setActionLogs([]);
     setLastSync(null);
     await withProgress("Đang đổi tài khoản tối ưu...", async () => {
-      await Promise.all([loadAuthorization(accountId, true), loadRecommendations(accountId, true), loadActionLogs(accountId, true)]);
+      await Promise.all([
+        loadAuthorization(accountId, true),
+        loadIndustryProfile(accountId, true),
+        loadRecommendations(accountId, true),
+        loadActionLogs(accountId, true)
+      ]);
     });
   }
 
@@ -247,6 +304,30 @@ export function OptimizationCenterClient() {
       });
       setAuthorization(payload.data);
       toast.success(payload.data.status === "enabled" ? "Đã bật ủy quyền có kiểm soát." : "Đã tắt ủy quyền tự động.");
+    }).catch((error: Error) => toast.error(error.message));
+  }
+
+  async function saveIndustryProfile() {
+    if (!selectedAccountId) return toast.error("Chọn tài khoản quảng cáo trước.");
+    const current = {
+      ad_account_id: selectedAccountId,
+      industry_key: "unknown",
+      business_model: "",
+      offer_type: "",
+      average_order_value: "",
+      target_customer: "",
+      notes: "",
+      ...(industryProfile ?? {})
+    };
+
+    await withProgress("Đang lưu hồ sơ ngành hàng...", async () => {
+      const payload = await readJson<{ data: IndustryProfile }>("/api/optimization/industry-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(current)
+      });
+      setIndustryProfile(payload.data);
+      toast.success("Đã lưu hồ sơ ngành cho tài khoản quảng cáo.");
     }).catch((error: Error) => toast.error(error.message));
   }
 
@@ -331,6 +412,20 @@ export function OptimizationCenterClient() {
     }));
   }
 
+  function updateIndustryProfile(next: Partial<IndustryProfile>) {
+    setIndustryProfile((current) => ({
+      ad_account_id: selectedAccountId,
+      industry_key: "unknown",
+      business_model: "",
+      offer_type: "",
+      average_order_value: "",
+      target_customer: "",
+      notes: "",
+      ...(current ?? {}),
+      ...next
+    }));
+  }
+
   return (
     <div className="space-y-6">
       {busyLabel ? (
@@ -369,6 +464,79 @@ export function OptimizationCenterClient() {
             <MaterialIcon name="sync" />
             Đồng bộ dữ liệu
           </Button>
+        </div>
+      </Card>
+
+      <Card className="rounded-xl p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-outline">Hồ sơ ngành hàng</p>
+            <h3 className="mt-2 text-xl font-extrabold">Dạy Autopilot hiểu doanh nghiệp này bán gì</h3>
+            <p className="mt-2 text-sm leading-6 text-on-surface-variant">
+              Mỗi tài khoản quảng cáo có thể thuộc ngành khác nhau. Lưu ngữ cảnh này giúp app phân tích benchmark, ngân sách và creative winner theo đúng ngành thay vì phán đoán chung chung.
+            </p>
+          </div>
+          <Button onClick={() => void saveIndustryProfile()} disabled={Boolean(busyLabel) || !selectedAccountId}>
+            <MaterialIcon name="save" />
+            Lưu hồ sơ ngành
+          </Button>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Ngành chính</span>
+            <select
+              className="dashboard-input"
+              value={industryProfile?.industry_key ?? "unknown"}
+              onChange={(event) => updateIndustryProfile({ industry_key: event.target.value })}
+            >
+              {industryOptions.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Mô hình bán hàng</span>
+            <Input
+              placeholder="Ví dụ: inbox tư vấn, bán khóa học, đặt lịch..."
+              value={industryProfile?.business_model ?? ""}
+              onChange={(event) => updateIndustryProfile({ business_model: event.target.value })}
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Giá trị đơn trung bình</span>
+            <Input
+              type="number"
+              min={0}
+              placeholder="Ví dụ: 799000"
+              value={industryProfile?.average_order_value ?? ""}
+              onChange={(event) => updateIndustryProfile({ average_order_value: event.target.value })}
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Loại offer</span>
+            <Input
+              placeholder="Giảm giá, tặng quà, tư vấn miễn phí..."
+              value={industryProfile?.offer_type ?? ""}
+              onChange={(event) => updateIndustryProfile({ offer_type: event.target.value })}
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Khách hàng mục tiêu</span>
+            <Input
+              placeholder="Ví dụ: nữ 25-44, chủ spa, người mới học AI..."
+              value={industryProfile?.target_customer ?? ""}
+              onChange={(event) => updateIndustryProfile({ target_customer: event.target.value })}
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-bold">Ghi chú tối ưu</span>
+            <Input
+              placeholder="Điểm cần nhớ khi tối ưu account này"
+              value={industryProfile?.notes ?? ""}
+              onChange={(event) => updateIndustryProfile({ notes: event.target.value })}
+            />
+          </label>
         </div>
       </Card>
 

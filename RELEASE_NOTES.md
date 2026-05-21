@@ -102,6 +102,15 @@
 - `npm.cmd test`: pass.
 - `npm.cmd run build`: pass.
 
+## 2026-05-21 - Account industry profile
+
+### Đã bổ sung
+
+- Thêm migration `202605210006_create_account_industry_profiles.sql`.
+- Thêm `GET/PATCH /api/optimization/industry-profile` để lưu hồ sơ ngành theo từng tài khoản quảng cáo.
+- Trang `Tối ưu Ads` có card `Hồ sơ ngành hàng`: ngành chính, mô hình bán hàng, loại offer, giá trị đơn trung bình, khách hàng mục tiêu và ghi chú tối ưu.
+- Đây là nền để Autopilot học benchmark theo ngành, không dùng một bộ quy tắc chung cho mọi tài khoản.
+
 ## 2026-05-21 - Optimization action history UI
 
 ### Đã bổ sung

@@ -177,3 +177,10 @@ Ngành ưu tiên:
 - [x] Show "Lịch sử tối ưu" inside Optimization Center.
 - [x] Reload logs after apply recommendation.
 - [x] Keep missing-schema fallback so production does not crash before Supabase migrations are applied.
+
+## Progress 2026-05-21 - Industry context
+
+- [x] Add migration `account_industry_profiles`.
+- [x] Add server route `GET/PATCH /api/optimization/industry-profile`.
+- [x] Add Optimization Center form for account industry, business model, offer, average order value, target customer and notes.
+- [ ] Use account industry context directly inside recommendation scoring and content generation.
