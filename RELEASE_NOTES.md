@@ -110,6 +110,7 @@
 - Thêm `GET/PATCH /api/optimization/industry-profile` để lưu hồ sơ ngành theo từng tài khoản quảng cáo.
 - Trang `Tối ưu Ads` có card `Hồ sơ ngành hàng`: ngành chính, mô hình bán hàng, loại offer, giá trị đơn trung bình, khách hàng mục tiêu và ghi chú tối ưu.
 - Đây là nền để Autopilot học benchmark theo ngành, không dùng một bộ quy tắc chung cho mọi tài khoản.
+- Recommendation engine đã gắn hồ sơ ngành vào reason/evidence khi tạo khuyến nghị mới.
 
 ## 2026-05-21 - Optimization action history UI
 

@@ -90,4 +90,23 @@ describe("optimization recommendations", () => {
     expect(rows.some((item) => item.recommendationType === "duplicate_winner" && item.entityId === "good")).toBe(true);
     expect(rows.some((item) => item.recommendationType === "pause_review" && item.entityId === "bad")).toBe(true);
   });
+
+  it("attaches account industry context to recommendation evidence", () => {
+    const rows = buildOptimizationRecommendations({
+      campaigns: [
+        campaign({ campaignId: "winner", campaignName: "Winner", spend: 500000, results: 20, costPerResult: 25000, ctr: 2 }),
+        campaign({ campaignId: "average", campaignName: "Average", spend: 600000, results: 10, costPerResult: 60000, ctr: 1.5 })
+      ],
+      creatives: [],
+      context: {
+        industryKey: "education_course",
+        businessModel: "bán khóa học qua inbox",
+        offerType: "giảm giá khai giảng",
+        targetCustomer: "người mới học AI"
+      }
+    });
+
+    expect(rows[0]?.reason).toContain("education_course");
+    expect(rows[0]?.evidence.account_context).toMatchObject({ industryKey: "education_course" });
+  });
 });

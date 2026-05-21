@@ -183,4 +183,5 @@ Ngành ưu tiên:
 - [x] Add migration `account_industry_profiles`.
 - [x] Add server route `GET/PATCH /api/optimization/industry-profile`.
 - [x] Add Optimization Center form for account industry, business model, offer, average order value, target customer and notes.
-- [ ] Use account industry context directly inside recommendation scoring and content generation.
+- [x] Use account industry context inside recommendation reason/evidence.
+- [ ] Use account industry context directly inside scoring thresholds and content generation.

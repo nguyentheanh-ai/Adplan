@@ -8,7 +8,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 function isMissingTable(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() || "";
-  return error?.code === "42P01" || message.includes("schema cache") || message.includes("optimization_recommendations");
+  return (
+    error?.code === "42P01" ||
+    message.includes("schema cache") ||
+    message.includes("optimization_recommendations") ||
+    message.includes("account_industry_profiles")
+  );
 }
 
 function campaignFromSnapshot(row: Record<string, unknown>): NormalizedCampaignPerformance {
@@ -156,8 +161,18 @@ export async function POST(request: Request) {
     .eq("ad_account_id", body.ad_account_id)
     .order("created_at", { ascending: false })
     .limit(300);
+  const industryProfileQuery = admin
+    .from("account_industry_profiles")
+    .select("*")
+    .eq("user_id", session.userId)
+    .eq("ad_account_id", body.ad_account_id)
+    .maybeSingle();
 
-  const [campaignResult, creativeResult] = await Promise.all([campaignQuery, creativeQuery]);
+  const [campaignResult, creativeResult, industryProfileResult] = await Promise.all([
+    campaignQuery,
+    creativeQuery,
+    industryProfileQuery
+  ]);
   if (campaignResult.error) {
     if (isMissingTable(campaignResult.error)) {
       return NextResponse.json(
@@ -168,10 +183,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: campaignResult.error.message }, { status: 500 });
   }
   if (creativeResult.error) return NextResponse.json({ error: creativeResult.error.message }, { status: 500 });
+  if (industryProfileResult.error && !isMissingTable(industryProfileResult.error)) {
+    return NextResponse.json({ error: industryProfileResult.error.message }, { status: 500 });
+  }
+
+  const profile = industryProfileResult.data as Record<string, unknown> | null;
 
   const recommendations = buildOptimizationRecommendations({
     campaigns: (campaignResult.data ?? []).map((row) => campaignFromSnapshot(row as Record<string, unknown>)),
-    creatives: (creativeResult.data ?? []).map((row) => creativeFromSnapshot(row as Record<string, unknown>))
+    creatives: (creativeResult.data ?? []).map((row) => creativeFromSnapshot(row as Record<string, unknown>)),
+    context: profile
+      ? {
+          industryKey: String(profile.industry_key || "unknown"),
+          businessModel: profile.business_model ? String(profile.business_model) : null,
+          offerType: profile.offer_type ? String(profile.offer_type) : null,
+          averageOrderValue: profile.average_order_value === null || profile.average_order_value === undefined ? null : Number(profile.average_order_value),
+          targetCustomer: profile.target_customer ? String(profile.target_customer) : null
+        }
+      : undefined
   });
 
   if (!recommendations.length) return NextResponse.json({ data: [] });

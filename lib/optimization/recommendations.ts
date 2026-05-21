@@ -13,8 +13,44 @@ export type OptimizationRecommendationDraft = {
   evidence: Record<string, unknown>;
 };
 
+export type OptimizationRecommendationContext = {
+  industryKey?: string | null;
+  businessModel?: string | null;
+  offerType?: string | null;
+  averageOrderValue?: number | null;
+  targetCustomer?: string | null;
+};
+
 function money(value: number) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(value || 0);
+}
+
+function contextSummary(context?: OptimizationRecommendationContext) {
+  if (!context || !context.industryKey || context.industryKey === "unknown") return "";
+  const parts = [
+    `ngành ${context.industryKey}`,
+    context.businessModel ? `mô hình ${context.businessModel}` : "",
+    context.offerType ? `offer ${context.offerType}` : "",
+    context.targetCustomer ? `tệp ${context.targetCustomer}` : ""
+  ].filter(Boolean);
+  return parts.length ? `Ngữ cảnh đã lưu: ${parts.join(", ")}.` : "";
+}
+
+function attachContext(
+  recommendations: OptimizationRecommendationDraft[],
+  context?: OptimizationRecommendationContext
+): OptimizationRecommendationDraft[] {
+  const summary = contextSummary(context);
+  if (!summary) return recommendations;
+
+  return recommendations.map((item) => ({
+    ...item,
+    reason: `${item.reason} ${summary}`,
+    evidence: {
+      ...item.evidence,
+      account_context: context
+    }
+  }));
 }
 
 export function buildCampaignOptimizationRecommendations(
@@ -152,10 +188,15 @@ export function buildCreativeOptimizationRecommendations(creatives: CreativePerf
 
 export function buildOptimizationRecommendations({
   campaigns,
-  creatives
+  creatives,
+  context
 }: {
   campaigns: NormalizedCampaignPerformance[];
   creatives: CreativePerformance[];
+  context?: OptimizationRecommendationContext;
 }) {
-  return [...buildCampaignOptimizationRecommendations(campaigns), ...buildCreativeOptimizationRecommendations(creatives)].slice(0, 30);
+  return attachContext(
+    [...buildCampaignOptimizationRecommendations(campaigns), ...buildCreativeOptimizationRecommendations(creatives)].slice(0, 30),
+    context
+  );
 }
