@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFacebookPublishPayload, normalizeAgentPostDraft } from "./facebook-publisher";
+import { buildFacebookPublishPayload, normalizeAgentPostDraft, normalizeFacebookDraftRow } from "./facebook-publisher";
 
 describe("normalizeAgentPostDraft", () => {
   it("normalizes an agent JSON draft with content and image metadata", () => {
@@ -80,5 +80,27 @@ describe("buildFacebookPublishPayload", () => {
         { approved: false, pageId: "123" }
       )
     ).toThrow("Khách chưa duyệt");
+  });
+});
+
+describe("normalizeFacebookDraftRow", () => {
+  it("normalizes a stored agent draft row for the web inbox", () => {
+    const row = normalizeFacebookDraftRow({
+      id: "draft-1",
+      page_id: "page-1",
+      status: "draft",
+      draft_json: {
+        title: "Post Agent",
+        caption: "Caption từ Agent",
+        image: { url: "https://example.com/post.jpg" }
+      },
+      created_at: "2026-05-21T00:00:00.000Z"
+    });
+
+    expect(row.id).toBe("draft-1");
+    expect(row.pageId).toBe("page-1");
+    expect(row.status).toBe("draft");
+    expect(row.draft.message).toBe("Caption từ Agent");
+    expect(row.draft.imageUrl).toBe("https://example.com/post.jpg");
   });
 });

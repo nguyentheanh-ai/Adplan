@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { MaterialIcon } from "@/components/material-icon";
-import { normalizeAgentPostDraft, type NormalizedAgentPostDraft } from "@/lib/facebook-publisher";
+import { normalizeAgentPostDraft, type FacebookDraftInboxItem, type NormalizedAgentPostDraft } from "@/lib/facebook-publisher";
 
 type FacebookPage = {
   id: string;
@@ -47,6 +47,7 @@ export function FacebookPublisherClient() {
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [draft, setDraft] = useState<NormalizedAgentPostDraft>(starterDraft);
+  const [draftInbox, setDraftInbox] = useState<FacebookDraftInboxItem[]>([]);
   const [agentJson, setAgentJson] = useState("");
   const [approved, setApproved] = useState(false);
   const [isLoadingPages, setIsLoadingPages] = useState(true);
@@ -54,6 +55,18 @@ export function FacebookPublisherClient() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
+
+  async function loadDraftInbox() {
+    try {
+      const payload = await readJson<{ data: FacebookDraftInboxItem[]; storage?: string }>("/api/facebook-publisher/drafts");
+      setDraftInbox(payload.data ?? []);
+      if (payload.storage === "missing_schema") {
+        setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
+      }
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Không tải được draft từ Agent.");
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -71,6 +84,24 @@ export function FacebookPublisherClient() {
         if (!cancelled) setIsLoadingPages(false);
       });
 
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    readJson<{ data: FacebookDraftInboxItem[]; storage?: string }>("/api/facebook-publisher/drafts")
+      .then((payload) => {
+        if (cancelled) return;
+        setDraftInbox(payload.data ?? []);
+        if (payload.storage === "missing_schema") {
+          setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
+        }
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Không tải được draft từ Agent.");
+      });
     return () => {
       cancelled = true;
     };
@@ -98,6 +129,15 @@ export function FacebookPublisherClient() {
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "JSON từ Agent không hợp lệ.");
     }
+  }
+
+  function applyInboxDraft(item: FacebookDraftInboxItem) {
+    setDraft({ ...starterDraft, ...item.draft });
+    setApproved(item.draft.approved);
+    if (item.pageId) setSelectedPageId(item.pageId);
+    setPublishResult(null);
+    setError("");
+    setNotice("Đã nạp draft Agent vào preview. Khách chỉ cần kiểm tra, tick duyệt và bấm đăng.");
   }
 
   function loadExample() {
@@ -158,6 +198,47 @@ export function FacebookPublisherClient() {
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Draft Agent chờ duyệt</CardTitle>
+                <CardDescription>Agent có thể tự đẩy bài vào đây qua API, khách không cần copy JSON thủ công.</CardDescription>
+              </div>
+              <Button variant="secondary" onClick={loadDraftInbox}>
+                <MaterialIcon name="refresh" />
+                Tải lại
+              </Button>
+            </div>
+          </CardHeader>
+
+          {draftInbox.length ? (
+            <div className="grid gap-3">
+              {draftInbox.map((item) => (
+                <button
+                  key={item.id}
+                  className="rounded-lg border border-outline-variant bg-white p-4 text-left transition hover:border-primary hover:bg-primary-fixed/10"
+                  onClick={() => applyInboxDraft(item)}
+                  type="button"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-extrabold text-on-surface">{item.draft.title}</p>
+                      <p className="mt-1 line-clamp-2 text-sm leading-6 text-on-surface-variant">{item.draft.message || "Chưa có caption"}</p>
+                    </div>
+                    <Badge>{item.status}</Badge>
+                  </div>
+                  {item.createdAt ? <p className="mt-2 text-xs font-semibold text-outline">Nạp lúc {new Date(item.createdAt).toLocaleString("vi-VN")}</p> : null}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-outline-variant bg-surface-container-low p-5 text-sm leading-6 text-on-surface-variant">
+              Chưa có draft nào từ Agent. Agent có thể gọi <span className="font-mono font-bold">POST /api/facebook-publisher/drafts</span> để tự nạp bài vào hàng chờ này.
+            </div>
+          )}
+        </Card>
+
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">

@@ -54,6 +54,15 @@ export type FacebookPublishPayload =
       scheduledPublishTime?: string;
     };
 
+export type FacebookDraftInboxItem = {
+  id: string;
+  pageId?: string;
+  status: string;
+  draft: NormalizedAgentPostDraft;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export function normalizeAgentPostDraft(input: unknown): NormalizedAgentPostDraft {
   const raw = rawAgentDraftSchema.parse(input);
   const title = raw.title || "Bài đăng Facebook từ Agent";
@@ -140,6 +149,24 @@ export function dataUrlToFilePart(dataUrl: string) {
   return {
     blob: new Blob([buffer], { type: mimeType }),
     fileName: `agent-post-image.${extension}`
+  };
+}
+
+export function normalizeFacebookDraftRow(row: {
+  id: string;
+  page_id?: string | null;
+  status?: string | null;
+  draft_json?: unknown;
+  created_at?: string | null;
+  updated_at?: string | null;
+}): FacebookDraftInboxItem {
+  return {
+    id: row.id,
+    pageId: row.page_id || undefined,
+    status: row.status || "draft",
+    draft: normalizeAgentPostDraft(row.draft_json || {}),
+    createdAt: row.created_at || undefined,
+    updatedAt: row.updated_at || undefined
   };
 }
 
