@@ -607,7 +607,7 @@ async function createAdFromCreative({
   });
 }
 
-function shouldRetryDirectCopyAsJson(error: MetaErrorDetails) {
+function shouldRetryDirectCopyWithAlternateEncoding(error: MetaErrorDetails) {
   const message = `${error.message ?? ""} ${error.error_user_title ?? ""} ${error.error_user_msg ?? ""}`.toLowerCase();
   return error.code === 100 || message.includes("invalid parameter") || message.includes("param");
 }
@@ -623,23 +623,23 @@ async function copyAdDirectly({
   sourceAdId: string;
   adsetId: string;
 }) {
-  const formBody = buildAdCopyBody({ targetAdSetId: adsetId });
   try {
     return await graph(sourceAdId + "/copies", {
-      accessToken,
-      method: "POST",
-      body: formBody
-    });
-  } catch (error) {
-    const metaError = serializeMetaError(error);
-    if (!shouldRetryDirectCopyAsJson(metaError)) throw error;
-    return graph(sourceAdId + "/copies", {
       accessToken,
       method: "POST",
       json: {
         adset_id: adsetId,
         status_option: "PAUSED"
       }
+    });
+  } catch (error) {
+    const metaError = serializeMetaError(error);
+    if (!shouldRetryDirectCopyWithAlternateEncoding(metaError)) throw error;
+    const formBody = buildAdCopyBody({ targetAdSetId: adsetId });
+    return graph(sourceAdId + "/copies", {
+      accessToken,
+      method: "POST",
+      body: formBody
     });
   }
 }

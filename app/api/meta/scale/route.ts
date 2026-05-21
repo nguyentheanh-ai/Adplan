@@ -2,17 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAppSession } from "@/lib/auth/session";
 import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
+import { cloneAdsForAdsetWithDiagnostics } from "@/lib/meta/scale-clone";
 import {
-  createAdOnMeta,
   createAdsetFromSourceOnMeta,
   createCampaignOnMeta,
-  getMetaAds,
   getMetaAdsets,
   getMetaCampaigns,
   metaErrorResponse,
   updateMetaBudget
 } from "@/lib/meta/facebook";
-import type { AdSet, MetaAd } from "@/lib/meta/types";
+import type { AdSet } from "@/lib/meta/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const scaleSchema = z.object({
@@ -27,6 +26,15 @@ const scaleSchema = z.object({
 function isMissingTable(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() || "";
   return error?.code === "42P01" || message.includes("campaign_clone_logs") || message.includes("schema cache");
+}
+
+function getMetaAppConfig() {
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appId || !appSecret) {
+    throw new Error("Thiếu META_APP_ID hoặc META_APP_SECRET để kiểm tra token và nhân bản quảng cáo.");
+  }
+  return { appId, appSecret };
 }
 
 async function saveCloneLog(payload: {
@@ -130,7 +138,7 @@ async function cloneAdsForAdset({
   adAccountId,
   sourceAdset,
   targetAdsetId,
-  copyIndex,
+  copyIndex: _copyIndex,
   accessToken
 }: {
   adAccountId: string;
@@ -139,49 +147,15 @@ async function cloneAdsForAdset({
   copyIndex: number;
   accessToken: string;
 }) {
-  let sourceAds: MetaAd[];
-  try {
-    sourceAds = await getMetaAds(adAccountId, accessToken, sourceAdset.id);
-  } catch (error) {
-    const response = metaErrorResponse(error);
-    return [
-      {
-        source_ad_id: "unknown",
-        error: response.body.error || "Không đọc được quảng cáo nguồn. Có thể thiếu ads_read/pages_read_engagement hoặc không có quyền với Page."
-      }
-    ];
-  }
-  const results: Array<{ id?: string; source_ad_id: string; error?: string }> = [];
-
-  for (const sourceAd of sourceAds) {
-    const creativeId = sourceAd.creative?.id;
-    if (!creativeId) {
-      results.push({
-        source_ad_id: sourceAd.id,
-        error: "Không đọc được creative_id của quảng cáo nguồn. Có thể thiếu quyền đọc creative/post của Page."
-      });
-      continue;
-    }
-
-    try {
-      const ad = await createAdOnMeta({
-        adAccountId,
-        adsetId: targetAdsetId,
-        name: `${sourceAd.name || "Quảng cáo"} - Bản sao ${copyIndex + 1}`,
-        creativeId,
-        accessToken
-      });
-      results.push({ id: ad.id, source_ad_id: sourceAd.id });
-    } catch (error) {
-      const response = metaErrorResponse(error);
-      results.push({
-        source_ad_id: sourceAd.id,
-        error: response.body.error || "Không tạo được quảng cáo từ creative nguồn."
-      });
-    }
-  }
-
-  return results;
+  const { appId, appSecret } = getMetaAppConfig();
+  return cloneAdsForAdsetWithDiagnostics({
+    adAccountId,
+    sourceAdsetId: sourceAdset.id,
+    targetAdsetId,
+    accessToken,
+    appId,
+    appSecret
+  });
 }
 
 async function cloneAdsetWithAds({
@@ -324,3 +298,4 @@ export async function POST(request: Request) {
     return NextResponse.json(response.body, { status: response.status === 500 ? 400 : response.status });
   }
 }
+

@@ -63,16 +63,16 @@ describe("Meta ads clone diagnostics", () => {
   });
 
   it("passes the source adset_id to the ad copies endpoint when target adset is not selected", async () => {
-    const copyBodies: URLSearchParams[] = [];
-    const graph = vi.fn(async (path: string, init?: { method?: string; body?: URLSearchParams }) => {
+    const copyBodies: Array<Record<string, unknown>> = [];
+    const graph = vi.fn(async (path: string, init?: { method?: string; json?: Record<string, unknown> }) => {
       if (path === "debug_token") return { data: { is_valid: true, app_id: "app", user_id: "user", scopes: ["ads_read", "ads_management"] } };
       if (path === "me/adaccounts") return { data: [{ id: "act_123", account_id: "123", name: "Shop", account_status: 1, user_tasks: ["ADVERTISE"] }] };
       if (path === "act_123") return { id: "act_123", name: "Shop", account_status: 1 };
       if (path === "ad_1") return { id: "ad_1", name: "Ad", adset_id: "adset_1", campaign_id: "camp_1", creative: { id: "creative_1" } };
       if (path === "adset_1") return { id: "adset_1", account_id: "123", campaign_id: "camp_1" };
       if (path === "creative_1") return { id: "creative_1", object_story_id: "page_1_post_1" };
-      if (path === "ad_1/copies" && init?.method === "POST" && init.body instanceof URLSearchParams) {
-        copyBodies.push(init.body);
+      if (path === "ad_1/copies" && init?.method === "POST" && init.json) {
+        copyBodies.push(init.json);
         return { copied_ad_id: "copied_ad_1" };
       }
       if (path === "copied_ad_1") return { id: "copied_ad_1", adset_id: "adset_1", campaign_id: "camp_1", creative: { id: "creative_1" }, status: "PAUSED" };
@@ -89,7 +89,77 @@ describe("Meta ads clone diagnostics", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(copyBodies[0]?.get("adset_id")).toBe("adset_1");
-    expect(copyBodies[0]?.get("status_option")).toBe("PAUSED");
+    expect(copyBodies[0]).toEqual({ adset_id: "adset_1", status_option: "PAUSED" });
+  });
+
+  it("sends the direct ad copy request as JSON with adset_id and PAUSED status first", async () => {
+    const copyJsonBodies: Array<Record<string, unknown>> = [];
+    const graph = vi.fn(async (path: string, init?: { method?: string; json?: Record<string, unknown> }) => {
+      if (path === "debug_token") return { data: { is_valid: true, app_id: "app", user_id: "user", scopes: ["ads_read", "ads_management"] } };
+      if (path === "me/adaccounts") return { data: [{ id: "act_123", account_id: "123", name: "Shop", account_status: 1, user_tasks: ["ADVERTISE"] }] };
+      if (path === "act_123") return { id: "act_123", name: "Shop", account_status: 1 };
+      if (path === "ad_1") return { id: "ad_1", name: "Ad", adset_id: "adset_1", campaign_id: "camp_1", creative: { id: "creative_1" } };
+      if (path === "adset_1") return { id: "adset_1", account_id: "123", campaign_id: "camp_1" };
+      if (path === "creative_1") return { id: "creative_1", object_story_id: "page_1_post_1" };
+      if (path === "target_adset") return { id: "target_adset", account_id: "123", campaign_id: "camp_2" };
+      if (path === "ad_1/copies" && init?.method === "POST" && init.json) {
+        copyJsonBodies.push(init.json);
+        return { copied_ad_id: "copied_ad_1" };
+      }
+      if (path === "copied_ad_1") return { id: "copied_ad_1", adset_id: "target_adset", campaign_id: "camp_2", creative: { id: "creative_1" }, status: "PAUSED" };
+      throw new Error(`unexpected path ${path}`);
+    });
+
+    const result = await cloneMetaAdWithFallback({
+      accessToken: "token",
+      appId: "app",
+      appSecret: "secret",
+      adAccountId: "act_123",
+      sourceAdId: "ad_1",
+      targetAdSetId: "target_adset",
+      graph
+    });
+
+    expect(result.ok).toBe(true);
+    expect(copyJsonBodies[0]).toEqual({
+      adset_id: "target_adset",
+      status_option: "PAUSED"
+    });
+  });
+
+  it("falls back to form encoding when Meta rejects the JSON copy body as invalid parameter", async () => {
+    const formBodies: URLSearchParams[] = [];
+    const graph = vi.fn(async (path: string, init?: { method?: string; json?: Record<string, unknown>; body?: URLSearchParams }) => {
+      if (path === "debug_token") return { data: { is_valid: true, app_id: "app", user_id: "user", scopes: ["ads_read", "ads_management"] } };
+      if (path === "me/adaccounts") return { data: [{ id: "act_123", account_id: "123", name: "Shop", account_status: 1, user_tasks: ["ADVERTISE"] }] };
+      if (path === "act_123") return { id: "act_123", name: "Shop", account_status: 1 };
+      if (path === "ad_1") return { id: "ad_1", name: "Ad", adset_id: "adset_1", campaign_id: "camp_1", creative: { id: "creative_1" } };
+      if (path === "adset_1") return { id: "adset_1", account_id: "123", campaign_id: "camp_1" };
+      if (path === "creative_1") return { id: "creative_1", object_story_id: "page_1_post_1" };
+      if (path === "target_adset") return { id: "target_adset", account_id: "123", campaign_id: "camp_2" };
+      if (path === "ad_1/copies" && init?.json) {
+        throw { error: { message: "Invalid parameter", code: 100, fbtrace_id: "trace_json" } };
+      }
+      if (path === "ad_1/copies" && init?.body instanceof URLSearchParams) {
+        formBodies.push(init.body);
+        return { copied_ad_id: "copied_ad_1" };
+      }
+      if (path === "copied_ad_1") return { id: "copied_ad_1", adset_id: "target_adset", campaign_id: "camp_2", creative: { id: "creative_1" }, status: "PAUSED" };
+      throw new Error(`unexpected path ${path}`);
+    });
+
+    const result = await cloneMetaAdWithFallback({
+      accessToken: "token",
+      appId: "app",
+      appSecret: "secret",
+      adAccountId: "act_123",
+      sourceAdId: "ad_1",
+      targetAdSetId: "target_adset",
+      graph
+    });
+
+    expect(result.ok).toBe(true);
+    expect(formBodies[0]?.get("adset_id")).toBe("target_adset");
+    expect(formBodies[0]?.get("status_option")).toBe("PAUSED");
   });
 });
