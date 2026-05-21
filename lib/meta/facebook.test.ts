@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyMetaError, cloneMetaObject, createPausedMetaCampaign, getMetaAdAccounts, getMetaCampaigns } from "./facebook";
+import {
+  classifyMetaError,
+  cloneMetaObject,
+  createAdsetFromSourceOnMeta,
+  createPausedMetaCampaign,
+  getMetaAdAccounts,
+  getMetaCampaigns
+} from "./facebook";
 
 const originalFetch = globalThis.fetch;
 
@@ -129,5 +136,41 @@ describe("classifyMetaError", () => {
     expect(String(firstCall[1].body)).toContain("campaign_id=campaign_1");
     expect(String(firstCall[1].body)).toContain("deep_copy=true");
     expect(String(firstCall[1].body)).toContain("status_option=PAUSED");
+  });
+
+  it("rebuilds an adset from source fields required by message and engagement objectives", async () => {
+    vi.stubEnv("META_API_VERSION", "v23.0");
+    const fetchMock = vi.fn(async () => Response.json({ id: "adset_new_1" }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await createAdsetFromSourceOnMeta({
+      adAccountId: "act_123",
+      campaignId: "campaign_new",
+      name: "Adset copy",
+      accessToken: "facebook-provider-token",
+      sourceAdset: {
+        id: "source_adset",
+        name: "Source",
+        campaign_id: "campaign_old",
+        daily_budget: "99000",
+        billing_event: "IMPRESSIONS",
+        optimization_goal: "CONVERSATIONS",
+        destination_type: "MESSENGER",
+        promoted_object: { page_id: "page_1" },
+        attribution_spec: [{ event_type: "CLICK_THROUGH", window_days: 1 }],
+        targeting: { geo_locations: { countries: ["VN"] }, age_min: 25, age_max: 44 }
+      }
+    });
+
+    const firstCall = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    const body = String(firstCall[1].body);
+    expect(firstCall[0].href).toContain("/v23.0/act_123/adsets");
+    expect(body).toContain("campaign_id=campaign_new");
+    expect(body).toContain("optimization_goal=CONVERSATIONS");
+    expect(body).toContain("destination_type=MESSENGER");
+    expect(body).toContain("promoted_object=");
+    expect(decodeURIComponent(body)).toContain('"page_id":"page_1"');
+    expect(body).toContain("attribution_spec=");
+    expect(body).toContain("status=PAUSED");
   });
 });

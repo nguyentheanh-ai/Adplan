@@ -243,7 +243,8 @@ export async function getMetaAdsets(
   const payload = await metaFetch<{ data: AdSet[] }>(`${adAccountId}/adsets`, {
     accessToken,
     params: {
-      fields: "id,name,campaign_id,status,daily_budget,lifetime_budget,optimization_goal,billing_event,targeting,created_time",
+      fields:
+        "id,name,campaign_id,status,daily_budget,lifetime_budget,optimization_goal,optimization_sub_event,billing_event,bid_amount,bid_strategy,destination_type,promoted_object,attribution_spec,pacing_type,start_time,end_time,targeting,created_time",
       filtering: campaignId ? JSON.stringify([{ field: "campaign.id", operator: "EQUAL", value: campaignId }]) : "[]",
       limit: "100"
     }
@@ -701,11 +702,24 @@ export async function createAdsetFromSourceOnMeta({
     name,
     campaign_id: campaignId,
     status: "PAUSED",
-    daily_budget: parseDailyBudget(budget),
     billing_event: sourceAdset.billing_event || "IMPRESSIONS",
     optimization_goal: sourceAdset.optimization_goal || "POST_ENGAGEMENT",
     targeting: JSON.stringify(targeting)
   });
+  if (dailyBudget || sourceAdset.daily_budget || !sourceAdset.lifetime_budget) {
+    body.set("daily_budget", parseDailyBudget(budget));
+  } else if (sourceAdset.lifetime_budget) {
+    body.set("lifetime_budget", parseDailyBudget(budget));
+  }
+  if (sourceAdset.promoted_object && Object.keys(sourceAdset.promoted_object).length) {
+    body.set("promoted_object", JSON.stringify(sourceAdset.promoted_object));
+  }
+  if (sourceAdset.destination_type) body.set("destination_type", sourceAdset.destination_type);
+  if (sourceAdset.optimization_sub_event) body.set("optimization_sub_event", sourceAdset.optimization_sub_event);
+  if (sourceAdset.bid_strategy) body.set("bid_strategy", sourceAdset.bid_strategy);
+  if (sourceAdset.bid_amount) body.set("bid_amount", String(sourceAdset.bid_amount));
+  if (sourceAdset.attribution_spec?.length) body.set("attribution_spec", JSON.stringify(sourceAdset.attribution_spec));
+  if (sourceAdset.pacing_type?.length) body.set("pacing_type", JSON.stringify(sourceAdset.pacing_type));
 
   return metaFetch<{ id: string }>(`${normalizedAdAccountId}/adsets`, {
     accessToken,

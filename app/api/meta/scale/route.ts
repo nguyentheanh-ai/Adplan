@@ -4,11 +4,15 @@ import { getAppSession } from "@/lib/auth/session";
 import { requireFacebookProviderToken } from "@/lib/meta/auth-token";
 import {
   cloneMetaObject,
+  createAdsetFromSourceOnMeta,
+  createCampaignOnMeta,
   getMetaAdsets,
   getMetaCampaigns,
+  type MetaApiError,
   metaErrorResponse,
   updateMetaBudget
 } from "@/lib/meta/facebook";
+import { cloneAdsForAdsetWithDiagnostics } from "@/lib/meta/scale-clone";
 import type { AdSet } from "@/lib/meta/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -24,6 +28,21 @@ const scaleSchema = z.object({
 function isMissingTable(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() || "";
   return error?.code === "42P01" || message.includes("campaign_clone_logs") || message.includes("schema cache");
+}
+
+function getMetaAppConfig() {
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appId || !appSecret) {
+    throw new Error("Thiếu META_APP_ID hoặc META_APP_SECRET để kiểm tra token và fallback nhân bản quảng cáo.");
+  }
+  return { appId, appSecret };
+}
+
+function isCapabilityBlocked(error: unknown) {
+  const item = error as Partial<MetaApiError> & { code?: number; message?: string };
+  const message = `${item.message || ""}`.toLowerCase();
+  return item.code === 3 || message.includes("does not have the capability");
 }
 
 async function saveCloneLog(payload: {
@@ -51,6 +70,85 @@ async function saveCloneLog(payload: {
   });
 
   if (error && !isMissingTable(error)) throw new Error(error.message);
+}
+
+async function cloneAdsForAdset({
+  adAccountId,
+  sourceAdset,
+  targetAdsetId,
+  accessToken
+}: {
+  adAccountId: string;
+  sourceAdset: AdSet;
+  targetAdsetId: string;
+  accessToken: string;
+}) {
+  const { appId, appSecret } = getMetaAppConfig();
+  return cloneAdsForAdsetWithDiagnostics({
+    adAccountId,
+    sourceAdsetId: sourceAdset.id,
+    targetAdsetId,
+    accessToken,
+    appId,
+    appSecret
+  });
+}
+
+async function manualCloneCampaignWithAdsets({
+  adAccountId,
+  sourceCampaign,
+  sourceAdsets,
+  quantity,
+  newBudget,
+  accessToken,
+  capabilityWarning
+}: {
+  adAccountId: string;
+  sourceCampaign: { id: string; name?: string; objective?: string };
+  sourceAdsets: AdSet[];
+  quantity: number;
+  newBudget?: string;
+  accessToken: string;
+  capabilityWarning?: string;
+}) {
+  const results: Array<{
+    id: string;
+    copied_campaign_id: string;
+    adsets: Array<{ id: string; source_adset_id: string; ads: Array<{ id?: string; source_ad_id: string; error?: string }> }>;
+    warnings: string[];
+  }> = [];
+
+  for (let index = 0; index < quantity; index += 1) {
+    const warnings: string[] = capabilityWarning ? [capabilityWarning] : [];
+    const campaign = await createCampaignOnMeta({
+      adAccountId,
+      name: `${sourceCampaign.name || "Campaign"} - Bản sao ${index + 1}`,
+      objective: sourceCampaign.objective || "OUTCOME_ENGAGEMENT",
+      accessToken
+    });
+    const adsets = [];
+    for (const sourceAdset of sourceAdsets) {
+      const adset = await createAdsetFromSourceOnMeta({
+        adAccountId,
+        campaignId: campaign.id,
+        sourceAdset,
+        name: `${sourceAdset.name || "Nhóm quảng cáo"} - Bản sao ${index + 1}`,
+        dailyBudget: newBudget,
+        accessToken
+      });
+      const ads = await cloneAdsForAdset({
+        adAccountId,
+        sourceAdset,
+        targetAdsetId: adset.id,
+        accessToken
+      });
+      ads.filter((item) => item.error).forEach((item) => warnings.push(`Ads ${item.source_ad_id}: ${item.error}`));
+      adsets.push({ id: adset.id, source_adset_id: sourceAdset.id, ads });
+    }
+    results.push({ id: campaign.id, copied_campaign_id: campaign.id, adsets, warnings });
+  }
+
+  return results;
 }
 
 async function cloneCampaignWithAdsets({
@@ -89,14 +187,28 @@ async function cloneCampaignWithAdsets({
     adsets: Array<{ id: string; source_adset_id: string; ads: Array<{ id?: string; source_ad_id: string; error?: string }> }>;
     warnings: string[];
   }> = [];
-  const copies = await cloneMetaObject({ sourceId: sourceCampaign.id, sourceType: "campaign", quantity, accessToken });
-  copies.forEach((copy) => {
-    const copiedId = copy.copied_campaign_id || copy.id || "";
-    const warnings = newBudget
-      ? ["Meta đã copy nguyên cây campaign ở trạng thái PAUSED. Nếu cần đổi ngân sách, hãy kiểm tra lại budget trong Ads Manager sau khi copy."]
-      : [];
-    results.push({ id: copiedId, copied_campaign_id: copiedId, adsets: [], warnings });
-  });
+  try {
+    const copies = await cloneMetaObject({ sourceId: sourceCampaign.id, sourceType: "campaign", quantity, accessToken });
+    copies.forEach((copy) => {
+      const copiedId = copy.copied_campaign_id || copy.id || "";
+      const warnings = newBudget
+        ? ["Meta đã copy nguyên cây campaign ở trạng thái PAUSED. Nếu cần đổi ngân sách, hãy kiểm tra lại budget trong Ads Manager sau khi copy."]
+        : [];
+      results.push({ id: copiedId, copied_campaign_id: copiedId, adsets: [], warnings });
+    });
+  } catch (error) {
+    if (!isCapabilityBlocked(error)) throw error;
+    return manualCloneCampaignWithAdsets({
+      adAccountId,
+      sourceCampaign,
+      sourceAdsets,
+      quantity,
+      newBudget,
+      accessToken,
+      capabilityWarning:
+        "Meta không cho app dùng endpoint copy campaign/adset (#3 capability). App đã chuyển sang fallback: tạo campaign, nhóm quảng cáo và quảng cáo mới ở trạng thái PAUSED."
+    });
+  }
 
   return results;
 }
@@ -135,31 +247,69 @@ async function cloneAdsetWithAds({
     ads: Array<{ id?: string; source_ad_id: string; error?: string }>;
     warnings: string[];
   }> = [];
-  const copies = await cloneMetaObject({
-    sourceId: sourceAdset.id,
-    sourceType: "adset",
-    campaignId: sourceAdset.campaign_id,
-    quantity,
-    accessToken
-  });
-
-  for (const copy of copies) {
-    const copiedId = copy.copied_adset_id || copy.id || "";
-    const warnings: string[] = [];
-    if (newBudget && copiedId) {
-      try {
-        await updateMetaBudget({ objectId: copiedId, dailyBudget: newBudget, accessToken });
-      } catch (error) {
-        const response = metaErrorResponse(error);
-        warnings.push(`Đã nhân bản nhóm quảng cáo nhưng chưa đổi được ngân sách: ${response.body.error || "Meta từ chối cập nhật budget."}`);
-      }
-    }
-    results.push({
-      id: copiedId,
-      copied_adset_id: copiedId,
-      ads: [],
-      warnings
+  let copies: Array<{ id?: string; copied_adset_id?: string }> | null = null;
+  let nativeCopyBlocked = false;
+  try {
+    copies = await cloneMetaObject({
+      sourceId: sourceAdset.id,
+      sourceType: "adset",
+      campaignId: sourceAdset.campaign_id,
+      quantity,
+      accessToken
     });
+  } catch (error) {
+    if (!isCapabilityBlocked(error)) throw error;
+    nativeCopyBlocked = true;
+  }
+
+  if (!nativeCopyBlocked && copies) {
+    for (const copy of copies) {
+      const copiedId = copy.copied_adset_id || copy.id || "";
+      const warnings: string[] = [];
+      if (newBudget && copiedId) {
+        try {
+          await updateMetaBudget({ objectId: copiedId, dailyBudget: newBudget, accessToken });
+        } catch (error) {
+          const response = metaErrorResponse(error);
+          warnings.push(`Đã nhân bản nhóm quảng cáo nhưng chưa đổi được ngân sách: ${response.body.error || "Meta từ chối cập nhật budget."}`);
+        }
+      }
+      results.push({
+        id: copiedId,
+        copied_adset_id: copiedId,
+        ads: [],
+        warnings
+      });
+    }
+  }
+
+  if (nativeCopyBlocked) {
+    for (let index = 0; index < quantity; index += 1) {
+      const warnings: string[] = [
+        "Meta không cho app dùng endpoint copy adset (#3 capability). App đã chuyển sang fallback: tạo nhóm quảng cáo và quảng cáo mới ở trạng thái PAUSED."
+      ];
+      const adset = await createAdsetFromSourceOnMeta({
+        adAccountId,
+        campaignId: sourceAdset.campaign_id,
+        sourceAdset,
+        name: `${sourceAdset.name || "Nhóm quảng cáo"} - Bản sao ${index + 1}`,
+        dailyBudget: newBudget,
+        accessToken
+      });
+      const ads = await cloneAdsForAdset({
+        adAccountId,
+        sourceAdset,
+        targetAdsetId: adset.id,
+        accessToken
+      });
+      ads.filter((item) => item.error).forEach((item) => warnings.push(`Ads ${item.source_ad_id}: ${item.error}`));
+      results.push({
+        id: adset.id,
+        copied_adset_id: adset.id,
+        ads,
+        warnings
+      });
+    }
   }
 
   return results;
@@ -244,4 +394,3 @@ export async function POST(request: Request) {
     return NextResponse.json(response.body, { status: response.status === 500 ? 400 : response.status });
   }
 }
-

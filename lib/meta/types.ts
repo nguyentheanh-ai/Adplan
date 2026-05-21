@@ -59,7 +59,16 @@ export type AdSet = {
   daily_budget?: string;
   lifetime_budget?: string;
   optimization_goal?: string;
+  optimization_sub_event?: string;
   billing_event?: string;
+  bid_amount?: string;
+  bid_strategy?: string;
+  destination_type?: string;
+  promoted_object?: Record<string, unknown>;
+  attribution_spec?: Array<Record<string, unknown>>;
+  pacing_type?: string[];
+  start_time?: string;
+  end_time?: string;
   targeting?: MetaTargeting;
   created_time?: string;
 };
