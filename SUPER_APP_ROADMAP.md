@@ -115,11 +115,11 @@ Ngành ưu tiên:
 
 ### Phase B - Optimization Action Center
 
-- [ ] Card "Việc nên làm hôm nay".
-- [ ] Recommendation priority high/medium/low.
-- [ ] Action types: tăng ngân sách, giảm ngân sách, tạm dừng để kiểm tra, nhân bản winner, tạo creative mới.
-- [ ] Confirm modal trước khi áp dụng.
-- [ ] Kiểm tra authorization trước khi gọi Meta.
+- [x] Card "Việc nên làm hôm nay".
+- [x] Recommendation priority high/medium/low.
+- [x] Action types: tăng ngân sách, giảm ngân sách, tạm dừng để kiểm tra, nhân bản winner, tạo creative mới.
+- [x] Confirm modal trước khi áp dụng.
+- [x] Kiểm tra authorization trước khi gọi Meta.
 - [x] Kiểm tra authorization trước khi gọi Meta.
 - [x] Log action vào Supabase.
 - [x] Không áp dụng nếu vượt giới hạn ủy quyền.
@@ -193,3 +193,9 @@ Ngành ưu tiên:
 - [x] Add anonymized industry benchmark rebuild from synced Meta campaign snapshots.
 - [x] Use industry benchmark context inside recommendation evidence/reason.
 - [ ] Use account industry context directly inside scoring thresholds and content generation.
+
+## Progress 2026-05-21 - Optimization next action
+
+- [x] Thêm summary `Ưu tiên hôm nay` trong Optimization Center.
+- [x] Hiển thị số việc ưu tiên cao, chờ duyệt, sẵn sàng áp dụng và số hành động bị chặn/lỗi.
+- [x] Chỉ gợi ý áp dụng khi khuyến nghị đã được duyệt và tài khoản đã bật ủy quyền.

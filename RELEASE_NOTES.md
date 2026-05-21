@@ -169,6 +169,14 @@
   - các hành động chưa có API an toàn sẽ ghi nhận dạng proposal-only thay vì fake apply.
 - UI `Tối ưu Ads` có nút `Duyệt`, `Từ chối`, `Mở lại`, `Áp dụng`.
 
+## 2026-05-21 - Optimization next action summary
+
+### Đã bổ sung
+
+- Trang `Tối ưu Ads` có khối `Ưu tiên hôm nay`, dịch danh sách recommendation thành bước tiếp theo dễ hiểu cho chủ doanh nghiệp.
+- Hiển thị nhanh số khuyến nghị ưu tiên cao, chờ duyệt, sẵn sàng áp dụng và số hành động bị chặn/lỗi.
+- Khối này nhắc rõ app chỉ áp dụng khi khuyến nghị đã duyệt và tài khoản đã bật ủy quyền có kiểm soát.
+
 ### Kiểm tra đã chạy
 
 - `npm.cmd run typecheck`: pass.

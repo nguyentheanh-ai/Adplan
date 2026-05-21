@@ -156,6 +156,12 @@ function formatMoney(value?: number | null) {
   return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(Number(value) || 0);
 }
 
+function priorityRank(priority: Recommendation["priority"]) {
+  if (priority === "high") return 3;
+  if (priority === "medium") return 2;
+  return 1;
+}
+
 export function OptimizationCenterClient() {
   const [accounts, setAccounts] = useState<AdAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -173,6 +179,28 @@ export function OptimizationCenterClient() {
     [accounts, selectedAccountId]
   );
   const enabled = authorization?.status === "enabled";
+  const todayPlan = useMemo(() => {
+    const activeRecommendations = recommendations
+      .filter((item) => item.status === "draft" || item.status === "approved")
+      .sort((a, b) => {
+        const priorityDelta = priorityRank(b.priority) - priorityRank(a.priority);
+        if (priorityDelta) return priorityDelta;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    const topRecommendation = activeRecommendations[0];
+    const waitingReview = activeRecommendations.filter((item) => item.status === "draft").length;
+    const readyToApply = activeRecommendations.filter((item) => item.status === "approved").length;
+    const riskLogs = actionLogs.filter((item) => item.status === "blocked" || item.status === "failed").length;
+    const highPriority = activeRecommendations.filter((item) => item.priority === "high").length;
+
+    let nextStep = "Đồng bộ dữ liệu Meta để app có đủ dữ liệu phân tích.";
+    if (lastSync && !recommendations.length) nextStep = "Bấm tạo khuyến nghị để app phân tích dữ liệu vừa đồng bộ.";
+    if (topRecommendation?.status === "draft") nextStep = `Duyệt hoặc từ chối: ${topRecommendation.title}`;
+    if (topRecommendation?.status === "approved" && !enabled) nextStep = "Bật ủy quyền có kiểm soát trước khi áp dụng khuyến nghị đã duyệt.";
+    if (topRecommendation?.status === "approved" && enabled) nextStep = `Có thể áp dụng an toàn: ${topRecommendation.title}`;
+
+    return { topRecommendation, waitingReview, readyToApply, riskLogs, highPriority, nextStep };
+  }, [actionLogs, enabled, lastSync, recommendations]);
 
   useEffect(() => {
     const cached = getCachedState<{
@@ -731,6 +759,16 @@ export function OptimizationCenterClient() {
             </div>
           ) : null}
 
+          <TodayPlanSummary
+            enabled={enabled}
+            nextStep={todayPlan.nextStep}
+            highPriority={todayPlan.highPriority}
+            waitingReview={todayPlan.waitingReview}
+            readyToApply={todayPlan.readyToApply}
+            riskLogs={todayPlan.riskLogs}
+            topRecommendation={todayPlan.topRecommendation}
+          />
+
           <div className="mt-5 space-y-3">
             {recommendations.length ? recommendations.map((item) => (
               <div key={item.id} className="rounded-lg border border-outline-variant bg-white p-4">
@@ -841,6 +879,59 @@ function Info({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs font-bold uppercase text-outline">{label}</p>
       <p className="mt-1 text-lg font-extrabold">{value}</p>
+    </div>
+  );
+}
+
+function TodayPlanSummary({
+  enabled,
+  nextStep,
+  highPriority,
+  waitingReview,
+  readyToApply,
+  riskLogs,
+  topRecommendation
+}: {
+  enabled: boolean;
+  nextStep: string;
+  highPriority: number;
+  waitingReview: number;
+  readyToApply: number;
+  riskLogs: number;
+  topRecommendation?: Recommendation;
+}) {
+  return (
+    <div className="mt-5 rounded-xl border border-primary/20 bg-primary-fixed/20 p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-primary">Ưu tiên hôm nay</p>
+          <h4 className="mt-1 text-lg font-extrabold">{nextStep}</h4>
+          <p className="mt-2 text-sm leading-6 text-on-surface-variant">
+            App chỉ tự chỉnh khi khuyến nghị đã được duyệt và tài khoản đã bật ủy quyền. Nếu chưa đủ điều kiện, hành động sẽ bị chặn và ghi vào lịch sử.
+          </p>
+        </div>
+        <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${enabled ? "bg-emerald-50 text-emerald-700" : "bg-white text-on-surface-variant"}`}>
+          {enabled ? "Đã bật ủy quyền" : "Chưa bật ủy quyền"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <Info label="Ưu tiên cao" value={String(highPriority)} />
+        <Info label="Chờ duyệt" value={String(waitingReview)} />
+        <Info label="Sẵn sàng áp dụng" value={String(readyToApply)} />
+        <Info label="Bị chặn/lỗi" value={String(riskLogs)} />
+      </div>
+
+      {topRecommendation ? (
+        <div className="mt-4 rounded-lg bg-white p-4 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${priorityClass(topRecommendation.priority)}`}>{topRecommendation.priority.toUpperCase()}</span>
+            <span className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-bold text-on-surface-variant">{topRecommendation.status}</span>
+          </div>
+          <p className="mt-3 font-extrabold">{topRecommendation.title}</p>
+          <p className="mt-1 leading-6 text-on-surface-variant">{topRecommendation.reason}</p>
+        </div>
+      ) : null}
     </div>
   );
 }
