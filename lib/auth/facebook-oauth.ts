@@ -1,15 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { REQUIRED_FACEBOOK_SCOPES } from "@/lib/auth/facebook-scopes";
 
 const facebookApiVersion = process.env.META_API_VERSION || "v23.0";
-export const REQUIRED_FACEBOOK_SCOPES = [
-  "public_profile",
-  "ads_read",
-  "ads_management",
-  "read_insights",
-  "pages_show_list",
-  "pages_read_engagement"
-] as const;
 const facebookScopes = REQUIRED_FACEBOOK_SCOPES.join(",");
+export { REQUIRED_FACEBOOK_SCOPES };
 
 export function getSiteUrl() {
   return (process.env.NEXT_PUBLIC_SITE_URL || "https://adsplan.theanhmarketing.com").replace(/\/$/, "");

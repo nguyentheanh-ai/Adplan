@@ -104,6 +104,8 @@ export function classifyMetaError(status: number, payload: MetaApiErrorPayload) 
     userMessage = "Token thiếu quyền ads_management để tạo campaign.";
   } else if (lowerMessage.includes("pages_read_engagement")) {
     userMessage = "Token thiếu quyền pages_read_engagement để đọc một số thông tin creative hoặc bài viết.";
+  } else if (lowerMessage.includes("pages_manage_posts")) {
+    userMessage = "Token thiếu quyền pages_manage_posts để đăng bài lên Fanpage. Hãy kết nối lại Facebook và cấp quyền đăng bài.";
   } else if (metaError?.code === 4 || metaError?.code === 17 || lowerMessage.includes("rate limit")) {
     userMessage = "Meta API đang giới hạn tần suất gọi. Hãy thử lại sau ít phút.";
   } else if (
@@ -508,6 +510,89 @@ export async function getMetaPagePosts({
   });
 
   return payload.data ?? [];
+}
+
+export async function publishMetaPageFeedPost({
+  pageId,
+  message,
+  link,
+  scheduledPublishTime,
+  accessToken
+}: {
+  pageId: string;
+  message: string;
+  link?: string;
+  scheduledPublishTime?: string;
+  accessToken?: string | null;
+}) {
+  const body = new URLSearchParams({ message });
+  if (link) body.set("link", link);
+  if (scheduledPublishTime) {
+    body.set("published", "false");
+    body.set("scheduled_publish_time", String(Math.floor(new Date(scheduledPublishTime).getTime() / 1000)));
+  }
+
+  return metaFetch<{ id: string }>(`${pageId}/feed`, {
+    accessToken,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+}
+
+export async function publishMetaPagePhotoPost({
+  pageId,
+  caption,
+  imageUrl,
+  imageBlob,
+  fileName = "agent-post-image.png",
+  scheduledPublishTime,
+  accessToken
+}: {
+  pageId: string;
+  caption: string;
+  imageUrl?: string;
+  imageBlob?: Blob;
+  fileName?: string;
+  scheduledPublishTime?: string;
+  accessToken?: string | null;
+}) {
+  if (!imageUrl && !imageBlob) {
+    throw new MetaApiError({
+      status: 400,
+      message: "Missing photo source",
+      userMessage: "Thiếu ảnh để đăng bài hình ảnh lên Fanpage."
+    });
+  }
+
+  let body: URLSearchParams | FormData;
+  let headers: Record<string, string> | undefined;
+
+  if (imageBlob) {
+    const form = new FormData();
+    form.set("caption", caption);
+    form.set("source", imageBlob, fileName);
+    if (scheduledPublishTime) {
+      form.set("published", "false");
+      form.set("scheduled_publish_time", String(Math.floor(new Date(scheduledPublishTime).getTime() / 1000)));
+    }
+    body = form;
+  } else {
+    const params = new URLSearchParams({ caption, url: imageUrl || "" });
+    if (scheduledPublishTime) {
+      params.set("published", "false");
+      params.set("scheduled_publish_time", String(Math.floor(new Date(scheduledPublishTime).getTime() / 1000)));
+    }
+    body = params;
+    headers = { "Content-Type": "application/x-www-form-urlencoded" };
+  }
+
+  return metaFetch<{ id: string; post_id?: string }>(`${pageId}/photos`, {
+    accessToken,
+    method: "POST",
+    headers,
+    body
+  });
 }
 
 function resolveBreakdown(breakdown: BreakdownType) {

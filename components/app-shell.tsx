@@ -16,6 +16,7 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
+  { href: "/facebook-publisher", label: "Đăng bài FB", icon: "post_add", match: "/facebook-publisher", section: "creative" },
   { href: "/dashboard", label: "Tổng quan", icon: "dashboard", match: "/dashboard" },
   { href: "/reports", label: "Báo cáo Ads", icon: "monitoring", match: "/reports", section: "reports" },
   { href: "/optimization", label: "Tối ưu Ads", icon: "trending_up", match: "/optimization", section: "optimization" },
