@@ -140,7 +140,7 @@ Ngành ưu tiên:
 - [x] JSON schema cho content package.
 - [x] UI duyệt hook/angle/post/script.
 - [x] Copy post.
-- [ ] Lưu content vào thư viện.
+- [x] Lưu content vào thư viện.
 - [ ] Dùng content đã chọn để tạo campaign preview.
 
 ### Phase E - Autopilot có kiểm soát

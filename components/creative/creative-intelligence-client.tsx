@@ -13,6 +13,15 @@ import type { AdsContentPackage } from "@/lib/ai-content-ads-shared";
 type DatePreset = "7d" | "30d" | "month" | "custom";
 type SortKey = "spend" | "lead" | "message" | "engagement" | "ctr";
 type ContentGoal = "message" | "lead" | "traffic" | "engagement" | "sales";
+type ContentLibraryItem = {
+  id: string;
+  title: string;
+  product: string;
+  industry?: string | null;
+  goal?: string | null;
+  content_json: AdsContentPackage;
+  created_at: string;
+};
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -64,6 +73,8 @@ export function CreativeIntelligenceClient() {
   const [contentPackage, setContentPackage] = useState<(AdsContentPackage & { raw?: string }) | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState("");
+  const [contentLibrary, setContentLibrary] = useState<ContentLibraryItem[]>([]);
+  const [contentSaving, setContentSaving] = useState(false);
 
   const currency = payload?.selectedAccount?.currency || "VND";
   const creatives = useMemo(() => payload?.creatives ?? [], [payload?.creatives]);
@@ -127,6 +138,7 @@ export function CreativeIntelligenceClient() {
         setSelectedAccountId(picked);
       })
       .catch((err: Error) => setError(err.message));
+    void loadContentLibrary();
   }, []);
 
   async function loadData(nextAccountId?: string) {
@@ -165,6 +177,7 @@ export function CreativeIntelligenceClient() {
       const json = (await response.json().catch(() => ({}))) as { data?: AdsContentPackage & { raw?: string }; error?: string };
       if (!response.ok || !json.data) throw new Error(json.error || "Không thể tạo content quảng cáo.");
       setContentPackage(json.data);
+      void loadContentLibrary(true);
     } catch (err) {
       setContentError(err instanceof Error ? err.message : "Không thể tạo content quảng cáo.");
     } finally {
@@ -174,6 +187,39 @@ export function CreativeIntelligenceClient() {
 
   async function copyContent(text: string) {
     await navigator.clipboard.writeText(text);
+  }
+
+  async function loadContentLibrary(force = false) {
+    try {
+      const response = await readJson<{ data: ContentLibraryItem[]; storage?: string }>("/api/ai/content-library", { force });
+      setContentLibrary(response.data ?? []);
+    } catch {
+      // Library is optional; generator should keep working even before migration is applied.
+    }
+  }
+
+  async function saveContentPackage() {
+    if (!contentPackage) return;
+    setContentSaving(true);
+    setContentError("");
+    try {
+      const response = await fetch("/api/ai/content-library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: contentForm,
+          content: contentPackage,
+          title: `${contentForm.product || "Content ads"} - ${new Date().toLocaleDateString("vi-VN")}`
+        })
+      });
+      const json = (await response.json().catch(() => ({}))) as { data?: ContentLibraryItem; error?: string };
+      if (!response.ok || !json.data) throw new Error(json.error || "Không thể lưu content.");
+      setContentLibrary((items) => [json.data as ContentLibraryItem, ...items]);
+    } catch (err) {
+      setContentError(err instanceof Error ? err.message : "Không thể lưu content.");
+    } finally {
+      setContentSaving(false);
+    }
   }
 
   return (
@@ -239,17 +285,54 @@ export function CreativeIntelligenceClient() {
         {contentError ? <div className="mt-4 rounded-lg border border-error-container bg-error-container/70 p-4 text-sm font-bold text-error">{contentError}</div> : null}
 
         {contentPackage ? (
-          <div className="mt-6 grid gap-4 xl:grid-cols-2">
-            <ContentBlock title="Tóm tắt chiến lược" items={[contentPackage.summary]} />
-            <ContentBlock title="Góc quảng cáo" items={contentPackage.angles} />
-            <ContentBlock title="Hook mở đầu" items={contentPackage.hooks} />
-            <ContentBlock title="Headline" items={contentPackage.headlines} />
-            <ContentBlock title="Nội dung chính" items={contentPackage.primaryTexts} onCopy={copyContent} large />
-            <ContentBlock title="Brief hình/video" items={contentPackage.creativeBriefs} />
-            <ContentBlock title="CTA" items={contentPackage.ctas} />
-            <ContentBlock title="Kế hoạch test" items={[contentPackage.recommendedTestPlan]} />
-          </div>
+          <>
+            <div className="mt-4 flex justify-end">
+              <Button variant="secondary" onClick={() => void saveContentPackage()} disabled={contentSaving}>
+                <MaterialIcon name="bookmark_add" />
+                {contentSaving ? "Đang lưu..." : "Lưu vào thư viện"}
+              </Button>
+            </div>
+            <div className="mt-6 grid gap-4 xl:grid-cols-2">
+              <ContentBlock title="Tóm tắt chiến lược" items={[contentPackage.summary]} />
+              <ContentBlock title="Góc quảng cáo" items={contentPackage.angles} />
+              <ContentBlock title="Hook mở đầu" items={contentPackage.hooks} />
+              <ContentBlock title="Headline" items={contentPackage.headlines} />
+              <ContentBlock title="Nội dung chính" items={contentPackage.primaryTexts} onCopy={copyContent} large />
+              <ContentBlock title="Brief hình/video" items={contentPackage.creativeBriefs} />
+              <ContentBlock title="CTA" items={contentPackage.ctas} />
+              <ContentBlock title="Kế hoạch test" items={[contentPackage.recommendedTestPlan]} />
+            </div>
+          </>
         ) : null}
+
+        <div className="mt-6 rounded-lg bg-surface-container-low p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="font-extrabold">Thư viện content đã lưu</h4>
+              <p className="mt-1 text-sm text-on-surface-variant">Dùng để lấy lại hook/nội dung thắng cho lần tạo campaign sau.</p>
+            </div>
+            <Button variant="secondary" onClick={() => void loadContentLibrary(true)}>
+              <MaterialIcon name="refresh" />
+              Tải lại
+            </Button>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {contentLibrary.length ? contentLibrary.map((item) => (
+              <button
+                key={item.id}
+                className="rounded-lg bg-white p-4 text-left transition hover:shadow-soft"
+                type="button"
+                onClick={() => setContentPackage(item.content_json)}
+              >
+                <p className="font-extrabold">{item.title}</p>
+                <p className="mt-1 text-xs font-semibold text-outline">{item.industry || "Chưa ghi ngành"} · {item.goal || "content"}</p>
+                <p className="mt-3 line-clamp-3 text-sm text-on-surface-variant">{item.content_json.summary}</p>
+              </button>
+            )) : (
+              <div className="rounded-lg bg-white p-4 text-sm text-on-surface-variant">Chưa có content đã lưu.</div>
+            )}
+          </div>
+        </div>
       </Card>
 
       <Card className="rounded-lg p-5">

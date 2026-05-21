@@ -131,6 +131,15 @@
 - Trang `Creative` có khu vực `Creator Ads AI`, cho nhập sản phẩm, ngành, khách hàng mục tiêu, offer, chính sách bán hàng và lý do khách phân vân.
 - Content được tạo chỉ để review/copy, chưa tự đăng post và chưa tự launch campaign.
 
+## 2026-05-21 - Ads content library
+
+### Đã bổ sung
+
+- Thêm migration `202605210007_create_ads_content_library.sql`.
+- Thêm `GET/POST /api/ai/content-library` để lưu/lấy gói content đã tạo bằng Creator Ads AI.
+- Trang `Creative` có nút `Lưu vào thư viện` và danh sách content đã lưu.
+- Thư viện content là bước đệm để sau này chọn lại content thắng và đưa vào Campaign Builder.
+
 ## 2026-05-21 - Optimization action history UI
 
 ### Đã bổ sung
