@@ -114,6 +114,7 @@ export function CreativeIntelligenceClient() {
   const [cloneResult, setCloneResult] = useState<CloneResult | null>(null);
   const [cloneLoading, setCloneLoading] = useState<"diagnostics" | "clone" | "adsets" | "">("");
   const [cloneError, setCloneError] = useState("");
+  const [cloneAdsetWarning, setCloneAdsetWarning] = useState("");
 
   const currency = payload?.selectedAccount?.currency || "VND";
   const creatives = useMemo(() => payload?.creatives ?? [], [payload?.creatives]);
@@ -204,20 +205,31 @@ export function CreativeIntelligenceClient() {
     if (next !== "custom") setRange(presetRange(next));
   }
 
-  async function openCloneModal(creative: CreativePerformance) {
+  function openCloneModal(creative: CreativePerformance) {
     setCloneCreative(creative);
     setTargetAdSetId("");
+    setTargetAdsets([]);
     setCloneDiagnostics(null);
     setCloneResult(null);
     setCloneError("");
+    setCloneAdsetWarning("");
+  }
+
+  async function loadTargetAdsets() {
     setCloneLoading("adsets");
+    setCloneAdsetWarning("");
+    setCloneError("");
     try {
       const accountId = selectedAccountId || getDefaultAdAccountId();
       if (!accountId) throw new Error("Chưa chọn tài khoản quảng cáo.");
       const response = await readJson<{ data: AdSet[] }>(`/api/meta/adsets?ad_account_id=${encodeURIComponent(accountId)}`, { force: true });
       setTargetAdsets(response.data ?? []);
     } catch (err) {
-      setCloneError(err instanceof Error ? err.message : "Không thể tải danh sách nhóm quảng cáo đích.");
+      setCloneAdsetWarning(
+        err instanceof Error
+          ? `Không tải được danh sách adset đích: ${err.message}. Bạn vẫn có thể giữ nguyên nhóm quảng cáo gốc để kiểm tra/nhân bản.`
+          : "Không tải được danh sách adset đích. Bạn vẫn có thể giữ nguyên nhóm quảng cáo gốc."
+      );
     } finally {
       setCloneLoading("");
     }
@@ -604,6 +616,7 @@ export function CreativeIntelligenceClient() {
           cloneCreative={cloneCreative}
           diagnostics={cloneDiagnostics}
           error={cloneError}
+          adsetWarning={cloneAdsetWarning}
           loading={cloneLoading}
           onClose={() => {
             setCloneCreative(null);
@@ -612,6 +625,7 @@ export function CreativeIntelligenceClient() {
             setCloneError("");
           }}
           onDiagnostics={() => void runCloneDiagnostics()}
+          onLoadAdsets={() => void loadTargetAdsets()}
           onClone={() => void runCloneAd()}
           result={cloneResult}
           targetAdSetId={targetAdSetId}
@@ -627,9 +641,11 @@ function CloneAdModal({
   cloneCreative,
   diagnostics,
   error,
+  adsetWarning,
   loading,
   onClose,
   onDiagnostics,
+  onLoadAdsets,
   onClone,
   result,
   targetAdSetId,
@@ -639,9 +655,11 @@ function CloneAdModal({
   cloneCreative: CreativePerformance;
   diagnostics: CloneDiagnostics | null;
   error: string;
+  adsetWarning: string;
   loading: "diagnostics" | "clone" | "adsets" | "";
   onClose: () => void;
   onDiagnostics: () => void;
+  onLoadAdsets: () => void;
   onClone: () => void;
   result: CloneResult | null;
   targetAdSetId: string;
@@ -695,6 +713,14 @@ function CloneAdModal({
                   ))}
                 </select>
               </label>
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-surface-container-low p-3 text-sm">
+                <span className="text-on-surface-variant">Muốn copy sang nhóm khác thì tải danh sách adset đích. Không cần thì giữ nguyên nhóm gốc.</span>
+                <Button className="h-9 px-3 text-xs" variant="secondary" disabled={Boolean(loading)} onClick={onLoadAdsets}>
+                  <MaterialIcon name="refresh" />
+                  {loading === "adsets" ? "Đang tải..." : "Tải adset"}
+                </Button>
+              </div>
+              {adsetWarning ? <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{adsetWarning}</div> : null}
               <label className="mt-4 flex items-center gap-2 rounded-lg bg-surface-container-low p-3 text-sm font-semibold">
                 <input checked readOnly type="checkbox" />
                 Tạo bản copy ở trạng thái tạm dừng
@@ -763,6 +789,7 @@ function defaultCloneSteps(): CloneStep[] {
     ["user_ad_account_permission", "User có quyền quản lý"],
     ["ad_account_status", "Ad account không bị hạn chế"],
     ["source_ad", "Đọc được ad gốc"],
+    ["source_ad_account_match", "Ad gốc đúng tài khoản"],
     ["creative", "Đọc được creative gốc"],
     ["target_adset", "Đọc được adset đích"],
     ["clone_result", "Clone endpoint hoặc fallback"]

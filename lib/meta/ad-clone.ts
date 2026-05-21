@@ -11,6 +11,7 @@ export type MetaAdCloneStep = {
     | "user_ad_account_permission"
     | "ad_account_status"
     | "source_ad"
+    | "source_ad_account_match"
     | "creative"
     | "target_adset"
     | "clone_result";
@@ -82,6 +83,7 @@ export type MetaAdsCloneDiagnosticsResult = {
   token?: DebugTokenResponse["data"];
   adAccount?: AdAccount;
   sourceAd?: MetaAd;
+  sourceAdset?: AdSet & { account_id?: string };
   creative?: MetaAdCreative;
   targetAdset?: AdSet;
 };
@@ -142,6 +144,7 @@ function accountMatches(account: AdAccount, adAccountId: string) {
 }
 
 function hasAdManageTask(tasks?: string[]) {
+  if (!tasks) return true;
   const taskSet = new Set((tasks ?? []).map((item) => item.toUpperCase()));
   return taskSet.has("ADVERTISE") || taskSet.has("MANAGE") || taskSet.has("CREATE_CONTENT");
 }
@@ -304,13 +307,24 @@ export async function metaAdsCloneDiagnostics(input: MetaAdsCloneDiagnosticsInpu
 
   let visibleAccount: AdAccount | undefined;
   try {
-    const accounts = (await graph("me/adaccounts", {
-      accessToken: input.accessToken,
-      params: {
-        fields: "id,account_id,name,account_status,disable_reason,user_tasks,business",
-        limit: "100"
-      }
-    })) as MetaAdAccountListResponse;
+    let accounts: MetaAdAccountListResponse;
+    try {
+      accounts = (await graph("me/adaccounts", {
+        accessToken: input.accessToken,
+        params: {
+          fields: "id,account_id,name,account_status,disable_reason,user_tasks,business",
+          limit: "100"
+        }
+      })) as MetaAdAccountListResponse;
+    } catch {
+      accounts = (await graph("me/adaccounts", {
+        accessToken: input.accessToken,
+        params: {
+          fields: "id,account_id,name,account_status,disable_reason",
+          limit: "100"
+        }
+      })) as MetaAdAccountListResponse;
+    }
     visibleAccount = (accounts.data ?? []).find((account) => accountMatches(account, adAccountId));
     if (!visibleAccount) {
       addStep(steps, {
@@ -438,6 +452,45 @@ export async function metaAdsCloneDiagnostics(input: MetaAdsCloneDiagnosticsInpu
     return failResult(steps, { token: tokenData, adAccount: accountDetails });
   }
 
+  let sourceAdset: (AdSet & { account_id?: string }) | undefined;
+  try {
+    sourceAdset = (await graph(sourceAd.adset_id || "", {
+      accessToken: input.accessToken,
+      params: { fields: "id,name,account_id,campaign_id,status,effective_status" }
+    })) as AdSet & { account_id?: string };
+    const sourceAccountId = sourceAdset.account_id ? normalizeMetaAdAccountId(sourceAdset.account_id) : "";
+    if (sourceAccountId && sourceAccountId !== adAccountId) {
+      addStep(steps, {
+        key: "source_ad_account_match",
+        label: "Ad gốc thuộc đúng tài khoản đang chọn",
+        status: "fail",
+        message:
+          "Quảng cáo gốc thuộc tài khoản quảng cáo khác với tài khoản đang chọn. Hãy chọn đúng tài khoản chứa ad này rồi nhân bản lại.",
+        details: {
+          selected_ad_account_id: adAccountId,
+          source_adset_account_id: sourceAccountId,
+          source_adset_id: sourceAdset.id
+        }
+      });
+      return failResult(steps, { token: tokenData, adAccount: accountDetails, sourceAd, sourceAdset });
+    }
+    addStep(steps, {
+      key: "source_ad_account_match",
+      label: "Ad gốc thuộc đúng tài khoản đang chọn",
+      status: "pass",
+      message: "Ad gốc nằm trong tài khoản quảng cáo đang chọn.",
+      details: { source_adset_id: sourceAdset.id, source_adset_account_id: sourceAccountId || "Meta không trả account_id" }
+    });
+  } catch (error) {
+    addStep(steps, {
+      key: "source_ad_account_match",
+      label: "Ad gốc thuộc đúng tài khoản đang chọn",
+      status: "warning",
+      message: "Không đọc được account_id của adset nguồn. App vẫn tiếp tục nhưng nếu fallback fail hãy kiểm tra ad account đang chọn.",
+      details: serializeMetaError(error)
+    });
+  }
+
   let creative: MetaAdCreative | undefined;
   try {
     creative = (await graph(sourceAd.creative?.id || "", {
@@ -518,6 +571,7 @@ export async function metaAdsCloneDiagnostics(input: MetaAdsCloneDiagnosticsInpu
     token: tokenData,
     adAccount: accountDetails,
     sourceAd,
+    sourceAdset,
     creative,
     targetAdset
   };

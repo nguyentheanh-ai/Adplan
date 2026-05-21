@@ -120,7 +120,7 @@ export function classifyMetaError(status: number, payload: MetaApiErrorPayload) 
     lowerMessage.includes("unsupported get request") ||
     lowerMessage.includes("object does not exist")
   ) {
-    userMessage = "Sai ad account id hoặc token không có quyền truy cập tài khoản quảng cáo này.";
+    userMessage = `Meta báo tham số hoặc ID không hợp lệ: ${rawMessage}`;
   }
 
   return new MetaApiError({

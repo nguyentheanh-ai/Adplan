@@ -1216,7 +1216,6 @@ function ScalePanel(props: {
 }) {
   const sourceRows = buildScaleSourceRows(props.campaigns);
   const [campaignQuery, setCampaignQuery] = useState("");
-  const [rowStart, setRowStart] = useState(0);
   const filteredRows = useMemo(() => {
     const query = campaignQuery.trim().toLowerCase();
     if (!query) return sourceRows;
@@ -1224,10 +1223,6 @@ function ScalePanel(props: {
       `${campaign.name} ${campaign.campaignId} ${campaign.objective} ${campaign.status}`.toLowerCase().includes(query)
     );
   }, [campaignQuery, sourceRows]);
-  const visibleCount = 8;
-  const maxStart = Math.max(0, filteredRows.length - visibleCount);
-  const safeStart = Math.min(rowStart, maxStart);
-  const visibleRows = filteredRows.slice(safeStart, safeStart + visibleCount);
   const treeAdsets = props.scaleTree?.adsets ?? [];
   const totalAds = Object.values(props.scaleTree?.ads_by_adset ?? {}).reduce((sum, ads) => sum + ads.length, 0);
   const selectedCampaignForDetail = props.scaleTree?.campaign ?? props.selectedCampaign;
@@ -1331,21 +1326,18 @@ function ScalePanel(props: {
         <Field label="Tìm campaign">
           <Input
             value={campaignQuery}
-            onChange={(event) => {
-              setCampaignQuery(event.target.value);
-              setRowStart(0);
-            }}
+            onChange={(event) => setCampaignQuery(event.target.value)}
             placeholder="Nhập tên hoặc ID chiến dịch..."
           />
         </Field>
         <div className="text-sm text-on-surface-variant">
-          Đang xem {filteredRows.length ? safeStart + 1 : 0}-{Math.min(safeStart + visibleCount, filteredRows.length)} / {filteredRows.length} campaign.
+          Đang có {filteredRows.length} campaign. Dùng con lăn chuột để cuộn danh sách.
         </div>
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
-        <div className="overflow-x-auto rounded-lg border border-outline-variant">
+      <div className="mt-5">
+        <div className="max-h-[620px] overflow-auto rounded-lg border border-outline-variant">
           <table className="min-w-full text-sm">
-            <thead className="bg-surface-container-low text-xs uppercase text-outline">
+            <thead className="sticky top-0 z-10 bg-surface-container-low text-xs uppercase text-outline">
               <tr>
                 <th className="px-4 py-3 text-left">Tên chiến dịch</th>
                 <th className="px-4 py-3">Objective</th>
@@ -1359,7 +1351,7 @@ function ScalePanel(props: {
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((campaign) => (
+              {filteredRows.map((campaign) => (
                 <tr key={campaign.campaignId} className={campaign.campaignId === props.sourceCampaignId ? "bg-primary-fixed/30" : "border-t border-outline-variant"}>
                   <td className="min-w-64 px-4 py-3">
                     <span className="block font-bold">{campaign.name}</span>
@@ -1388,20 +1380,6 @@ function ScalePanel(props: {
             </tbody>
           </table>
         </div>
-        <Field label={`Thanh trượt dọc (${filteredRows.length})`} className="flex md:w-24 md:flex-col md:items-center">
-          <input
-            className="h-full min-h-72 accent-primary [writing-mode:vertical-lr]"
-            disabled={filteredRows.length <= visibleCount}
-            max={maxStart}
-            min={0}
-            onChange={(event) => setRowStart(Number(event.target.value))}
-            type="range"
-            value={safeStart}
-          />
-          <p className="mt-2 text-center text-xs text-on-surface-variant">
-            Kéo dọc để lướt nhanh.
-          </p>
-        </Field>
       </div>
     </Card>
   );
