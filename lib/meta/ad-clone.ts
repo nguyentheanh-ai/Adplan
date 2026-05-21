@@ -38,6 +38,7 @@ export type MetaGraphCaller = (
     method?: string;
     params?: Record<string, string>;
     body?: URLSearchParams;
+    json?: Record<string, unknown>;
     accessToken?: string;
     appAccessToken?: string;
   }
@@ -210,6 +211,7 @@ async function facebookGraphCall(
     method?: string;
     params?: Record<string, string>;
     body?: URLSearchParams;
+    json?: Record<string, unknown>;
     accessToken?: string;
     appAccessToken?: string;
     apiVersion?: string;
@@ -225,11 +227,12 @@ async function facebookGraphCall(
   const headers: HeadersInit = {};
   if (init?.accessToken) headers.Authorization = `Bearer ${init.accessToken}`;
   if (init?.body) headers["Content-Type"] = "application/x-www-form-urlencoded";
+  if (init?.json) headers["Content-Type"] = "application/json";
 
   const response = await fetch(url, {
     method: init?.method ?? "GET",
     headers,
-    body: init?.body,
+    body: init?.json ? JSON.stringify(init.json) : init?.body,
     cache: "no-store"
   });
   const payload = (await response.json().catch(() => ({}))) as { error?: MetaErrorDetails };
@@ -604,6 +607,43 @@ async function createAdFromCreative({
   });
 }
 
+function shouldRetryDirectCopyAsJson(error: MetaErrorDetails) {
+  const message = `${error.message ?? ""} ${error.error_user_title ?? ""} ${error.error_user_msg ?? ""}`.toLowerCase();
+  return error.code === 100 || message.includes("invalid parameter") || message.includes("param");
+}
+
+async function copyAdDirectly({
+  graph,
+  accessToken,
+  sourceAdId,
+  adsetId
+}: {
+  graph: MetaGraphCaller;
+  accessToken: string;
+  sourceAdId: string;
+  adsetId: string;
+}) {
+  const formBody = buildAdCopyBody({ targetAdSetId: adsetId });
+  try {
+    return await graph(sourceAdId + "/copies", {
+      accessToken,
+      method: "POST",
+      body: formBody
+    });
+  } catch (error) {
+    const metaError = serializeMetaError(error);
+    if (!shouldRetryDirectCopyAsJson(metaError)) throw error;
+    return graph(sourceAdId + "/copies", {
+      accessToken,
+      method: "POST",
+      json: {
+        adset_id: adsetId,
+        status_option: "PAUSED"
+      }
+    });
+  }
+}
+
 async function recreateCreative({
   graph,
   accessToken,
@@ -647,13 +687,25 @@ export async function cloneMetaAdWithFallback(input: MetaAdCloneInput): Promise<
   if (!diagnostics.ok || !diagnostics.sourceAd || !diagnostics.creative?.id) {
     return { ok: false, diagnostics, calledEndpoints };
   }
+  const resolvedCopyAdsetId = input.targetAdSetId || diagnostics.sourceAd.adset_id;
+  if (!resolvedCopyAdsetId) {
+    diagnostics.steps.push({
+      key: "clone_result",
+      label: "Clone endpoint hoặc fallback thành công",
+      status: "fail",
+      message: "Không có adset_id nguồn hoặc adset đích nên Meta không thể copy ad.",
+      details: { source_ad_id: input.sourceAdId, target_adset_id: input.targetAdSetId || null }
+    });
+    return { ok: false, diagnostics, calledEndpoints };
+  }
 
   try {
     calledEndpoints.push(`POST /${input.sourceAdId}/copies`);
-    const copied = (await graph(input.sourceAdId + "/copies", {
+    const copied = (await copyAdDirectly({
+      graph,
       accessToken: input.accessToken,
-      method: "POST",
-      body: buildAdCopyBody({ targetAdSetId: input.targetAdSetId })
+      sourceAdId: input.sourceAdId,
+      adsetId: resolvedCopyAdsetId
     })) as { id?: string; copied_ad_id?: string };
     const copiedAdId = copied.copied_ad_id || copied.id;
     let copiedAd: MetaAd | undefined;
@@ -681,7 +733,7 @@ export async function cloneMetaAdWithFallback(input: MetaAdCloneInput): Promise<
         accessToken: input.accessToken,
         adAccountId,
         sourceAd: diagnostics.sourceAd,
-        targetAdSetId: input.targetAdSetId,
+        targetAdSetId: resolvedCopyAdsetId,
         creativeId: diagnostics.creative.id
       });
       const copiedAdId = (fallback as { id?: string }).id;
@@ -720,7 +772,7 @@ export async function cloneMetaAdWithFallback(input: MetaAdCloneInput): Promise<
           accessToken: input.accessToken,
           adAccountId,
           sourceAd: diagnostics.sourceAd,
-          targetAdSetId: input.targetAdSetId,
+          targetAdSetId: resolvedCopyAdsetId,
           creativeId: newCreativeId
         });
         const copiedAdId = (fallback as { id?: string }).id;
