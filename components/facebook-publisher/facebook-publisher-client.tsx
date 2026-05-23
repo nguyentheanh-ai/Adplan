@@ -12,6 +12,7 @@ type FacebookPage = {
   id: string;
   name: string;
   category?: string;
+  has_access_token?: boolean;
 };
 
 type PublishResult = {
@@ -147,13 +148,14 @@ export function FacebookPublisherClient() {
   }, []);
 
   const selectedPage = useMemo(() => pages.find((page) => page.id === selectedPageId), [pages, selectedPageId]);
+  const selectedPageCanPublish = selectedPage?.has_access_token !== false;
   const selectedInboxDrafts = useMemo(
     () => draftInbox.filter((item) => selectedDraftIds.includes(item.id)),
     [draftInbox, selectedDraftIds]
   );
   const imagePreview = draft.imageDataUrl || draft.imageUrl || "";
-  const canPublish = Boolean(selectedPageId && draft.message.trim() && approved && !isPublishing);
-  const canBatchPublish = Boolean(selectedDraftIds.length && selectedPageId && approved && !isPublishing);
+  const canPublish = Boolean(selectedPageId && selectedPageCanPublish && draft.message.trim() && approved && !isPublishing);
+  const canBatchPublish = Boolean(selectedDraftIds.length && selectedPageId && selectedPageCanPublish && approved && !isPublishing);
 
   function updateDraft(patch: Partial<NormalizedAgentPostDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
@@ -416,7 +418,7 @@ export function FacebookPublisherClient() {
               >
                 {pages.map((page) => (
                   <option key={page.id} value={page.id}>
-                    {page.name} {page.category ? `- ${page.category}` : ""}
+                    {page.name} {page.category ? `- ${page.category}` : ""} {page.has_access_token === false ? "(thiếu quyền đăng)" : ""}
                   </option>
                 ))}
               </select>
@@ -424,7 +426,7 @@ export function FacebookPublisherClient() {
                 <MaterialIcon name={defaultPageId === selectedPageId ? "star" : "star_border"} />
                 {defaultPageId === selectedPageId ? "Page mặc định" : "Đặt mặc định"}
               </Button>
-              <Button variant="secondary" onClick={() => window.location.assign("/api/auth/facebook/start")}>
+              <Button variant="secondary" onClick={() => window.location.assign("/api/auth/facebook/start?force=1")}>
                 <MaterialIcon name="sync" />
                 Kết nối lại
               </Button>
@@ -435,12 +437,21 @@ export function FacebookPublisherClient() {
               <p className="mt-2 text-sm leading-6 text-on-surface-variant">
                 Hãy đăng nhập lại Facebook và cấp quyền pages_show_list, pages_read_engagement, pages_manage_posts.
               </p>
-              <Button className="mt-4" onClick={() => window.location.assign("/api/auth/facebook/start")}>
+              <Button className="mt-4" onClick={() => window.location.assign("/api/auth/facebook/start?force=1")}>
                 <MaterialIcon name="login" />
                 Đăng nhập Facebook
               </Button>
             </div>
           )}
+          {selectedPage && selectedPage.has_access_token === false ? (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+              <p className="font-bold">Facebook thấy Page này nhưng chưa trả Page Access Token.</p>
+              <p className="mt-1">
+                Cách xử lý: bấm Kết nối lại, chọn đúng Page ở màn Facebook, bật quyền tạo/quản lý bài viết. Nếu vẫn chưa được,
+                kiểm tra tài khoản Facebook có Full control hoặc content task trên Page trong Business Manager.
+              </p>
+            </div>
+          ) : null}
         </Card>
 
         <Card>

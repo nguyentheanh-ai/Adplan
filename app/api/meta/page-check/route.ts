@@ -37,11 +37,15 @@ export async function GET(request: Request) {
       });
     }
 
+    const hasPageAccessToken = Boolean(matched.access_token);
+
     return NextResponse.json({
       data: {
-        ok: true,
+        ok: hasPageAccessToken,
         page: sanitizeMetaPage(matched),
-        message: "Tài khoản Facebook hiện tại có quyền với Fanpage này."
+        message: hasPageAccessToken
+          ? "Tài khoản Facebook hiện tại có quyền đăng với Fanpage này."
+          : "Tài khoản Facebook thấy được Fanpage này, nhưng Facebook chưa trả Page Access Token. Hãy kết nối lại Facebook, cấp pages_manage_posts và kiểm tra quyền quản trị/content task trên Page."
       }
     });
   } catch (error) {

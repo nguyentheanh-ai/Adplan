@@ -483,7 +483,8 @@ export function sanitizeMetaPage(page: { id: string; name: string; category?: st
   return {
     id: page.id,
     name: page.name,
-    category: page.category
+    category: page.category,
+    has_access_token: Boolean(page.access_token)
   };
 }
 

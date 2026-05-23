@@ -7,12 +7,7 @@ import {
 } from "@/lib/agent-keys";
 import { buildFacebookPublishPayload, dataUrlToFilePart } from "@/lib/facebook-publisher";
 import { requireFacebookProviderTokenForUser } from "@/lib/meta/auth-token";
-import {
-  getMetaManagedPageAccessToken,
-  metaErrorResponse,
-  publishMetaPageFeedPost,
-  publishMetaPagePhotoPost
-} from "@/lib/meta/facebook";
+import { getMetaManagedPages, metaErrorResponse, publishMetaPageFeedPost, publishMetaPagePhotoPost } from "@/lib/meta/facebook";
 
 const publishSchema = z.object({
   page_id: z.string().trim().min(1),
@@ -56,13 +51,16 @@ export async function POST(request: Request) {
     keyId = record.id;
 
     const accessToken = await requireFacebookProviderTokenForUser(record.user_id);
-    const pageAccessToken = await getMetaManagedPageAccessToken(payload.pageId, accessToken);
+    const pages = await getMetaManagedPages(accessToken);
+    const selectedPage = pages.find((page) => page.id === payload.pageId);
+    const pageAccessToken = selectedPage?.access_token || null;
 
     if (!pageAccessToken) {
       return NextResponse.json(
         {
-          error:
-            "Không lấy được Page Access Token cho Fanpage này. Hãy yêu cầu khách đăng nhập lại Facebook và cấp quyền pages_show_list/pages_manage_posts."
+          error: selectedPage
+            ? "Fanpage đã chọn đúng, nhưng Facebook chưa trả Page Access Token cho Page này. Hãy yêu cầu khách bấm Kết nối lại để cấp lại pages_show_list/pages_manage_posts, kiểm tra tài khoản Facebook có quyền quản trị hoặc content task trên Page, rồi thử đăng lại."
+            : "Token Facebook hiện tại không còn thấy Fanpage đã chọn. Hãy yêu cầu khách kết nối lại Facebook, cấp pages_show_list/pages_manage_posts và chọn lại đúng Page."
         },
         { status: 403 }
       );
