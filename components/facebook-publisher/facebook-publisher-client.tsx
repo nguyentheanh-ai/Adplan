@@ -22,7 +22,20 @@ type PublishResult = {
   photo_id?: string;
 };
 
+type DraftSummary = {
+  published: number;
+  draft: number;
+  hidden: number;
+  scheduled: number;
+};
+
 const defaultPageStorageKey = "adplan-facebook-publisher-default-page-id";
+const emptyDraftSummary: DraftSummary = {
+  published: 0,
+  draft: 0,
+  hidden: 0,
+  scheduled: 0
+};
 
 const starterDraft: NormalizedAgentPostDraft = {
   title: "Bài đăng mới từ Agent",
@@ -67,6 +80,7 @@ export function FacebookPublisherClient() {
   const [draft, setDraft] = useState<NormalizedAgentPostDraft>(starterDraft);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [draftInbox, setDraftInbox] = useState<FacebookDraftInboxItem[]>([]);
+  const [draftSummary, setDraftSummary] = useState<DraftSummary>(emptyDraftSummary);
   const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
   const [draftScheduleValues, setDraftScheduleValues] = useState<Record<string, string>>({});
   const [agentJson, setAgentJson] = useState("");
@@ -79,8 +93,9 @@ export function FacebookPublisherClient() {
 
   async function loadDraftInbox() {
     try {
-      const payload = await readJson<{ data: FacebookDraftInboxItem[]; storage?: string }>("/api/facebook-publisher/drafts");
+      const payload = await readJson<{ data: FacebookDraftInboxItem[]; summary?: DraftSummary; storage?: string }>("/api/facebook-publisher/drafts");
       setDraftInbox(payload.data ?? []);
+      setDraftSummary(payload.summary ?? emptyDraftSummary);
       setSelectedDraftIds((current) => current.filter((id) => (payload.data ?? []).some((item) => item.id === id)));
       setDraftScheduleValues((current) => {
         const next: Record<string, string> = {};
@@ -124,10 +139,11 @@ export function FacebookPublisherClient() {
 
   useEffect(() => {
     let cancelled = false;
-    readJson<{ data: FacebookDraftInboxItem[]; storage?: string }>("/api/facebook-publisher/drafts")
+    readJson<{ data: FacebookDraftInboxItem[]; summary?: DraftSummary; storage?: string }>("/api/facebook-publisher/drafts")
       .then((payload) => {
         if (cancelled) return;
         setDraftInbox(payload.data ?? []);
+        setDraftSummary(payload.summary ?? emptyDraftSummary);
         setDraftScheduleValues((current) => {
           const next: Record<string, string> = {};
           for (const item of payload.data ?? []) {
@@ -197,8 +213,15 @@ export function FacebookPublisherClient() {
     setNotice("Đã nạp draft Agent vào preview. Khách chỉ cần kiểm tra, tick duyệt và bấm đăng.");
   }
 
-  function toggleInboxDraft(itemId: string) {
-    setSelectedDraftIds((current) => (current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId]));
+  function toggleInboxDraft(item: FacebookDraftInboxItem) {
+    setSelectedDraftIds((current) => {
+      if (current.includes(item.id)) return current.filter((id) => id !== item.id);
+      return [...current, item.id];
+    });
+
+    if (!selectedDraftIds.includes(item.id)) {
+      applyInboxDraft(item);
+    }
   }
 
   function updateDraftSchedule(itemId: string, value: string) {
@@ -235,13 +258,13 @@ export function FacebookPublisherClient() {
     reader.readAsDataURL(file);
   }
 
-  async function markDraftDone(draftId: string, result: PublishResult) {
+  async function markDraftDone(draftId: string, result: PublishResult, status: "published" | "scheduled" = "published") {
     await readJson<{ data: FacebookDraftInboxItem }>("/api/facebook-publisher/drafts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: draftId,
-        status: "published",
+        status,
         publish_result: result
       })
     });
@@ -253,6 +276,7 @@ export function FacebookPublisherClient() {
       return next;
     });
     if (activeDraftId === draftId) setActiveDraftId(null);
+    await loadDraftInbox();
   }
 
   async function hideDraft(draftId: string) {
@@ -277,9 +301,15 @@ export function FacebookPublisherClient() {
       setDraft(starterDraft);
       setApproved(false);
     }
+    await loadDraftInbox();
   }
 
-  async function publishOne(options?: { draftToPublish?: NormalizedAgentPostDraft; pageId?: string; draftId?: string | null }) {
+  async function publishOne(options?: {
+    draftToPublish?: NormalizedAgentPostDraft;
+    pageId?: string;
+    draftId?: string | null;
+    completionStatus?: "published" | "scheduled";
+  }) {
     const draftToPublish = options?.draftToPublish ?? draft;
     const pageId = options?.pageId || selectedPageId;
     if (!pageId) {
@@ -296,7 +326,7 @@ export function FacebookPublisherClient() {
     });
 
     if (options?.draftId) {
-      await markDraftDone(options.draftId, payload.data);
+      await markDraftDone(options.draftId, payload.data, options.completionStatus);
     }
 
     return payload.data;
@@ -309,7 +339,10 @@ export function FacebookPublisherClient() {
     setIsPublishing(true);
 
     try {
-      const result = await publishOne({ draftId: activeDraftId });
+      const result = await publishOne({
+        draftId: activeDraftId,
+        completionStatus: draft.scheduledPublishTime ? "scheduled" : "published"
+      });
       setPublishResult(result);
       setNotice(draft.scheduledPublishTime ? "Đã lên lịch đăng tự động trên Meta. Draft đã được ẩn khỏi hàng chờ." : "Đã gửi bài sang Meta. Draft đã được ẩn khỏi hàng chờ.");
     } catch (publishError) {
@@ -328,7 +361,12 @@ export function FacebookPublisherClient() {
     try {
       let successCount = 0;
       for (const item of selectedInboxDrafts) {
-        await publishOne({ draftToPublish: { ...item.draft, approved: true }, pageId: selectedPageId, draftId: item.id });
+        await publishOne({
+          draftToPublish: { ...item.draft, approved: true },
+          pageId: selectedPageId,
+          draftId: item.id,
+          completionStatus: item.draft.scheduledPublishTime ? "scheduled" : "published"
+        });
         successCount += 1;
       }
       setNotice(`Đã gửi ${successCount} bài sang Meta. Các bài đã đăng/lên lịch được ẩn khỏi hàng chờ.`);
@@ -377,7 +415,8 @@ export function FacebookPublisherClient() {
       const result = await publishOne({
         draftToPublish: { ...item.draft, scheduledPublishTime, approved: true },
         pageId: selectedPageId,
-        draftId: item.id
+        draftId: item.id,
+        completionStatus: "scheduled"
       });
       setPublishResult(result);
       setNotice("Đã lên lịch đăng bài và ẩn khỏi hàng chờ.");
@@ -462,6 +501,39 @@ export function FacebookPublisherClient() {
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
+                <CardTitle>Báo cáo đăng bài</CardTitle>
+                <CardDescription>Theo dõi nhanh trạng thái bài viết trong hệ thống.</CardDescription>
+              </div>
+              <Button variant="secondary" onClick={loadDraftInbox}>
+                <MaterialIcon name="refresh" />
+                Cập nhật
+              </Button>
+            </div>
+          </CardHeader>
+          <div className="grid gap-3 p-6 pt-0 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-outline-variant bg-white p-4">
+              <p className="text-sm font-bold text-on-surface-variant">Bài đã đăng</p>
+              <p className="mt-2 text-3xl font-extrabold text-on-surface">{draftSummary.published}</p>
+            </div>
+            <div className="rounded-lg border border-outline-variant bg-white p-4">
+              <p className="text-sm font-bold text-on-surface-variant">Bài Draft</p>
+              <p className="mt-2 text-3xl font-extrabold text-on-surface">{draftSummary.draft}</p>
+            </div>
+            <div className="rounded-lg border border-outline-variant bg-white p-4">
+              <p className="text-sm font-bold text-on-surface-variant">Bài đã xóa</p>
+              <p className="mt-2 text-3xl font-extrabold text-on-surface">{draftSummary.hidden}</p>
+            </div>
+            <div className="rounded-lg border border-outline-variant bg-white p-4">
+              <p className="text-sm font-bold text-on-surface-variant">Bài đang lên lịch</p>
+              <p className="mt-2 text-3xl font-extrabold text-on-surface">{draftSummary.scheduled}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
                 <CardTitle>Draft Agent chờ duyệt</CardTitle>
                 <CardDescription>Chọn một bài để sửa, hoặc tick nhiều bài để đăng/lên lịch hàng loạt.</CardDescription>
               </div>
@@ -494,7 +566,7 @@ export function FacebookPublisherClient() {
                         aria-label={`Chọn ${item.draft.title}`}
                         className="mt-1"
                         checked={isSelected}
-                        onChange={() => toggleInboxDraft(item.id)}
+                        onChange={() => toggleInboxDraft(item)}
                         type="checkbox"
                       />
                       <div className="min-w-0 flex-1">
