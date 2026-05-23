@@ -49,6 +49,7 @@ const starterDraft: NormalizedAgentPostDraft = {
   link: "",
   imageUrl: "",
   imageDataUrl: "",
+  media: [],
   approved: false
 };
 
@@ -80,7 +81,22 @@ function fromDateTimeLocalValue(value: string) {
 }
 
 function getDraftImageSrc(draft: NormalizedAgentPostDraft) {
-  return draft.imageDataUrl || draft.imageUrl || "";
+  return getDraftImages(draft)[0]?.src || "";
+}
+
+function getDraftImages(draft: NormalizedAgentPostDraft) {
+  const media = draft.media?.length
+    ? draft.media
+    : draft.imageDataUrl || draft.imageUrl
+      ? [{ dataUrl: draft.imageDataUrl, url: draft.imageUrl, alt: draft.imageAlt }]
+      : [];
+
+  return media
+    .map((item, index) => ({
+      src: item.dataUrl || item.url || "",
+      alt: item.alt || draft.imageAlt || `${draft.title} ${index + 1}`
+    }))
+    .filter((item) => item.src);
 }
 
 function sortDraftsByCreatedAt(items: FacebookDraftInboxItem[]) {
@@ -183,7 +199,7 @@ export function FacebookPublisherClient() {
     () => draftInbox.filter((item) => selectedDraftIds.includes(item.id)),
     [draftInbox, selectedDraftIds]
   );
-  const imagePreview = getDraftImageSrc(draft);
+  const draftImages = getDraftImages(draft);
   const canPublish = Boolean(selectedPageId && selectedPageCanPublish && draft.message.trim() && approved && !isPublishing);
   const canBatchPublish = Boolean(selectedDraftIds.length && selectedPageId && selectedPageCanPublish && approved && !isPublishing);
 
@@ -264,28 +280,63 @@ export function FacebookPublisherClient() {
       caption: "Bạn đang có content nhưng chưa biến nó thành lịch đăng đều?\nAdplan AI giúp nạp draft, duyệt và đăng lên Fanpage từ một màn hình.",
       cta: "Inbox để nhận tư vấn",
       link: "https://www.theanhmarketing.com/",
-      image: {
-        url: "",
-        alt: "Ảnh social post do Agent tạo"
-      },
+      media: [
+        {
+          url: "",
+          alt: "Ảnh social post do Agent tạo"
+        }
+      ],
       approved: false
     };
     setAgentJson(JSON.stringify(example, null, 2));
   }
 
-  async function handleImageFile(file?: File | null) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
+  async function readImageFile(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Không đọc được file ảnh."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleImageFiles(files?: FileList | null) {
+    const selectedFiles = Array.from(files ?? []);
+    if (!selectedFiles.length) return;
+    if (selectedFiles.some((file) => !file.type.startsWith("image/"))) {
       setError("File upload phải là ảnh.");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateDraft({ imageDataUrl: String(reader.result || ""), imageUrl: "" });
-    };
-    reader.onerror = () => setError("Không đọc được file ảnh.");
-    reader.readAsDataURL(file);
+    try {
+      const uploadedMedia = await Promise.all(
+        selectedFiles.map(async (file) => ({
+          dataUrl: await readImageFile(file),
+          alt: file.name
+        }))
+      );
+      updateDraft({
+        imageDataUrl: uploadedMedia[0]?.dataUrl || "",
+        imageUrl: "",
+        imageAlt: uploadedMedia[0]?.alt || "",
+        media: uploadedMedia
+      });
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Không đọc được file ảnh.");
+    }
+  }
+
+  function updateDraftMediaUrls(value: string) {
+    const urls = value
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    updateDraft({
+      imageUrl: urls[0] || "",
+      imageDataUrl: "",
+      media: urls.map((url) => ({ url }))
+    });
   }
 
   async function markDraftDone(draftId: string, result: PublishResult, status: "published" | "scheduled" = "published") {
@@ -760,17 +811,34 @@ export function FacebookPublisherClient() {
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
                 <span className="text-sm font-bold text-on-surface">Link ảnh public</span>
-                <Input
-                  placeholder="https://..."
-                  value={draft.imageUrl || ""}
-                  onChange={(event) => updateDraft({ imageUrl: event.target.value, imageDataUrl: "" })}
+                <Textarea
+                  className="min-h-[112px]"
+                  placeholder={"https://...\nhttps://..."}
+                  value={draft.media?.length ? draft.media.map((item) => item.url || "").filter(Boolean).join("\n") : draft.imageUrl || ""}
+                  onChange={(event) => updateDraftMediaUrls(event.target.value)}
                 />
               </label>
               <label className="space-y-2">
                 <span className="text-sm font-bold text-on-surface">Upload ảnh từ Agent</span>
-                <Input type="file" accept="image/*" onChange={(event) => handleImageFile(event.target.files?.[0])} />
+                <Input type="file" multiple accept="image/*" onChange={(event) => void handleImageFiles(event.target.files)} />
               </label>
             </div>
+            {draftImages.length ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {draftImages.map((item, index) => (
+                  <button
+                    key={`${item.src}-${index}`}
+                    className="group relative aspect-square overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low"
+                    onClick={() => setImageModal({ src: item.src, alt: item.alt })}
+                    type="button"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img alt={item.alt} className="h-full w-full object-cover transition group-hover:scale-105" src={item.src} />
+                    <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-1 text-xs font-bold text-white">Ảnh {index + 1}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </Card>
       </div>
@@ -796,9 +864,20 @@ export function FacebookPublisherClient() {
             </div>
             <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-on-surface">{draft.message || "Caption sẽ hiển thị ở đây."}</p>
             {draft.link ? <p className="mt-3 break-all text-sm font-bold text-primary">{draft.link}</p> : null}
-            {imagePreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img alt={draft.imageAlt || "Ảnh bài đăng"} className="mt-4 aspect-square w-full rounded-lg object-cover" src={imagePreview} />
+            {draftImages.length ? (
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {draftImages.map((item, index) => (
+                  <button
+                    key={`${item.src}-${index}`}
+                    className={draftImages.length === 1 ? "col-span-2 overflow-hidden rounded-lg" : "overflow-hidden rounded-lg"}
+                    onClick={() => setImageModal({ src: item.src, alt: item.alt })}
+                    type="button"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img alt={item.alt} className="aspect-square w-full object-cover" src={item.src} />
+                  </button>
+                ))}
+              </div>
             ) : (
               <div className="mt-4 flex aspect-square items-center justify-center rounded-lg bg-surface-container-low text-sm font-bold text-on-surface-variant">
                 Chưa có ảnh

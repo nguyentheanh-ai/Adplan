@@ -9,6 +9,12 @@ const imageSchema = z
   .optional()
   .nullable();
 
+const mediaItemSchema = z.object({
+  url: z.string().trim().optional().nullable(),
+  dataUrl: z.string().trim().optional().nullable(),
+  alt: z.string().trim().optional().nullable()
+});
+
 const rawAgentDraftSchema = z
   .object({
     title: z.string().trim().optional().nullable(),
@@ -21,10 +27,18 @@ const rawAgentDraftSchema = z
     imageDataUrl: z.string().trim().optional().nullable(),
     imageAlt: z.string().trim().optional().nullable(),
     image: imageSchema,
+    media: z.array(mediaItemSchema).optional().nullable(),
+    mediaUrls: z.array(z.string().trim()).optional().nullable(),
     approved: z.boolean().optional().nullable(),
     scheduledPublishTime: z.string().trim().optional().nullable()
   })
   .passthrough();
+
+export type NormalizedAgentPostMedia = {
+  url?: string;
+  dataUrl?: string;
+  alt?: string;
+};
 
 export type NormalizedAgentPostDraft = {
   title: string;
@@ -33,6 +47,7 @@ export type NormalizedAgentPostDraft = {
   imageUrl?: string;
   imageDataUrl?: string;
   imageAlt?: string;
+  media: NormalizedAgentPostMedia[];
   approved: boolean;
   scheduledPublishTime?: string;
 };
@@ -51,6 +66,13 @@ export type FacebookPublishPayload =
       caption: string;
       imageUrl?: string;
       imageDataUrl?: string;
+      scheduledPublishTime?: string;
+    }
+  | {
+      mode: "multi_photo";
+      pageId: string;
+      message: string;
+      media: NormalizedAgentPostMedia[];
       scheduledPublishTime?: string;
     };
 
@@ -72,6 +94,7 @@ export function normalizeAgentPostDraft(input: unknown): NormalizedAgentPostDraf
   const imageUrl = raw.imageUrl || raw.image?.url || undefined;
   const imageDataUrl = raw.imageDataUrl || raw.image?.dataUrl || undefined;
   const imageAlt = raw.imageAlt || raw.image?.alt || undefined;
+  const media = normalizeMediaItems(raw.media, raw.mediaUrls, { imageUrl, imageDataUrl, imageAlt });
 
   return {
     title,
@@ -80,6 +103,7 @@ export function normalizeAgentPostDraft(input: unknown): NormalizedAgentPostDraf
     imageUrl,
     imageDataUrl,
     imageAlt,
+    media,
     approved: raw.approved === true,
     scheduledPublishTime: raw.scheduledPublishTime || undefined
   };
@@ -108,21 +132,34 @@ export function buildFacebookPublishPayload(
     throw new Error("Link bài đăng phải bắt đầu bằng http:// hoặc https://.");
   }
 
-  if (draft.imageUrl && !isHttpUrl(draft.imageUrl)) {
-    throw new Error("Link ảnh phải bắt đầu bằng http:// hoặc https://.");
+  for (const item of draft.media) {
+    if (item.url && !isHttpUrl(item.url)) {
+      throw new Error("Link ảnh phải bắt đầu bằng http:// hoặc https://.");
+    }
+
+    if (item.dataUrl && !item.dataUrl.startsWith("data:image/")) {
+      throw new Error("File ảnh upload phải là data URL dạng image.");
+    }
   }
 
-  if (draft.imageDataUrl && !draft.imageDataUrl.startsWith("data:image/")) {
-    throw new Error("File ảnh upload phải là data URL dạng image.");
+  if (draft.media.length > 1) {
+    return {
+      mode: "multi_photo",
+      pageId,
+      message: [draft.message, draft.link].filter(Boolean).join("\n\n"),
+      media: draft.media,
+      scheduledPublishTime: draft.scheduledPublishTime
+    };
   }
 
-  if (draft.imageUrl || draft.imageDataUrl) {
+  if (draft.media.length === 1) {
+    const image = draft.media[0];
     return {
       mode: "photo",
       pageId,
       caption: [draft.message, draft.link].filter(Boolean).join("\n\n"),
-      imageUrl: draft.imageUrl,
-      imageDataUrl: draft.imageDataUrl,
+      imageUrl: image.url,
+      imageDataUrl: image.dataUrl,
       scheduledPublishTime: draft.scheduledPublishTime
     };
   }
@@ -150,6 +187,37 @@ export function dataUrlToFilePart(dataUrl: string) {
     blob: new Blob([buffer], { type: mimeType }),
     fileName: `agent-post-image.${extension}`
   };
+}
+
+function normalizeMediaItems(
+  media?: Array<{ url?: string | null; dataUrl?: string | null; alt?: string | null }> | null,
+  mediaUrls?: string[] | null,
+  legacy?: { imageUrl?: string; imageDataUrl?: string; imageAlt?: string }
+) {
+  const items: NormalizedAgentPostMedia[] = [];
+
+  for (const item of media ?? []) {
+    const normalized = {
+      url: item.url || undefined,
+      dataUrl: item.dataUrl || undefined,
+      alt: item.alt || undefined
+    };
+    if (normalized.url || normalized.dataUrl) items.push(normalized);
+  }
+
+  for (const url of mediaUrls ?? []) {
+    if (url) items.push({ url });
+  }
+
+  if (!items.length && (legacy?.imageUrl || legacy?.imageDataUrl)) {
+    items.push({
+      url: legacy.imageUrl,
+      dataUrl: legacy.imageDataUrl,
+      alt: legacy.imageAlt
+    });
+  }
+
+  return items;
 }
 
 export function normalizeFacebookDraftRow(row: {

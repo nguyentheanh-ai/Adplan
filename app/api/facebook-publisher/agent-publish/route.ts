@@ -7,7 +7,14 @@ import {
 } from "@/lib/agent-keys";
 import { buildFacebookPublishPayload, dataUrlToFilePart } from "@/lib/facebook-publisher";
 import { requireFacebookProviderTokenForUser } from "@/lib/meta/auth-token";
-import { getMetaManagedPages, metaErrorResponse, publishMetaPageFeedPost, publishMetaPagePhotoPost } from "@/lib/meta/facebook";
+import {
+  getMetaManagedPages,
+  metaErrorResponse,
+  publishMetaPageFeedPost,
+  publishMetaPageMultiPhotoPost,
+  publishMetaPagePhotoPost,
+  uploadMetaPageUnpublishedPhoto
+} from "@/lib/meta/facebook";
 
 const publishSchema = z.object({
   page_id: z.string().trim().min(1),
@@ -97,6 +104,51 @@ export async function POST(request: Request) {
           page_id: payload.pageId,
           photo_id: result.id,
           post_id: result.post_id || result.id
+        }
+      });
+    }
+
+    if (payload.mode === "multi_photo") {
+      const uploadedPhotos = [];
+      for (const [index, media] of payload.media.entries()) {
+        const filePart = media.dataUrl ? dataUrlToFilePart(media.dataUrl) : null;
+        const photo = await uploadMetaPageUnpublishedPhoto({
+          pageId: payload.pageId,
+          imageUrl: media.url,
+          imageBlob: filePart?.blob,
+          fileName: filePart ? `agent-post-image-${index + 1}.${filePart.fileName.split(".").pop() || "png"}` : undefined,
+          accessToken: pageAccessToken
+        });
+        uploadedPhotos.push(photo);
+      }
+
+      const result = await publishMetaPageMultiPhotoPost({
+        pageId: payload.pageId,
+        message: payload.message,
+        mediaFbids: uploadedPhotos.map((photo) => photo.id),
+        scheduledPublishTime: payload.scheduledPublishTime,
+        accessToken: pageAccessToken
+      });
+
+      await touchAgentIngestKey(record.id);
+      await logAgentIngestEvent({
+        userId,
+        agentKeyId: record.id,
+        action: "direct_publish",
+        pageId: payload.pageId,
+        title,
+        status: "success",
+        postId: result.id,
+        requestJson: { mode: "multi_photo", media_count: uploadedPhotos.length },
+        responseJson: { photo_ids: uploadedPhotos.map((photo) => photo.id), post_id: result.id }
+      });
+
+      return NextResponse.json({
+        data: {
+          mode: "photo",
+          page_id: payload.pageId,
+          photo_id: uploadedPhotos[0]?.id,
+          post_id: result.id
         }
       });
     }

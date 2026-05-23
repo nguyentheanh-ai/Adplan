@@ -19,6 +19,7 @@ describe("normalizeAgentPostDraft", () => {
     expect(draft.message).toContain("CTA: Nhắn tin ngay");
     expect(draft.imageUrl).toBe("https://example.com/post.png");
     expect(draft.imageAlt).toBe("Ảnh social post spa");
+    expect(draft.media).toEqual([{ url: "https://example.com/post.png", dataUrl: undefined, alt: "Ảnh social post spa" }]);
     expect(draft.link).toBe("https://theanhmarketing.com/spa");
   });
 
@@ -33,7 +34,21 @@ describe("normalizeAgentPostDraft", () => {
     expect(draft.approved).toBe(true);
     expect(draft.message).toBe("Caption đã duyệt");
     expect(draft.imageUrl).toBe("https://example.com/creative.jpg");
+    expect(draft.media).toEqual([{ url: "https://example.com/creative.jpg", dataUrl: undefined, alt: undefined }]);
     expect(draft.scheduledPublishTime).toBe("2026-06-01T03:00:00.000Z");
+  });
+
+  it("accepts multiple media items from agent drafts", () => {
+    const draft = normalizeAgentPostDraft({
+      message: "Caption",
+      media: [
+        { url: "https://example.com/1.jpg", alt: "Ảnh 1" },
+        { url: "https://example.com/2.jpg", alt: "Ảnh 2" }
+      ]
+    });
+
+    expect(draft.media).toHaveLength(2);
+    expect(draft.media[1]?.url).toBe("https://example.com/2.jpg");
   });
 });
 
@@ -71,6 +86,21 @@ describe("buildFacebookPublishPayload", () => {
     expect(payload.link).toBe("https://example.com");
   });
 
+  it("builds a multi-photo payload when the draft has multiple images", () => {
+    const payload = buildFacebookPublishPayload(
+      {
+        message: "Caption",
+        media: [{ url: "https://example.com/1.jpg" }, { url: "https://example.com/2.jpg" }]
+      },
+      { approved: true, pageId: "123" }
+    );
+
+    expect(payload.mode).toBe("multi_photo");
+    if (payload.mode !== "multi_photo") throw new Error("Expected multi-photo payload");
+    expect(payload.media).toHaveLength(2);
+    expect(payload.message).toBe("Caption");
+  });
+
   it("blocks publish when the customer has not approved the draft", () => {
     expect(() =>
       buildFacebookPublishPayload(
@@ -102,5 +132,6 @@ describe("normalizeFacebookDraftRow", () => {
     expect(row.status).toBe("draft");
     expect(row.draft.message).toBe("Caption từ Agent");
     expect(row.draft.imageUrl).toBe("https://example.com/post.jpg");
+    expect(row.draft.media).toHaveLength(1);
   });
 });

@@ -596,6 +596,87 @@ export async function publishMetaPagePhotoPost({
   });
 }
 
+export async function uploadMetaPageUnpublishedPhoto({
+  pageId,
+  imageUrl,
+  imageBlob,
+  fileName = "agent-post-image.png",
+  accessToken
+}: {
+  pageId: string;
+  imageUrl?: string;
+  imageBlob?: Blob;
+  fileName?: string;
+  accessToken?: string | null;
+}) {
+  if (!imageUrl && !imageBlob) {
+    throw new MetaApiError({
+      status: 400,
+      message: "Missing photo source",
+      userMessage: "Thiếu ảnh để đăng bài nhiều ảnh lên Fanpage."
+    });
+  }
+
+  let body: URLSearchParams | FormData;
+  let headers: Record<string, string> | undefined;
+
+  if (imageBlob) {
+    const form = new FormData();
+    form.set("published", "false");
+    form.set("source", imageBlob, fileName);
+    body = form;
+  } else {
+    const params = new URLSearchParams({ published: "false", url: imageUrl || "" });
+    body = params;
+    headers = { "Content-Type": "application/x-www-form-urlencoded" };
+  }
+
+  return metaFetch<{ id: string }>(`${pageId}/photos`, {
+    accessToken,
+    method: "POST",
+    headers,
+    body
+  });
+}
+
+export async function publishMetaPageMultiPhotoPost({
+  pageId,
+  message,
+  mediaFbids,
+  scheduledPublishTime,
+  accessToken
+}: {
+  pageId: string;
+  message: string;
+  mediaFbids: string[];
+  scheduledPublishTime?: string;
+  accessToken?: string | null;
+}) {
+  if (!mediaFbids.length) {
+    throw new MetaApiError({
+      status: 400,
+      message: "Missing attached media",
+      userMessage: "Thiếu ảnh đã upload để tạo bài nhiều ảnh."
+    });
+  }
+
+  const body = new URLSearchParams({ message });
+  mediaFbids.forEach((mediaFbid, index) => {
+    body.set(`attached_media[${index}]`, JSON.stringify({ media_fbid: mediaFbid }));
+  });
+  if (scheduledPublishTime) {
+    body.set("published", "false");
+    body.set("scheduled_publish_time", String(Math.floor(new Date(scheduledPublishTime).getTime() / 1000)));
+  }
+
+  return metaFetch<{ id: string }>(`${pageId}/feed`, {
+    accessToken,
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+}
+
 function resolveBreakdown(breakdown: BreakdownType) {
   if (breakdown === "placement") return "publisher_platform";
   return breakdown;
