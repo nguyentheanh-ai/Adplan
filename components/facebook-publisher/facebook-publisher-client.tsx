@@ -7,6 +7,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Input, Textarea } from "@/components/ui/input";
 import { MaterialIcon } from "@/components/material-icon";
 import { normalizeAgentPostDraft, type FacebookDraftInboxItem, type NormalizedAgentPostDraft } from "@/lib/facebook-publisher";
+import { AgentKeyManager } from "./agent-key-manager";
 
 type FacebookPage = {
   id: string;
@@ -20,6 +21,8 @@ type PublishResult = {
   post_id: string;
   photo_id?: string;
 };
+
+const defaultPageStorageKey = "adplan-facebook-publisher-default-page-id";
 
 const starterDraft: NormalizedAgentPostDraft = {
   title: "Bài đăng mới từ Agent",
@@ -39,15 +42,32 @@ async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 function postUrlFromId(postId: string) {
   if (!postId) return "";
-  const normalized = postId.includes("_") ? postId : postId;
-  return `https://www.facebook.com/${normalized}`;
+  return `https://www.facebook.com/${postId}`;
+}
+
+function toDateTimeLocalValue(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function fromDateTimeLocalValue(value: string) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
 }
 
 export function FacebookPublisherClient() {
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [selectedPageId, setSelectedPageId] = useState("");
+  const [defaultPageId, setDefaultPageId] = useState("");
   const [draft, setDraft] = useState<NormalizedAgentPostDraft>(starterDraft);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [draftInbox, setDraftInbox] = useState<FacebookDraftInboxItem[]>([]);
+  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
   const [agentJson, setAgentJson] = useState("");
   const [approved, setApproved] = useState(false);
   const [isLoadingPages, setIsLoadingPages] = useState(true);
@@ -60,6 +80,7 @@ export function FacebookPublisherClient() {
     try {
       const payload = await readJson<{ data: FacebookDraftInboxItem[]; storage?: string }>("/api/facebook-publisher/drafts");
       setDraftInbox(payload.data ?? []);
+      setSelectedDraftIds((current) => current.filter((id) => (payload.data ?? []).some((item) => item.id === id)));
       if (payload.storage === "missing_schema") {
         setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
       }
@@ -69,13 +90,17 @@ export function FacebookPublisherClient() {
   }
 
   useEffect(() => {
+    const storedDefault = window.localStorage.getItem(defaultPageStorageKey) || "";
+
     let cancelled = false;
     readJson<{ data: FacebookPage[] }>("/api/meta/pages")
       .then((payload) => {
         if (cancelled) return;
         const nextPages = payload.data ?? [];
+        const nextDefault = nextPages.some((page) => page.id === storedDefault) ? storedDefault : "";
         setPages(nextPages);
-        setSelectedPageId((current) => current || nextPages[0]?.id || "");
+        setDefaultPageId(nextDefault);
+        setSelectedPageId(nextDefault || nextPages[0]?.id || "");
       })
       .catch((loadError) => {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Không tải được danh sách Fanpage.");
@@ -108,13 +133,25 @@ export function FacebookPublisherClient() {
   }, []);
 
   const selectedPage = useMemo(() => pages.find((page) => page.id === selectedPageId), [pages, selectedPageId]);
+  const selectedInboxDrafts = useMemo(
+    () => draftInbox.filter((item) => selectedDraftIds.includes(item.id)),
+    [draftInbox, selectedDraftIds]
+  );
   const imagePreview = draft.imageDataUrl || draft.imageUrl || "";
   const canPublish = Boolean(selectedPageId && draft.message.trim() && approved && !isPublishing);
+  const canBatchPublish = Boolean(selectedDraftIds.length && selectedPageId && approved && !isPublishing);
 
   function updateDraft(patch: Partial<NormalizedAgentPostDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
     setPublishResult(null);
     setNotice("");
+  }
+
+  function saveDefaultPage() {
+    if (!selectedPageId) return;
+    window.localStorage.setItem(defaultPageStorageKey, selectedPageId);
+    setDefaultPageId(selectedPageId);
+    setNotice("Đã lưu Fanpage mặc định cho lần đăng sau.");
   }
 
   function importAgentJson() {
@@ -124,6 +161,7 @@ export function FacebookPublisherClient() {
       const parsed = JSON.parse(agentJson);
       const normalized = normalizeAgentPostDraft(parsed);
       setDraft({ ...starterDraft, ...normalized });
+      setActiveDraftId(null);
       setApproved(normalized.approved);
       setNotice("Đã nạp draft từ Agent. Anh/chị kiểm tra preview trước khi đăng.");
     } catch (importError) {
@@ -133,6 +171,7 @@ export function FacebookPublisherClient() {
 
   function applyInboxDraft(item: FacebookDraftInboxItem) {
     setDraft({ ...starterDraft, ...item.draft });
+    setActiveDraftId(item.id);
     setApproved(item.draft.approved);
     if (item.pageId) setSelectedPageId(item.pageId);
     setPublishResult(null);
@@ -140,10 +179,14 @@ export function FacebookPublisherClient() {
     setNotice("Đã nạp draft Agent vào preview. Khách chỉ cần kiểm tra, tick duyệt và bấm đăng.");
   }
 
+  function toggleInboxDraft(itemId: string) {
+    setSelectedDraftIds((current) => (current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId]));
+  }
+
   function loadExample() {
     const example = {
       title: "Post bán hàng từ Agent",
-      caption: "Bạn đang có content nhưng chưa biến nó thành lịch đăng đều?\nAdPlanner AI giúp nạp draft, duyệt và đăng lên Fanpage từ một màn hình.",
+      caption: "Bạn đang có content nhưng chưa biến nó thành lịch đăng đều?\nAdplan AI giúp nạp draft, duyệt và đăng lên Fanpage từ một màn hình.",
       cta: "Inbox để nhận tư vấn",
       link: "https://www.theanhmarketing.com/",
       image: {
@@ -170,26 +213,74 @@ export function FacebookPublisherClient() {
     reader.readAsDataURL(file);
   }
 
-  async function publish() {
+  async function markDraftDone(draftId: string, result: PublishResult) {
+    await readJson<{ data: FacebookDraftInboxItem }>("/api/facebook-publisher/drafts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: draftId,
+        status: "published",
+        publish_result: result
+      })
+    });
+    setDraftInbox((current) => current.filter((item) => item.id !== draftId));
+    setSelectedDraftIds((current) => current.filter((id) => id !== draftId));
+    if (activeDraftId === draftId) setActiveDraftId(null);
+  }
+
+  async function publishOne(options?: { draftToPublish?: NormalizedAgentPostDraft; pageId?: string; draftId?: string | null }) {
+    const draftToPublish = options?.draftToPublish ?? draft;
+    const pageId = options?.pageId || selectedPageId;
+    const payload = await readJson<{ data: PublishResult }>("/api/facebook-publisher/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        page_id: pageId,
+        approved: true,
+        draft: draftToPublish
+      })
+    });
+
+    if (options?.draftId) {
+      await markDraftDone(options.draftId, payload.data);
+    }
+
+    return payload.data;
+  }
+
+  async function publishCurrent() {
     setError("");
     setNotice("");
     setPublishResult(null);
     setIsPublishing(true);
 
     try {
-      const payload = await readJson<{ data: PublishResult }>("/api/facebook-publisher/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          page_id: selectedPageId,
-          approved,
-          draft
-        })
-      });
-      setPublishResult(payload.data);
-      setNotice("Đã gửi bài sang Meta. Hãy mở Fanpage kiểm tra hiển thị thực tế.");
+      const result = await publishOne({ draftId: activeDraftId });
+      setPublishResult(result);
+      setNotice(draft.scheduledPublishTime ? "Đã lên lịch đăng tự động trên Meta. Draft đã được ẩn khỏi hàng chờ." : "Đã gửi bài sang Meta. Draft đã được ẩn khỏi hàng chờ.");
     } catch (publishError) {
       setError(publishError instanceof Error ? publishError.message : "Không đăng được bài.");
+    } finally {
+      setIsPublishing(false);
+    }
+  }
+
+  async function publishSelectedDrafts() {
+    setError("");
+    setNotice("");
+    setPublishResult(null);
+    setIsPublishing(true);
+
+    try {
+      let successCount = 0;
+      for (const item of selectedInboxDrafts) {
+        const pageId = item.pageId || selectedPageId;
+        await publishOne({ draftToPublish: { ...item.draft, approved: true }, pageId, draftId: item.id });
+        successCount += 1;
+      }
+      setNotice(`Đã gửi ${successCount} bài sang Meta. Các bài đã đăng/lên lịch được ẩn khỏi hàng chờ.`);
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : "Không đăng được danh sách bài đã chọn.");
     } finally {
       setIsPublishing(false);
     }
@@ -202,56 +293,15 @@ export function FacebookPublisherClient() {
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <CardTitle>Draft Agent chờ duyệt</CardTitle>
-                <CardDescription>Agent có thể tự đẩy bài vào đây qua API, khách không cần copy JSON thủ công.</CardDescription>
-              </div>
-              <Button variant="secondary" onClick={loadDraftInbox}>
-                <MaterialIcon name="refresh" />
-                Tải lại
-              </Button>
-            </div>
-          </CardHeader>
-
-          {draftInbox.length ? (
-            <div className="grid gap-3">
-              {draftInbox.map((item) => (
-                <button
-                  key={item.id}
-                  className="rounded-lg border border-outline-variant bg-white p-4 text-left transition hover:border-primary hover:bg-primary-fixed/10"
-                  onClick={() => applyInboxDraft(item)}
-                  type="button"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-extrabold text-on-surface">{item.draft.title}</p>
-                      <p className="mt-1 line-clamp-2 text-sm leading-6 text-on-surface-variant">{item.draft.message || "Chưa có caption"}</p>
-                    </div>
-                    <Badge>{item.status}</Badge>
-                  </div>
-                  {item.createdAt ? <p className="mt-2 text-xs font-semibold text-outline">Nạp lúc {new Date(item.createdAt).toLocaleString("vi-VN")}</p> : null}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-outline-variant bg-surface-container-low p-5 text-sm leading-6 text-on-surface-variant">
-              Chưa có draft nào từ Agent. Agent có thể gọi <span className="font-mono font-bold">POST /api/facebook-publisher/drafts</span> để tự nạp bài vào hàng chờ này.
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle>Kết nối Fanpage</CardTitle>
-                <CardDescription>Danh sách Page lấy từ Facebook Login hiện tại. Token chỉ dùng server-side.</CardDescription>
+                <CardTitle>Chọn Fanpage đăng bài</CardTitle>
+                <CardDescription>Chọn Page trước tiên để Agent, draft và lịch đăng luôn đi đúng kênh. Token chỉ dùng server-side.</CardDescription>
               </div>
               <Badge>{isLoadingPages ? "Đang tải Page" : `${pages.length} Page`}</Badge>
             </div>
           </CardHeader>
 
           {pages.length ? (
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
               <select
                 className="dashboard-input"
                 value={selectedPageId}
@@ -263,6 +313,10 @@ export function FacebookPublisherClient() {
                   </option>
                 ))}
               </select>
+              <Button variant="secondary" onClick={saveDefaultPage}>
+                <MaterialIcon name={defaultPageId === selectedPageId ? "star" : "star_border"} />
+                {defaultPageId === selectedPageId ? "Page mặc định" : "Đặt mặc định"}
+              </Button>
               <Button variant="secondary" onClick={() => window.location.assign("/api/auth/facebook/start")}>
                 <MaterialIcon name="sync" />
                 Kết nối lại
@@ -282,6 +336,70 @@ export function FacebookPublisherClient() {
           )}
         </Card>
 
+        <AgentKeyManager pages={pages} />
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>Draft Agent chờ duyệt</CardTitle>
+                <CardDescription>Chọn một bài để sửa, hoặc tick nhiều bài để đăng/lên lịch hàng loạt.</CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={loadDraftInbox}>
+                  <MaterialIcon name="refresh" />
+                  Tải lại
+                </Button>
+                <Button disabled={!canBatchPublish} onClick={publishSelectedDrafts}>
+                  <MaterialIcon name="send" />
+                  Đăng {selectedDraftIds.length || ""} bài
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+
+          {draftInbox.length ? (
+            <div className="grid gap-3">
+              {draftInbox.map((item) => {
+                const isSelected = selectedDraftIds.includes(item.id);
+                return (
+                  <div
+                    key={item.id}
+                    className="rounded-lg border border-outline-variant bg-white p-4 transition hover:border-primary hover:bg-primary-fixed/10"
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        aria-label={`Chọn ${item.draft.title}`}
+                        className="mt-1"
+                        checked={isSelected}
+                        onChange={() => toggleInboxDraft(item.id)}
+                        type="checkbox"
+                      />
+                      <button className="min-w-0 flex-1 text-left" onClick={() => applyInboxDraft(item)} type="button">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-extrabold text-on-surface">{item.draft.title}</p>
+                            <p className="mt-1 line-clamp-2 text-sm leading-6 text-on-surface-variant">{item.draft.message || "Chưa có caption"}</p>
+                          </div>
+                          <Badge>{item.status}</Badge>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-outline">
+                          {item.createdAt ? <span>Nạp lúc {new Date(item.createdAt).toLocaleString("vi-VN")}</span> : null}
+                          {item.draft.scheduledPublishTime ? <span>Lịch đăng {new Date(item.draft.scheduledPublishTime).toLocaleString("vi-VN")}</span> : null}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-outline-variant bg-surface-container-low p-5 text-sm leading-6 text-on-surface-variant">
+              Chưa có draft nào từ Agent. Agent có thể gọi <span className="font-mono font-bold">POST /api/facebook-publisher/drafts</span> để tự nạp bài vào hàng chờ này.
+            </div>
+          )}
+        </Card>
+
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -297,7 +415,7 @@ export function FacebookPublisherClient() {
 
           <Textarea
             className="min-h-[220px] font-mono text-xs"
-            placeholder='{"caption":"Nội dung bài đăng...", "link":"https://...", "image":{"url":"https://..."}}'
+            placeholder='{"caption":"Nội dung bài đăng...", "link":"https://...", "scheduledPublishTime":"2026-06-01T03:00:00.000Z"}'
             value={agentJson}
             onChange={(event) => setAgentJson(event.target.value)}
           />
@@ -311,6 +429,7 @@ export function FacebookPublisherClient() {
               onClick={() => {
                 setAgentJson("");
                 setDraft(starterDraft);
+                setActiveDraftId(null);
                 setApproved(false);
                 setPublishResult(null);
               }}
@@ -323,7 +442,7 @@ export function FacebookPublisherClient() {
         <Card>
           <CardHeader>
             <CardTitle>Chỉnh nội dung trước khi đăng</CardTitle>
-            <CardDescription>Khách có thể sửa caption, link và ảnh ngay trên web trước khi bấm đăng.</CardDescription>
+            <CardDescription>Khách có thể sửa caption, link, ảnh và lịch đăng ngay trên web trước khi bấm đăng.</CardDescription>
           </CardHeader>
 
           <div className="grid gap-4">
@@ -335,10 +454,20 @@ export function FacebookPublisherClient() {
               <span className="text-sm font-bold text-on-surface">Caption</span>
               <Textarea value={draft.message} onChange={(event) => updateDraft({ message: event.target.value })} />
             </label>
-            <label className="space-y-2">
-              <span className="text-sm font-bold text-on-surface">Link đính kèm</span>
-              <Input placeholder="https://..." value={draft.link || ""} onChange={(event) => updateDraft({ link: event.target.value })} />
-            </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm font-bold text-on-surface">Link đính kèm</span>
+                <Input placeholder="https://..." value={draft.link || ""} onChange={(event) => updateDraft({ link: event.target.value })} />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-bold text-on-surface">Lên lịch đăng tự động</span>
+                <Input
+                  type="datetime-local"
+                  value={toDateTimeLocalValue(draft.scheduledPublishTime)}
+                  onChange={(event) => updateDraft({ scheduledPublishTime: fromDateTimeLocalValue(event.target.value) })}
+                />
+              </label>
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
                 <span className="text-sm font-bold text-on-surface">Link ảnh public</span>
@@ -371,7 +500,9 @@ export function FacebookPublisherClient() {
               </div>
               <div>
                 <p className="font-extrabold text-on-surface">{selectedPage?.name || "Fanpage"}</p>
-                <p className="text-xs text-on-surface-variant">Bản xem trước từ AdPlanner AI</p>
+                <p className="text-xs text-on-surface-variant">
+                  {draft.scheduledPublishTime ? `Lên lịch ${new Date(draft.scheduledPublishTime).toLocaleString("vi-VN")}` : "Bản xem trước từ Adplan AI"}
+                </p>
               </div>
             </div>
             <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-on-surface">{draft.message || "Caption sẽ hiển thị ở đây."}</p>
@@ -388,15 +519,21 @@ export function FacebookPublisherClient() {
 
           <label className="mt-5 flex items-start gap-3 rounded-lg bg-surface-container-low p-4 text-sm leading-6 text-on-surface">
             <input className="mt-1" type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} />
-            <span>Tôi đã kiểm tra nội dung, link, hình ảnh và đồng ý đăng bài này lên Fanpage đã chọn.</span>
+            <span>Tôi đã kiểm tra nội dung, link, hình ảnh, lịch đăng và đồng ý đăng bài lên Fanpage đã chọn.</span>
           </label>
+
+          {selectedDraftIds.length ? (
+            <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-4 text-sm font-semibold text-on-surface-variant">
+              Đang chọn {selectedDraftIds.length} bài trong hàng chờ. Nút đăng nhiều bài nằm ở khối Draft Agent.
+            </div>
+          ) : null}
 
           {error ? <div className="mt-4 rounded-lg border border-error/30 bg-error/10 p-4 text-sm font-semibold text-error">{error}</div> : null}
           {notice ? <div className="mt-4 rounded-lg border border-primary/20 bg-primary-fixed/20 p-4 text-sm font-semibold text-primary">{notice}</div> : null}
 
-          <Button className="mt-5 w-full" disabled={!canPublish} onClick={publish}>
-            <MaterialIcon name={isPublishing ? "hourglass_top" : "send"} />
-            {isPublishing ? "Đang đăng..." : "Đăng lên Fanpage"}
+          <Button className="mt-5 w-full" disabled={!canPublish} onClick={publishCurrent}>
+            <MaterialIcon name={isPublishing ? "hourglass_top" : draft.scheduledPublishTime ? "schedule_send" : "send"} />
+            {isPublishing ? "Đang xử lý..." : draft.scheduledPublishTime ? "Lên lịch đăng" : "Đăng lên Fanpage"}
           </Button>
 
           {publishResult ? (

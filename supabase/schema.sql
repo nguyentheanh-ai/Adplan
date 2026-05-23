@@ -357,3 +357,45 @@ create table if not exists public.campaign_ab_test_variants (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists public.agent_ingest_keys (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  key_hash text not null unique,
+  key_prefix text not null,
+  label text not null default 'Agent key',
+  permissions jsonb not null default '{"canIngestDraft": true, "canPublishDirect": false, "canSchedule": false}'::jsonb,
+  allowed_page_ids jsonb not null default '[]'::jsonb,
+  daily_post_limit integer,
+  allowed_window_json jsonb not null default '{}'::jsonb,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+
+create table if not exists public.agent_ingest_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  agent_key_id uuid references public.agent_ingest_keys(id) on delete set null,
+  action text not null,
+  page_id text,
+  title text,
+  status text not null default 'success',
+  post_id text,
+  request_json jsonb not null default '{}'::jsonb,
+  response_json jsonb not null default '{}'::jsonb,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.facebook_provider_tokens (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  facebook_user_id text,
+  access_token_encrypted text not null,
+  token_expires_at timestamptz,
+  granted_scopes text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);

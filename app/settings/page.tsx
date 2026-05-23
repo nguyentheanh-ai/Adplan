@@ -7,7 +7,10 @@ export default async function SettingsPage() {
   const session = await getAppSession();
 
   return (
-    <AppShell title="Cài đặt" description="Kiểm tra tài khoản đang đăng nhập. API key và tích hợp hệ thống được chuyển sang khu Quản trị.">
+    <AppShell
+      title="Cài đặt"
+      description="Kiểm tra tài khoản đang đăng nhập. API key hệ thống ở khu Quản trị, còn mã Agent riêng cho từng khách nằm trong mục Đăng bài Facebook."
+    >
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="rounded-xl bg-surface-container-lowest p-8">
           <div className="mb-6 flex items-center gap-3">
@@ -36,7 +39,8 @@ export default async function SettingsPage() {
             </div>
           </div>
           <div className="rounded-xl bg-background p-4 text-sm leading-6 text-on-surface-variant">
-            Khách hàng không cần nhìn thấy API key. Nếu bạn là quản trị viên, vào menu <strong>Quản trị</strong> để kiểm tra trạng thái Gemini, Meta, Supabase và n8n.
+            Khách hàng không cần nhìn thấy API key hệ thống. Nếu bạn là quản trị viên, vào menu <strong>Quản trị</strong> để kiểm tra Gemini, Meta, Supabase, n8n và dashboard mã Agent.
+            Nếu bạn muốn tạo mã riêng để Agent Kit nạp draft hoặc đăng bài thay mình, hãy vào mục <strong>Đăng bài Facebook</strong>.
           </div>
         </Card>
       </div>

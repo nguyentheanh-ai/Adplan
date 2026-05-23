@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MetaDashboard } from "@/components/meta/meta-dashboard";
+import { AgentKeyAdminPanel } from "@/components/admin/agent-key-admin";
 import { MaterialIcon } from "@/components/material-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -174,6 +175,8 @@ export function AdminConsoleClient({ integrationStatuses = [] }: { integrationSt
           <MetaDashboard />
         </div>
       </Card>
+
+      <AgentKeyAdminPanel />
     </div>
   );
 }

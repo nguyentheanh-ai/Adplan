@@ -8,6 +8,7 @@ import {
   getSiteUrl
 } from "@/lib/auth/facebook-oauth";
 import { APP_SESSION_COOKIE, encodeAppSession, getAppSessionCookieOptions } from "@/lib/auth/session";
+import { isMissingFacebookProviderTokensTableError, saveFacebookProviderToken } from "@/lib/facebook-provider-token-store";
 import { isMissingMetaSyncTable, syncMetaInsightsForUser } from "@/lib/meta/sync-insights";
 
 export async function GET(request: Request) {
@@ -58,6 +59,20 @@ export async function GET(request: Request) {
       }),
       getAppSessionCookieOptions(maxAge)
     );
+
+    try {
+      await saveFacebookProviderToken({
+        userId,
+        facebookUserId: profile.id,
+        accessToken: token.accessToken,
+        expiresAt: new Date(Date.now() + maxAge * 1000).toISOString(),
+        grantedScopes: Array.from(grantedScopes)
+      });
+    } catch (saveError) {
+      if (!isMissingFacebookProviderTokensTableError(saveError as { message?: string; code?: string })) {
+        console.error("Saving Facebook provider token failed", saveError);
+      }
+    }
 
     after(async () => {
       try {

@@ -1,8 +1,14 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getAppSession } from "@/lib/auth/session";
-import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getDevIngestUserId,
+  logAgentIngestEvent,
+  requireAgentKeyOwnerSession,
+  touchAgentIngestKey,
+  validateAgentKeyAccess
+} from "@/lib/agent-keys";
 import { normalizeAgentPostDraft, normalizeFacebookDraftRow } from "@/lib/facebook-publisher";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const ingestSchema = z.object({
   user_id: z.string().uuid().optional(),
@@ -11,69 +17,108 @@ const ingestSchema = z.object({
   draft: z.record(z.string(), z.unknown())
 });
 
+const updateDraftSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum(["draft", "queued", "failed", "published", "hidden"]),
+  publish_result: z.record(z.string(), z.unknown()).optional()
+});
+
 function isMissingTable(error: { message?: string; code?: string } | null) {
   const message = error?.message?.toLowerCase() || "";
   return error?.code === "42P01" || message.includes("facebook_post_drafts") || message.includes("schema cache");
 }
 
-function hasValidAgentKey(request: Request) {
-  const expected = process.env.AGENT_INGEST_KEY;
-  if (!expected) return false;
-  return request.headers.get("x-agent-ingest-key") === expected;
+function getIncomingAgentKey(request: Request) {
+  return request.headers.get("x-agent-ingest-key")?.trim() || "";
 }
 
-async function resolveUserId(request: Request, bodyUserId?: string) {
-  const session = await getAppSession();
-  if (session?.userId) return session.userId;
+async function resolveDraftOwner(request: Request, bodyUserId?: string, pageId?: string | null) {
+  try {
+    const session = await requireAgentKeyOwnerSession();
+    return { userId: session.userId, via: "session" as const, keyId: null as string | null };
+  } catch {
+    const rawKey = getIncomingAgentKey(request);
 
-  if (hasValidAgentKey(request)) {
-    const fallbackUserId = bodyUserId || process.env.AGENT_INGEST_USER_ID;
-    if (fallbackUserId) return fallbackUserId;
+    if (!rawKey) return null;
+
+    const devKey = process.env.AGENT_INGEST_KEY;
+    if (process.env.NODE_ENV !== "production" && devKey && rawKey === devKey) {
+      const devUserId = getDevIngestUserId(bodyUserId);
+      if (!devUserId) return null;
+      return { userId: devUserId, via: "dev_key" as const, keyId: null as string | null };
+    }
+
+    const validation = await validateAgentKeyAccess({
+      rawKey,
+      action: "draft_ingest",
+      pageId
+    });
+
+    if (!validation.ok) {
+      throw new Error(validation.reason);
+    }
+
+    return {
+      userId: validation.record.user_id,
+      via: "agent_key" as const,
+      keyId: validation.record.id
+    };
   }
-
-  return null;
 }
 
 export async function GET() {
-  const session = await getAppSession();
-  if (!session) return NextResponse.json({ error: "Báº¡n cáº§n Ä‘Äƒng nháº­p Facebook." }, { status: 401 });
+  try {
+    const session = await requireAgentKeyOwnerSession();
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("facebook_post_drafts")
+      .select("id,page_id,status,draft_json,created_at,updated_at")
+      .eq("user_id", session.userId)
+      .in("status", ["draft", "queued", "failed"])
+      .order("updated_at", { ascending: false })
+      .limit(30);
 
-  const visibleUserIds = Array.from(new Set([session.userId, process.env.AGENT_INGEST_USER_ID].filter(Boolean)));
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("facebook_post_drafts")
-    .select("id,page_id,status,draft_json,created_at,updated_at")
-    .in("user_id", visibleUserIds)
-    .in("status", ["draft", "queued", "failed"])
-    .order("updated_at", { ascending: false })
-    .limit(30);
+    if (error) {
+      if (isMissingTable(error)) return NextResponse.json({ data: [], storage: "missing_schema" });
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
-  if (error) {
-    if (isMissingTable(error)) return NextResponse.json({ data: [], storage: "missing_schema" });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data: (data ?? []).map(normalizeFacebookDraftRow) });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Bạn cần đăng nhập Facebook." }, { status: 401 });
   }
-
-  return NextResponse.json({ data: (data ?? []).map(normalizeFacebookDraftRow) });
 }
 
 export async function POST(request: Request) {
+  let userId = "";
+  let keyId: string | null = null;
+  let draftTitle = "";
+  let pageId: string | null = null;
+
   try {
     const body = ingestSchema.parse(await request.json());
-    const userId = await resolveUserId(request, body.user_id);
-    if (!userId) {
+    pageId = body.page_id || null;
+    const owner = await resolveDraftOwner(request, body.user_id, pageId);
+
+    if (!owner) {
       return NextResponse.json(
-        { error: "Thiáº¿u phiÃªn Ä‘Äƒng nháº­p hoáº·c x-agent-ingest-key/AGENT_INGEST_USER_ID Ä‘á»ƒ Agent tá»± náº¡p draft." },
+        { error: "Thiếu phiên đăng nhập hoặc x-agent-ingest-key hợp lệ để Agent nạp draft." },
         { status: 401 }
       );
     }
 
+    userId = owner.userId;
+    keyId = owner.keyId;
+
     const draft = normalizeAgentPostDraft({ title: body.title, ...body.draft });
+    draftTitle = draft.title;
+
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("facebook_post_drafts")
       .insert({
         user_id: userId,
-        page_id: body.page_id || null,
+        page_id: pageId,
         title: draft.title,
         status: "queued",
         source: "agent",
@@ -85,7 +130,68 @@ export async function POST(request: Request) {
     if (error) {
       if (isMissingTable(error)) {
         return NextResponse.json(
-          { error: "ChÆ°a cÃ³ báº£ng facebook_post_drafts. HÃ£y cháº¡y migration 202605210010_create_facebook_post_drafts.sql." },
+          { error: "Chưa có bảng facebook_post_drafts. Hãy chạy migration 202605210010_create_facebook_post_drafts.sql." },
+          { status: 500 }
+        );
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (keyId) {
+      await touchAgentIngestKey(keyId);
+      await logAgentIngestEvent({
+        userId,
+        agentKeyId: keyId,
+        action: "draft_ingest",
+        pageId,
+        title: draft.title,
+        status: "success",
+        requestJson: { page_id: pageId, draft_title: draft.title }
+      });
+    }
+
+    return NextResponse.json({ data: normalizeFacebookDraftRow(data) });
+  } catch (error) {
+    if (keyId && userId) {
+      await logAgentIngestEvent({
+        userId,
+        agentKeyId: keyId,
+        action: "draft_ingest",
+        pageId,
+        title: draftTitle || null,
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : "Không thể nạp draft từ Agent."
+      }).catch(() => undefined);
+    }
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Draft Agent không hợp lệ.", details: error.issues }, { status: 400 });
+    }
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Không thể nạp draft từ Agent." }, { status: 400 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const session = await requireAgentKeyOwnerSession();
+    const body = updateDraftSchema.parse(await request.json());
+    const admin = createAdminClient();
+
+    const { data, error } = await admin
+      .from("facebook_post_drafts")
+      .update({
+        status: body.status,
+        publish_result_json: body.publish_result ?? {}
+      })
+      .eq("id", body.id)
+      .eq("user_id", session.userId)
+      .select("id,page_id,status,draft_json,created_at,updated_at")
+      .single();
+
+    if (error) {
+      if (isMissingTable(error)) {
+        return NextResponse.json(
+          { error: "Chưa có bảng facebook_post_drafts. Hãy chạy migration 202605210010_create_facebook_post_drafts.sql." },
           { status: 500 }
         );
       }
@@ -95,9 +201,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ data: normalizeFacebookDraftRow(data) });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: "Draft Agent khÃ´ng há»£p lá»‡.", details: error.issues }, { status: 400 });
+      return NextResponse.json({ error: "Payload cập nhật draft không hợp lệ.", details: error.issues }, { status: 400 });
     }
-    return NextResponse.json({ error: error instanceof Error ? error.message : "KhÃ´ng thá»ƒ náº¡p draft tá»« Agent." }, { status: 400 });
+
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Không thể cập nhật draft." }, { status: 400 });
   }
 }
-
