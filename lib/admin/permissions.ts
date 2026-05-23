@@ -6,7 +6,7 @@ import type { AdminUserPermission, UserRole } from "@/lib/meta/types";
 const defaultLockedSections = ["admin", "meta_api"];
 const fixedAdminFacebookUsernames = new Set(["theanh.marketing"]);
 const fixedAdminFacebookIds = new Set(["622569270580836"]);
-const fixedAdminUserIds = new Set(["48972846-facd-4170-9c40-95fb4fafd4d3"]);
+const fixedAdminUserIds = new Set(["48972846-facd-4170-9c40-95fb4fafa4d3"]);
 const permissionFields =
   "id,user_id,facebook_id,facebook_user_id,facebook_name,facebook_email,role,permissions,ad_account_ids,page_ids,locked_sections,created_at,updated_at";
 
@@ -53,7 +53,7 @@ function parseAdminFacebookUsernames() {
 
 function isMissingTableError(message?: string) {
   const lower = (message || "").toLowerCase();
-  return lower.includes("could not find the table") || lower.includes("schema cache") || lower.includes("admin_user_permissions");
+  return lower.includes("could not find the table") || lower.includes("relation \"public.admin_user_permissions\" does not exist");
 }
 
 function buildOwnerPermission(userId: string, facebookId: string): AdminUserPermission {

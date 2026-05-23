@@ -16,7 +16,7 @@ type AdminUserRow = {
 
 function isMissingTableError(message: string) {
   const lower = message.toLowerCase();
-  return lower.includes("could not find the table") || lower.includes("schema cache") || lower.includes("admin_user_permissions");
+  return lower.includes("could not find the table") || lower.includes("relation \"public.admin_user_permissions\" does not exist");
 }
 
 async function listFacebookAuthUsers() {
@@ -73,7 +73,7 @@ export async function GET() {
     if (permissionsResult.error) {
       if (isMissingTableError(permissionsResult.error.message)) {
         warning =
-          "He thong chua co bang admin_user_permissions. Van hien user Facebook, nhung chua luu duoc phan quyen. Vui long cap nhat schema Supabase.";
+          "Hệ thống chưa có bảng admin_user_permissions. Vẫn hiện user Facebook, nhưng chưa lưu được phân quyền. Vui lòng cập nhật schema Supabase.";
       } else {
         return NextResponse.json({ error: permissionsResult.error.message }, { status: 500 });
       }
@@ -137,7 +137,7 @@ export async function PATCH(request: Request) {
         return NextResponse.json(
           {
             error:
-              "Chua co bang admin_user_permissions trong Supabase. Vui long chay file schema SQL roi cap quyen lai."
+              "Chưa có bảng admin_user_permissions trong Supabase. Vui lòng chạy file schema SQL rồi cấp quyền lại."
           },
           { status: 500 }
         );
