@@ -35,6 +35,7 @@ type ImagePreviewModal = {
 };
 
 const defaultPageStorageKey = "adplan-facebook-publisher-default-page-id";
+const defaultDailyScheduleTimes = ["09:00", "14:00", "20:00"];
 const emptyDraftSummary: DraftSummary = {
   published: 0,
   draft: 0,
@@ -82,6 +83,22 @@ function getDraftImageSrc(draft: NormalizedAgentPostDraft) {
   return draft.imageDataUrl || draft.imageUrl || "";
 }
 
+function sortDraftsByCreatedAt(items: FacebookDraftInboxItem[]) {
+  return [...items].sort((first, second) => {
+    const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+    const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : 0;
+    return firstTime - secondTime;
+  });
+}
+
+function buildScheduledPublishTime(slot: string, dayOffset: number, shouldStartTomorrow: boolean) {
+  const [hourRaw, minuteRaw] = slot.split(":");
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset + (shouldStartTomorrow ? 1 : 0));
+  date.setHours(Number(hourRaw), Number(minuteRaw), 0, 0);
+  return date.toISOString();
+}
+
 export function FacebookPublisherClient() {
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [selectedPageId, setSelectedPageId] = useState("");
@@ -91,7 +108,8 @@ export function FacebookPublisherClient() {
   const [draftInbox, setDraftInbox] = useState<FacebookDraftInboxItem[]>([]);
   const [draftSummary, setDraftSummary] = useState<DraftSummary>(emptyDraftSummary);
   const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
-  const [draftScheduleValues, setDraftScheduleValues] = useState<Record<string, string>>({});
+  const [dailyPostCount, setDailyPostCount] = useState(3);
+  const [dailyScheduleTimes, setDailyScheduleTimes] = useState(defaultDailyScheduleTimes);
   const [agentJson, setAgentJson] = useState("");
   const [approved, setApproved] = useState(false);
   const [isLoadingPages, setIsLoadingPages] = useState(true);
@@ -107,13 +125,6 @@ export function FacebookPublisherClient() {
       setDraftInbox(payload.data ?? []);
       setDraftSummary(payload.summary ?? emptyDraftSummary);
       setSelectedDraftIds((current) => current.filter((id) => (payload.data ?? []).some((item) => item.id === id)));
-      setDraftScheduleValues((current) => {
-        const next: Record<string, string> = {};
-        for (const item of payload.data ?? []) {
-          next[item.id] = current[item.id] ?? toDateTimeLocalValue(item.draft.scheduledPublishTime);
-        }
-        return next;
-      });
       if (payload.storage === "missing_schema") {
         setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
       }
@@ -154,13 +165,6 @@ export function FacebookPublisherClient() {
         if (cancelled) return;
         setDraftInbox(payload.data ?? []);
         setDraftSummary(payload.summary ?? emptyDraftSummary);
-        setDraftScheduleValues((current) => {
-          const next: Record<string, string> = {};
-          for (const item of payload.data ?? []) {
-            next[item.id] = current[item.id] ?? toDateTimeLocalValue(item.draft.scheduledPublishTime);
-          }
-          return next;
-        });
         if (payload.storage === "missing_schema") {
           setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
         }
@@ -187,6 +191,10 @@ export function FacebookPublisherClient() {
     setDraft((current) => ({ ...current, ...patch }));
     setPublishResult(null);
     setNotice("");
+  }
+
+  function getQueueDraft(item: FacebookDraftInboxItem) {
+    return activeDraftId === item.id ? draft : item.draft;
   }
 
   function saveDefaultPage() {
@@ -234,8 +242,20 @@ export function FacebookPublisherClient() {
     }
   }
 
-  function updateDraftSchedule(itemId: string, value: string) {
-    setDraftScheduleValues((current) => ({ ...current, [itemId]: value }));
+  function updateDailyPostCount(value: string) {
+    const nextCount = Math.max(1, Math.min(10, Number(value) || 1));
+    setDailyPostCount(nextCount);
+    setDailyScheduleTimes((current) =>
+      Array.from({ length: nextCount }, (_, index) => current[index] || defaultDailyScheduleTimes[index] || "09:00")
+    );
+  }
+
+  function updateDailyScheduleTime(index: number, value: string) {
+    setDailyScheduleTimes((current) => {
+      const next = [...current];
+      next[index] = value;
+      return next;
+    });
   }
 
   function loadExample() {
@@ -280,11 +300,6 @@ export function FacebookPublisherClient() {
     });
     setDraftInbox((current) => current.filter((item) => item.id !== draftId));
     setSelectedDraftIds((current) => current.filter((id) => id !== draftId));
-    setDraftScheduleValues((current) => {
-      const next = { ...current };
-      delete next[draftId];
-      return next;
-    });
     if (activeDraftId === draftId) setActiveDraftId(null);
     await loadDraftInbox();
   }
@@ -301,11 +316,6 @@ export function FacebookPublisherClient() {
     });
     setDraftInbox((current) => current.filter((item) => item.id !== draftId));
     setSelectedDraftIds((current) => current.filter((id) => id !== draftId));
-    setDraftScheduleValues((current) => {
-      const next = { ...current };
-      delete next[draftId];
-      return next;
-    });
     if (activeDraftId === draftId) {
       setActiveDraftId(null);
       setDraft(starterDraft);
@@ -370,16 +380,17 @@ export function FacebookPublisherClient() {
 
     try {
       let successCount = 0;
-      for (const item of selectedInboxDrafts) {
+      for (const item of sortDraftsByCreatedAt(selectedInboxDrafts)) {
+        const draftToPublish = getQueueDraft(item);
         await publishOne({
-          draftToPublish: { ...item.draft, approved: true },
+          draftToPublish: { ...draftToPublish, scheduledPublishTime: undefined, approved: true },
           pageId: selectedPageId,
           draftId: item.id,
-          completionStatus: item.draft.scheduledPublishTime ? "scheduled" : "published"
+          completionStatus: "published"
         });
         successCount += 1;
       }
-      setNotice(`Đã gửi ${successCount} bài sang Meta. Các bài đã đăng/lên lịch được ẩn khỏi hàng chờ.`);
+      setNotice(`Đã đăng ngay ${successCount} bài theo thứ tự bài nạp vào trước đăng trước.`);
     } catch (publishError) {
       setError(publishError instanceof Error ? publishError.message : "Không đăng được danh sách bài đã chọn.");
     } finally {
@@ -387,32 +398,14 @@ export function FacebookPublisherClient() {
     }
   }
 
-  async function publishInboxDraftNow(item: FacebookDraftInboxItem) {
-    setError("");
-    setNotice("");
-    setPublishResult(null);
-    setIsPublishing(true);
-
-    try {
-      const result = await publishOne({
-        draftToPublish: { ...item.draft, scheduledPublishTime: undefined, approved: true },
-        pageId: selectedPageId,
-        draftId: item.id
-      });
-      setPublishResult(result);
-      setNotice("Đã đăng bài lên Fanpage và ẩn khỏi hàng chờ.");
-    } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : "Không đăng được bài.");
-    } finally {
-      setIsPublishing(false);
+  async function scheduleSelectedDrafts() {
+    const slots = dailyScheduleTimes.slice(0, dailyPostCount);
+    if (!selectedInboxDrafts.length) {
+      setError("Tick chọn bài nháp cần lên lịch trước.");
+      return;
     }
-  }
-
-  async function scheduleInboxDraft(item: FacebookDraftInboxItem) {
-    const scheduleValue = draftScheduleValues[item.id] || "";
-    const scheduledPublishTime = fromDateTimeLocalValue(scheduleValue);
-    if (!scheduledPublishTime) {
-      setError("Chọn ngày và giờ đăng trước khi bấm lên lịch.");
+    if (slots.some((slot) => !slot)) {
+      setError("Điền đủ khung giờ đăng trước khi lên lịch.");
       return;
     }
 
@@ -422,16 +415,32 @@ export function FacebookPublisherClient() {
     setIsPublishing(true);
 
     try {
-      const result = await publishOne({
-        draftToPublish: { ...item.draft, scheduledPublishTime, approved: true },
-        pageId: selectedPageId,
-        draftId: item.id,
-        completionStatus: "scheduled"
-      });
-      setPublishResult(result);
-      setNotice("Đã lên lịch đăng bài và ẩn khỏi hàng chờ.");
+      const orderedDrafts = sortDraftsByCreatedAt(selectedInboxDrafts);
+      const [firstHour, firstMinute] = slots[0].split(":").map(Number);
+      const firstSlotToday = new Date();
+      firstSlotToday.setHours(firstHour, firstMinute, 0, 0);
+      const shouldStartTomorrow = firstSlotToday.getTime() <= Date.now() + 15 * 60_000;
+      let successCount = 0;
+
+      for (let index = 0; index < orderedDrafts.length; index += 1) {
+        const item = orderedDrafts[index];
+        const draftToPublish = getQueueDraft(item);
+        const slot = slots[index % slots.length];
+        const dayOffset = Math.floor(index / slots.length);
+        const scheduledPublishTime = buildScheduledPublishTime(slot, dayOffset, shouldStartTomorrow);
+
+        await publishOne({
+          draftToPublish: { ...draftToPublish, scheduledPublishTime, approved: true },
+          pageId: selectedPageId,
+          draftId: item.id,
+          completionStatus: "scheduled"
+        });
+        successCount += 1;
+      }
+
+      setNotice(`Đã lên lịch ${successCount} bài: ${slots.length} bài/ngày, lặp lại theo các khung giờ đã chọn.`);
     } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : "Không lên lịch được bài.");
+      setError(publishError instanceof Error ? publishError.message : "Không lên lịch được danh sách bài đã chọn.");
     } finally {
       setIsPublishing(false);
     }
@@ -576,18 +585,44 @@ export function FacebookPublisherClient() {
                 </Button>
                 <Button disabled={!canBatchPublish} onClick={publishSelectedDrafts}>
                   <MaterialIcon name="send" />
-                  Đăng {selectedDraftIds.length || ""} bài
+                  Đăng bài
+                </Button>
+                <Button disabled={!canBatchPublish} onClick={scheduleSelectedDrafts}>
+                  <MaterialIcon name="schedule_send" />
+                  Lên lịch
                 </Button>
               </div>
             </div>
           </CardHeader>
+
+          <div className="grid gap-4 rounded-lg border border-outline-variant bg-surface-container-low p-4 md:grid-cols-[220px_minmax(0,1fr)]">
+            <label className="space-y-2">
+              <span className="text-sm font-bold text-on-surface">Số lượng bài đăng/ngày</span>
+              <Input min={1} max={10} type="number" value={dailyPostCount} onChange={(event) => updateDailyPostCount(event.target.value)} />
+            </label>
+            <div className="space-y-2">
+              <p className="text-sm font-bold text-on-surface">Khung giờ đăng hằng ngày</p>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {dailyScheduleTimes.slice(0, dailyPostCount).map((time, index) => (
+                  <label key={index} className="flex items-center gap-2 rounded-lg border border-outline-variant bg-white p-2 text-sm font-semibold text-on-surface">
+                    <span className="shrink-0 text-on-surface-variant">Bài {index + 1}</span>
+                    <Input
+                      aria-label={`Khung giờ đăng bài ${index + 1}`}
+                      type="time"
+                      value={time}
+                      onChange={(event) => updateDailyScheduleTime(index, event.target.value)}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
 
           {draftInbox.length ? (
             <div className="grid max-h-[560px] gap-3 overflow-y-auto overscroll-contain pr-2">
               {draftInbox.map((item) => {
                 const isSelected = selectedDraftIds.includes(item.id);
                 const draftPageIsDifferent = Boolean(item.pageId && item.pageId !== selectedPageId);
-                const canActOnItem = Boolean(selectedPageId && selectedPageCanPublish && item.draft.message.trim() && !isPublishing);
                 const draftImage = getDraftImageSrc(item.draft);
                 return (
                   <div
@@ -630,21 +665,7 @@ export function FacebookPublisherClient() {
                             </div>
                             <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">{item.draft.message || "Chưa có caption"}</p>
                           </button>
-                          <div className="grid gap-2 sm:grid-cols-[minmax(190px,1fr)_auto_auto_auto] xl:min-w-[520px]">
-                            <Input
-                              aria-label={`Chọn ngày giờ đăng cho ${item.draft.title}`}
-                              type="datetime-local"
-                              value={draftScheduleValues[item.id] ?? toDateTimeLocalValue(item.draft.scheduledPublishTime)}
-                              onChange={(event) => updateDraftSchedule(item.id, event.target.value)}
-                            />
-                            <Button disabled={!canActOnItem || !draftScheduleValues[item.id]} onClick={() => void scheduleInboxDraft(item)}>
-                              <MaterialIcon name="schedule_send" />
-                              Lên lịch
-                            </Button>
-                            <Button variant="secondary" disabled={!canActOnItem} onClick={() => void publishInboxDraftNow(item)}>
-                              <MaterialIcon name="send" />
-                              Đăng ngay
-                            </Button>
+                          <div className="flex justify-end">
                             <Button variant="danger" disabled={isPublishing} onClick={() => void deleteInboxDraft(item)}>
                               <MaterialIcon name="delete" />
                               Xóa
