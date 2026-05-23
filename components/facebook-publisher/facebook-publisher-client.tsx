@@ -189,7 +189,9 @@ export function FacebookPublisherClient() {
     setDraft({ ...starterDraft, ...item.draft });
     setActiveDraftId(item.id);
     setApproved(item.draft.approved);
-    if (item.pageId) setSelectedPageId(item.pageId);
+    if (item.pageId && pages.some((page) => page.id === item.pageId)) {
+      setSelectedPageId(item.pageId);
+    }
     setPublishResult(null);
     setError("");
     setNotice("Đã nạp draft Agent vào preview. Khách chỉ cần kiểm tra, tick duyệt và bấm đăng.");
@@ -280,6 +282,9 @@ export function FacebookPublisherClient() {
   async function publishOne(options?: { draftToPublish?: NormalizedAgentPostDraft; pageId?: string; draftId?: string | null }) {
     const draftToPublish = options?.draftToPublish ?? draft;
     const pageId = options?.pageId || selectedPageId;
+    if (!pageId) {
+      throw new Error("Chọn Fanpage cần đăng trước khi gửi bài.");
+    }
     const payload = await readJson<{ data: PublishResult }>("/api/facebook-publisher/publish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -323,8 +328,7 @@ export function FacebookPublisherClient() {
     try {
       let successCount = 0;
       for (const item of selectedInboxDrafts) {
-        const pageId = item.pageId || selectedPageId;
-        await publishOne({ draftToPublish: { ...item.draft, approved: true }, pageId, draftId: item.id });
+        await publishOne({ draftToPublish: { ...item.draft, approved: true }, pageId: selectedPageId, draftId: item.id });
         successCount += 1;
       }
       setNotice(`Đã gửi ${successCount} bài sang Meta. Các bài đã đăng/lên lịch được ẩn khỏi hàng chờ.`);
@@ -344,7 +348,7 @@ export function FacebookPublisherClient() {
     try {
       const result = await publishOne({
         draftToPublish: { ...item.draft, scheduledPublishTime: undefined, approved: true },
-        pageId: item.pageId || selectedPageId,
+        pageId: selectedPageId,
         draftId: item.id
       });
       setPublishResult(result);
@@ -372,7 +376,7 @@ export function FacebookPublisherClient() {
     try {
       const result = await publishOne({
         draftToPublish: { ...item.draft, scheduledPublishTime, approved: true },
-        pageId: item.pageId || selectedPageId,
+        pageId: selectedPageId,
         draftId: item.id
       });
       setPublishResult(result);
@@ -478,8 +482,8 @@ export function FacebookPublisherClient() {
             <div className="grid max-h-[560px] gap-3 overflow-y-auto overscroll-contain pr-2">
               {draftInbox.map((item) => {
                 const isSelected = selectedDraftIds.includes(item.id);
-                const itemPageId = item.pageId || selectedPageId;
-                const canActOnItem = Boolean(itemPageId && item.draft.message.trim() && !isPublishing);
+                const draftPageIsDifferent = Boolean(item.pageId && item.pageId !== selectedPageId);
+                const canActOnItem = Boolean(selectedPageId && selectedPageCanPublish && item.draft.message.trim() && !isPublishing);
                 return (
                   <div
                     key={item.id}
@@ -499,6 +503,7 @@ export function FacebookPublisherClient() {
                             <div className="flex flex-wrap items-start gap-3">
                               <p className="font-extrabold text-on-surface">{item.draft.title}</p>
                               <Badge>{item.status}</Badge>
+                              {draftPageIsDifferent ? <Badge>Sẽ đăng theo Page đang chọn</Badge> : null}
                             </div>
                             <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">{item.draft.message || "Chưa có caption"}</p>
                           </button>
