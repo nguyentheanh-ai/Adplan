@@ -7,7 +7,6 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Input, Textarea } from "@/components/ui/input";
 import { MaterialIcon } from "@/components/material-icon";
 import { normalizeAgentPostDraft, type FacebookDraftInboxItem, type NormalizedAgentPostDraft } from "@/lib/facebook-publisher";
-import { AgentKeyManager } from "./agent-key-manager";
 
 type FacebookPage = {
   id: string;
@@ -68,6 +67,7 @@ export function FacebookPublisherClient() {
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [draftInbox, setDraftInbox] = useState<FacebookDraftInboxItem[]>([]);
   const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
+  const [draftScheduleValues, setDraftScheduleValues] = useState<Record<string, string>>({});
   const [agentJson, setAgentJson] = useState("");
   const [approved, setApproved] = useState(false);
   const [isLoadingPages, setIsLoadingPages] = useState(true);
@@ -81,6 +81,13 @@ export function FacebookPublisherClient() {
       const payload = await readJson<{ data: FacebookDraftInboxItem[]; storage?: string }>("/api/facebook-publisher/drafts");
       setDraftInbox(payload.data ?? []);
       setSelectedDraftIds((current) => current.filter((id) => (payload.data ?? []).some((item) => item.id === id)));
+      setDraftScheduleValues((current) => {
+        const next: Record<string, string> = {};
+        for (const item of payload.data ?? []) {
+          next[item.id] = current[item.id] ?? toDateTimeLocalValue(item.draft.scheduledPublishTime);
+        }
+        return next;
+      });
       if (payload.storage === "missing_schema") {
         setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
       }
@@ -120,6 +127,13 @@ export function FacebookPublisherClient() {
       .then((payload) => {
         if (cancelled) return;
         setDraftInbox(payload.data ?? []);
+        setDraftScheduleValues((current) => {
+          const next: Record<string, string> = {};
+          for (const item of payload.data ?? []) {
+            next[item.id] = current[item.id] ?? toDateTimeLocalValue(item.draft.scheduledPublishTime);
+          }
+          return next;
+        });
         if (payload.storage === "missing_schema") {
           setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
         }
@@ -183,6 +197,10 @@ export function FacebookPublisherClient() {
     setSelectedDraftIds((current) => (current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId]));
   }
 
+  function updateDraftSchedule(itemId: string, value: string) {
+    setDraftScheduleValues((current) => ({ ...current, [itemId]: value }));
+  }
+
   function loadExample() {
     const example = {
       title: "Post bán hàng từ Agent",
@@ -225,7 +243,36 @@ export function FacebookPublisherClient() {
     });
     setDraftInbox((current) => current.filter((item) => item.id !== draftId));
     setSelectedDraftIds((current) => current.filter((id) => id !== draftId));
+    setDraftScheduleValues((current) => {
+      const next = { ...current };
+      delete next[draftId];
+      return next;
+    });
     if (activeDraftId === draftId) setActiveDraftId(null);
+  }
+
+  async function hideDraft(draftId: string) {
+    await readJson<{ data: FacebookDraftInboxItem }>("/api/facebook-publisher/drafts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: draftId,
+        status: "hidden",
+        publish_result: { hidden_at: new Date().toISOString() }
+      })
+    });
+    setDraftInbox((current) => current.filter((item) => item.id !== draftId));
+    setSelectedDraftIds((current) => current.filter((id) => id !== draftId));
+    setDraftScheduleValues((current) => {
+      const next = { ...current };
+      delete next[draftId];
+      return next;
+    });
+    if (activeDraftId === draftId) {
+      setActiveDraftId(null);
+      setDraft(starterDraft);
+      setApproved(false);
+    }
   }
 
   async function publishOne(options?: { draftToPublish?: NormalizedAgentPostDraft; pageId?: string; draftId?: string | null }) {
@@ -286,6 +333,66 @@ export function FacebookPublisherClient() {
     }
   }
 
+  async function publishInboxDraftNow(item: FacebookDraftInboxItem) {
+    setError("");
+    setNotice("");
+    setPublishResult(null);
+    setIsPublishing(true);
+
+    try {
+      const result = await publishOne({
+        draftToPublish: { ...item.draft, scheduledPublishTime: undefined, approved: true },
+        pageId: item.pageId || selectedPageId,
+        draftId: item.id
+      });
+      setPublishResult(result);
+      setNotice("Đã đăng bài lên Fanpage và ẩn khỏi hàng chờ.");
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : "Không đăng được bài.");
+    } finally {
+      setIsPublishing(false);
+    }
+  }
+
+  async function scheduleInboxDraft(item: FacebookDraftInboxItem) {
+    const scheduleValue = draftScheduleValues[item.id] || "";
+    const scheduledPublishTime = fromDateTimeLocalValue(scheduleValue);
+    if (!scheduledPublishTime) {
+      setError("Chọn ngày và giờ đăng trước khi bấm lên lịch.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setPublishResult(null);
+    setIsPublishing(true);
+
+    try {
+      const result = await publishOne({
+        draftToPublish: { ...item.draft, scheduledPublishTime, approved: true },
+        pageId: item.pageId || selectedPageId,
+        draftId: item.id
+      });
+      setPublishResult(result);
+      setNotice("Đã lên lịch đăng bài và ẩn khỏi hàng chờ.");
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : "Không lên lịch được bài.");
+    } finally {
+      setIsPublishing(false);
+    }
+  }
+
+  async function deleteInboxDraft(item: FacebookDraftInboxItem) {
+    setError("");
+    setNotice("");
+    try {
+      await hideDraft(item.id);
+      setNotice("Đã xóa bài khỏi hàng chờ.");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Không xóa được bài.");
+    }
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="space-y-6">
@@ -336,8 +443,6 @@ export function FacebookPublisherClient() {
           )}
         </Card>
 
-        <AgentKeyManager />
-
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -359,9 +464,11 @@ export function FacebookPublisherClient() {
           </CardHeader>
 
           {draftInbox.length ? (
-            <div className="grid gap-3">
+            <div className="grid max-h-[560px] gap-3 overflow-y-auto overscroll-contain pr-2">
               {draftInbox.map((item) => {
                 const isSelected = selectedDraftIds.includes(item.id);
+                const itemPageId = item.pageId || selectedPageId;
+                const canActOnItem = Boolean(itemPageId && item.draft.message.trim() && !isPublishing);
                 return (
                   <div
                     key={item.id}
@@ -375,19 +482,41 @@ export function FacebookPublisherClient() {
                         onChange={() => toggleInboxDraft(item.id)}
                         type="checkbox"
                       />
-                      <button className="min-w-0 flex-1 text-left" onClick={() => applyInboxDraft(item)} type="button">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="font-extrabold text-on-surface">{item.draft.title}</p>
-                            <p className="mt-1 line-clamp-2 text-sm leading-6 text-on-surface-variant">{item.draft.message || "Chưa có caption"}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+                          <button className="min-w-0 text-left" onClick={() => applyInboxDraft(item)} type="button">
+                            <div className="flex flex-wrap items-start gap-3">
+                              <p className="font-extrabold text-on-surface">{item.draft.title}</p>
+                              <Badge>{item.status}</Badge>
+                            </div>
+                            <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">{item.draft.message || "Chưa có caption"}</p>
+                          </button>
+                          <div className="grid gap-2 sm:grid-cols-[minmax(190px,1fr)_auto_auto_auto] xl:min-w-[520px]">
+                            <Input
+                              aria-label={`Chọn ngày giờ đăng cho ${item.draft.title}`}
+                              type="datetime-local"
+                              value={draftScheduleValues[item.id] ?? toDateTimeLocalValue(item.draft.scheduledPublishTime)}
+                              onChange={(event) => updateDraftSchedule(item.id, event.target.value)}
+                            />
+                            <Button disabled={!canActOnItem || !draftScheduleValues[item.id]} onClick={() => void scheduleInboxDraft(item)}>
+                              <MaterialIcon name="schedule_send" />
+                              Lên lịch
+                            </Button>
+                            <Button variant="secondary" disabled={!canActOnItem} onClick={() => void publishInboxDraftNow(item)}>
+                              <MaterialIcon name="send" />
+                              Đăng ngay
+                            </Button>
+                            <Button variant="danger" disabled={isPublishing} onClick={() => void deleteInboxDraft(item)}>
+                              <MaterialIcon name="delete" />
+                              Xóa
+                            </Button>
                           </div>
-                          <Badge>{item.status}</Badge>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-outline">
                           {item.createdAt ? <span>Nạp lúc {new Date(item.createdAt).toLocaleString("vi-VN")}</span> : null}
                           {item.draft.scheduledPublishTime ? <span>Lịch đăng {new Date(item.draft.scheduledPublishTime).toLocaleString("vi-VN")}</span> : null}
                         </div>
-                      </button>
+                      </div>
                     </div>
                   </div>
                 );
