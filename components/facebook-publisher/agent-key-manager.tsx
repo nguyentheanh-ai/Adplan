@@ -1,18 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MaterialIcon } from "@/components/material-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-
-type FacebookPage = {
-  id: string;
-  name: string;
-  category?: string;
-};
 
 type AgentKeyRecord = {
   id: string;
@@ -43,7 +37,7 @@ async function readJson<T>(url: string, init?: RequestInit) {
   return payload;
 }
 
-export function AgentKeyManager({ pages }: { pages: FacebookPage[] }) {
+export function AgentKeyManager() {
   const [keys, setKeys] = useState<AgentKeyRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -56,16 +50,7 @@ export function AgentKeyManager({ pages }: { pages: FacebookPage[] }) {
   const [startHour, setStartHour] = useState("");
   const [endHour, setEndHour] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
-  const [allowedPageIds, setAllowedPageIds] = useState<string[]>([]);
   const [error, setError] = useState("");
-
-  const selectedPageSummary = useMemo(() => {
-    if (!allowedPageIds.length) return "Tất cả Fanpage đã kết nối";
-    return pages
-      .filter((page) => allowedPageIds.includes(page.id))
-      .map((page) => page.name)
-      .join(", ");
-  }, [allowedPageIds, pages]);
 
   async function loadKeys() {
     setLoading(true);
@@ -104,7 +89,7 @@ export function AgentKeyManager({ pages }: { pages: FacebookPage[] }) {
             canPublishDirect,
             canSchedule
           },
-          allowed_page_ids: allowedPageIds,
+          allowed_page_ids: [],
           daily_post_limit: dailyLimit ? Number(dailyLimit) : null,
           allowed_window_json:
             startHour !== "" || endHour !== ""
@@ -125,7 +110,6 @@ export function AgentKeyManager({ pages }: { pages: FacebookPage[] }) {
       setStartHour("");
       setEndHour("");
       setExpiresAt("");
-      setAllowedPageIds([]);
       setLabel("Agent đăng Facebook");
       await loadKeys();
     } catch (saveError) {
@@ -152,10 +136,6 @@ export function AgentKeyManager({ pages }: { pages: FacebookPage[] }) {
     if (!rawKey) return;
     await navigator.clipboard.writeText(rawKey);
     toast.success("Đã copy mã Agent.");
-  }
-
-  function togglePage(pageId: string) {
-    setAllowedPageIds((current) => (current.includes(pageId) ? current.filter((item) => item !== pageId) : [...current, pageId]));
   }
 
   return (
@@ -250,27 +230,6 @@ export function AgentKeyManager({ pages }: { pages: FacebookPage[] }) {
             <span className="text-sm font-bold">Khung giờ kết thúc</span>
             <Input value={endHour} onChange={(event) => setEndHour(event.target.value.replace(/\D/g, "").slice(0, 2))} placeholder="0-23" />
           </label>
-        </div>
-
-        <div className="space-y-3">
-          <p className="text-sm font-bold">Fanpage được phép đăng</p>
-          <p className="text-xs text-on-surface-variant">Nếu không chọn page nào, key sẽ dùng được với tất cả Fanpage đã kết nối của tài khoản này.</p>
-          <div className="flex flex-wrap gap-2">
-            {pages.map((page) => {
-              const active = allowedPageIds.includes(page.id);
-              return (
-                <button
-                  key={page.id}
-                  type="button"
-                  onClick={() => togglePage(page.id)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold ${active ? "bg-primary text-white" : "bg-white text-on-surface-variant border border-outline-variant"}`}
-                >
-                  {page.name}
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-xs font-semibold text-outline">Đang chọn: {selectedPageSummary}</p>
         </div>
 
         <div className="flex flex-wrap gap-3">

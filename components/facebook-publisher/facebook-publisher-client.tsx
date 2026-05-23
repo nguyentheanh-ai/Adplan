@@ -336,7 +336,7 @@ export function FacebookPublisherClient() {
           )}
         </Card>
 
-        <AgentKeyManager pages={pages} />
+        <AgentKeyManager />
 
         <Card>
           <CardHeader>
