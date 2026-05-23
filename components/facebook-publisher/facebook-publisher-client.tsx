@@ -29,6 +29,11 @@ type DraftSummary = {
   scheduled: number;
 };
 
+type ImagePreviewModal = {
+  src: string;
+  alt: string;
+};
+
 const defaultPageStorageKey = "adplan-facebook-publisher-default-page-id";
 const emptyDraftSummary: DraftSummary = {
   published: 0,
@@ -73,6 +78,10 @@ function fromDateTimeLocalValue(value: string) {
   return date.toISOString();
 }
 
+function getDraftImageSrc(draft: NormalizedAgentPostDraft) {
+  return draft.imageDataUrl || draft.imageUrl || "";
+}
+
 export function FacebookPublisherClient() {
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [selectedPageId, setSelectedPageId] = useState("");
@@ -90,6 +99,7 @@ export function FacebookPublisherClient() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
+  const [imageModal, setImageModal] = useState<ImagePreviewModal | null>(null);
 
   async function loadDraftInbox() {
     try {
@@ -169,7 +179,7 @@ export function FacebookPublisherClient() {
     () => draftInbox.filter((item) => selectedDraftIds.includes(item.id)),
     [draftInbox, selectedDraftIds]
   );
-  const imagePreview = draft.imageDataUrl || draft.imageUrl || "";
+  const imagePreview = getDraftImageSrc(draft);
   const canPublish = Boolean(selectedPageId && selectedPageCanPublish && draft.message.trim() && approved && !isPublishing);
   const canBatchPublish = Boolean(selectedDraftIds.length && selectedPageId && selectedPageCanPublish && approved && !isPublishing);
 
@@ -440,6 +450,28 @@ export function FacebookPublisherClient() {
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      {imageModal ? (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={() => setImageModal(null)}
+          role="dialog"
+        >
+          <div className="relative max-h-[92vh] w-full max-w-5xl" onClick={(event) => event.stopPropagation()}>
+            <button
+              aria-label="Đóng ảnh phóng to"
+              className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/70 text-white"
+              onClick={() => setImageModal(null)}
+              type="button"
+            >
+              <MaterialIcon name="close" />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img alt={imageModal.alt} className="max-h-[92vh] w-full rounded-lg bg-white object-contain" src={imageModal.src} />
+          </div>
+        </div>
+      ) : null}
+
       <div className="space-y-6">
         <Card>
           <CardHeader>
@@ -556,6 +588,7 @@ export function FacebookPublisherClient() {
                 const isSelected = selectedDraftIds.includes(item.id);
                 const draftPageIsDifferent = Boolean(item.pageId && item.pageId !== selectedPageId);
                 const canActOnItem = Boolean(selectedPageId && selectedPageCanPublish && item.draft.message.trim() && !isPublishing);
+                const draftImage = getDraftImageSrc(item.draft);
                 return (
                   <div
                     key={item.id}
@@ -569,6 +602,24 @@ export function FacebookPublisherClient() {
                         onChange={() => toggleInboxDraft(item)}
                         type="checkbox"
                       />
+                      {draftImage ? (
+                        <button
+                          aria-label={`Phóng to ảnh của ${item.draft.title}`}
+                          className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low"
+                          onClick={() => setImageModal({ src: draftImage, alt: item.draft.imageAlt || item.draft.title })}
+                          type="button"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img alt={item.draft.imageAlt || item.draft.title} className="h-full w-full object-cover transition group-hover:scale-105" src={draftImage} />
+                          <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-white opacity-0 transition group-hover:opacity-100">
+                            <MaterialIcon className="text-[18px]" name="open_in_full" />
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-outline-variant bg-surface-container-low px-2 text-center text-[11px] font-bold leading-4 text-on-surface-variant">
+                          Chưa có ảnh
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
                         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
                           <button className="min-w-0 text-left" onClick={() => applyInboxDraft(item)} type="button">
