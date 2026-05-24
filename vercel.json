@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/facebook-auto-publisher",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

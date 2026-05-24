@@ -29,6 +29,13 @@ type DraftSummary = {
   scheduled: number;
 };
 
+type ScheduleSettings = {
+  page_id: string;
+  daily_post_count: number;
+  schedule_times: string[];
+  active: boolean;
+};
+
 type ImagePreviewModal = {
   src: string;
   alt: string;
@@ -126,6 +133,8 @@ export function FacebookPublisherClient() {
   const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
   const [dailyPostCount, setDailyPostCount] = useState(3);
   const [dailyScheduleTimes, setDailyScheduleTimes] = useState(defaultDailyScheduleTimes);
+  const [autoScheduleActive, setAutoScheduleActive] = useState(false);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [agentJson, setAgentJson] = useState("");
   const [approved, setApproved] = useState(false);
   const [isLoadingPages, setIsLoadingPages] = useState(true);
@@ -167,6 +176,34 @@ export function FacebookPublisherClient() {
       })
       .finally(() => {
         if (!cancelled) setIsLoadingPages(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    readJson<{ data: ScheduleSettings; storage?: string }>("/api/facebook-publisher/schedule-settings")
+      .then((payload) => {
+        if (cancelled) return;
+        const nextCount = Math.max(1, Math.min(10, payload.data.daily_post_count || 3));
+        if (payload.data.page_id) setSelectedPageId(payload.data.page_id);
+        setDailyPostCount(nextCount);
+        setDailyScheduleTimes(
+          Array.from(
+            { length: nextCount },
+            (_, index) => payload.data.schedule_times?.[index] || defaultDailyScheduleTimes[index] || "09:00"
+          )
+        );
+        setAutoScheduleActive(payload.data.active === true);
+        if (payload.storage === "missing_schema") {
+          setNotice("Chưa có bảng lưu lịch tự động. Hãy chạy migration facebook_publisher_schedule_settings.");
+        }
+      })
+      .catch((settingsError) => {
+        if (!cancelled) setError(settingsError instanceof Error ? settingsError.message : "Không tải được lịch tự động.");
       });
 
     return () => {
@@ -272,6 +309,35 @@ export function FacebookPublisherClient() {
       next[index] = value;
       return next;
     });
+  }
+
+  async function saveScheduleSettings() {
+    if (!selectedPageId) {
+      setError("Chọn Fanpage trước khi lưu lịch tự động.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setIsSavingSchedule(true);
+    try {
+      const payload = await readJson<{ data: ScheduleSettings }>("/api/facebook-publisher/schedule-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_id: selectedPageId,
+          daily_post_count: dailyPostCount,
+          schedule_times: dailyScheduleTimes.slice(0, dailyPostCount),
+          active: autoScheduleActive
+        })
+      });
+      setAutoScheduleActive(payload.data.active);
+      setNotice(payload.data.active ? "Đã bật lịch tự động. Cron sẽ tự xếp lịch các draft mới theo khung giờ này." : "Đã lưu lịch và tạm tắt tự động đăng.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Không lưu được lịch tự động.");
+    } finally {
+      setIsSavingSchedule(false);
+    }
   }
 
   function loadExample() {
@@ -666,6 +732,16 @@ export function FacebookPublisherClient() {
                   </label>
                 ))}
               </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+              <label className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-bold text-on-surface">
+                <input type="checkbox" checked={autoScheduleActive} onChange={(event) => setAutoScheduleActive(event.target.checked)} />
+                Bật tự động xếp lịch draft mới
+              </label>
+              <Button variant="secondary" disabled={isSavingSchedule || !selectedPageId} onClick={() => void saveScheduleSettings()}>
+                <MaterialIcon name={isSavingSchedule ? "hourglass_top" : "save"} />
+                Lưu lịch tự động
+              </Button>
             </div>
           </div>
 
