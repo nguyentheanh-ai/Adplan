@@ -5,6 +5,11 @@
 import Image from "next/image";
 import Script from "next/script";
 
+const workspaceSupabaseConfig = {
+  url: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+  publishableKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ""
+};
+
 export function GreezhubWorkspaceApp() {
   return (
     <>
@@ -75,6 +80,11 @@ export function GreezhubWorkspaceApp() {
       </div>
 
       <div className="toast" id="toast" role="status" aria-live="polite" />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.WORKSPACE_REMOTE_CONFIG = { mode: "adplan_api", endpoint: "/api/workspace/app-state" }; window.SUPABASE_CONFIG = ${JSON.stringify(workspaceSupabaseConfig)};`
+        }}
+      />
       <Script src="/greezhub-workspace/knowledge-seeds.js?v=20260525-next-port" strategy="afterInteractive" />
       <Script src="/greezhub-workspace/app.js?v=20260525-next-port" strategy="afterInteractive" />
     </>

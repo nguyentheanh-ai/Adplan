@@ -12,6 +12,10 @@ describe("Greezhub workspace integration", () => {
 
     expect(page).toContain("GreezhubWorkspaceApp");
     expect(page).not.toContain("StudentDashboard");
+    expect(component).toContain("WORKSPACE_REMOTE_CONFIG");
+    expect(component).toContain("/api/workspace/app-state");
+    expect(component).toContain("NEXT_PUBLIC_SUPABASE_URL");
+    expect(component).toContain("NEXT_PUBLIC_SUPABASE_ANON_KEY");
     expect(component).toContain("/greezhub-workspace/app.js");
     expect(component).toContain("/greezhub-workspace/styles.css");
   });
@@ -32,6 +36,8 @@ describe("Greezhub workspace integration", () => {
     expect(app).not.toContain("Â·");
     expect(app).toContain('value="${escapeUiText(note.title)}"');
     expect(app).toContain("toast.textContent = repairVietnameseText(message);");
+    expect(app).toContain("initWorkspaceApiRemote");
+    expect(app).toContain("loadSupabaseSdk");
     expect(app).not.toMatch(/service_role|SUPABASE_SERVICE|ACCESS_TOKEN|PAGE_ACCESS|adplan_agent_key|client_secret|private_key/i);
     expect(styles).toContain(".documents-layout");
     expect(styles).toContain(".notes-board");

@@ -3027,6 +3027,7 @@ if (canonicalPath && window.location.pathname !== canonicalPath) {
 const remoteStateTable = "app_state";
 let remoteStateId = "local-default";
 let supabaseClient = null;
+let workspaceApiRemote = false;
 let remoteSaveTimer = null;
 let remoteReady = false;
 let remoteLoading = false;
@@ -3203,6 +3204,37 @@ function getSupabaseConfig() {
   return { url, publishableKey };
 }
 
+function loadSupabaseSdk() {
+  if (window.supabase?.createClient) return Promise.resolve(true);
+  if (window.__taSupabaseSdkPromise) return window.__taSupabaseSdkPromise;
+
+  window.__taSupabaseSdkPromise = new Promise((resolve) => {
+    const existing = document.querySelector('script[data-ta-supabase-sdk="true"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(Boolean(window.supabase?.createClient)), { once: true });
+      existing.addEventListener("error", () => resolve(false), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.106.0/dist/umd/supabase.min.js";
+    script.async = true;
+    script.dataset.taSupabaseSdk = "true";
+    script.onload = () => resolve(Boolean(window.supabase?.createClient));
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
+  });
+
+  return window.__taSupabaseSdkPromise;
+}
+
+function getWorkspaceRemoteConfig() {
+  const config = window.WORKSPACE_REMOTE_CONFIG || {};
+  const endpoint = String(config.endpoint || "/api/workspace/app-state").trim();
+  if (config.mode !== "adplan_api" || !endpoint.startsWith("/api/")) return null;
+  return { endpoint };
+}
+
 function collectRemoteState() {
   return {
     tasks: state.tasks,
@@ -3258,9 +3290,12 @@ async function initSupabase() {
     return false;
   }
   if (!window.supabase?.createClient) {
-    state.authReady = true;
-    showToast("KhÃ´ng táº£i Ä‘Æ°á»£c Supabase, Ä‘ang lÆ°u local");
-    return false;
+    const sdkLoaded = await loadSupabaseSdk();
+    if (!sdkLoaded) {
+      state.authReady = true;
+      showToast("KhÃ´ng táº£i Ä‘Æ°á»£c Supabase, Ä‘ang lÆ°u local");
+      return false;
+    }
   }
   supabaseClient = window.supabase.createClient(config.url, config.publishableKey);
   const { data } = await supabaseClient.auth.getSession();
@@ -3276,6 +3311,33 @@ async function initSupabase() {
     render();
   });
   return true;
+}
+
+async function initWorkspaceApiRemote() {
+  const config = getWorkspaceRemoteConfig();
+  if (!config) return false;
+
+  try {
+    const response = await fetch(config.endpoint, { cache: "no-store" });
+    if (response.status === 401) {
+      state.authReady = true;
+      return false;
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Workspace API error");
+
+    workspaceApiRemote = true;
+    remoteReady = true;
+    remoteErrorShown = false;
+    state.authReady = true;
+    remoteStateId = payload.data?.user_id || "adplan-session";
+    if (payload.data?.payload) applyRemoteState(payload.data.payload);
+    return true;
+  } catch {
+    state.authReady = true;
+    showToast("KhÃ´ng Ä‘á»c Ä‘Æ°á»£c Workspace Supabase, Ä‘ang lÆ°u local");
+    return false;
+  }
 }
 
 function setAuthUser(user) {
@@ -3313,6 +3375,21 @@ function scheduleRemoteSave() {
 }
 
 async function saveRemoteState() {
+  if (workspaceApiRemote) {
+    const config = getWorkspaceRemoteConfig();
+    if (!config || remoteLoading) return;
+    const response = await fetch(config.endpoint, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload: collectRemoteState() }),
+    });
+    if (!response.ok && !remoteErrorShown) {
+      remoteErrorShown = true;
+      showToast("KhÃ´ng lÆ°u Ä‘Æ°á»£c Workspace lÃªn Supabase");
+    }
+    return;
+  }
+
   if (!supabaseClient || remoteLoading || !state.authUser) return;
   const { error } = await supabaseClient.from(remoteStateTable).upsert({
     id: remoteStateId,
@@ -5824,6 +5901,10 @@ document.addEventListener("mousedown", handleDocumentEditorClickAway, true);
 ensureDocumentEditorLibraryLoaded();
 render();
 (async () => {
+  if (await initWorkspaceApiRemote()) {
+    render();
+    return;
+  }
   if (await initSupabase()) {
     render();
     await loadRemoteState();
