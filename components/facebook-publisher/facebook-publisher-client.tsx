@@ -7,6 +7,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Input, Textarea } from "@/components/ui/input";
 import { MaterialIcon } from "@/components/material-icon";
 import { normalizeAgentPostDraft, type FacebookDraftInboxItem, type NormalizedAgentPostDraft } from "@/lib/facebook-publisher";
+import { AgentKeyManager } from "./agent-key-manager";
 
 type FacebookPage = {
   id: string;
@@ -599,6 +600,8 @@ export function FacebookPublisherClient() {
       ) : null}
 
       <div className="space-y-6">
+        <AgentKeyManager pages={pages} />
+
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">

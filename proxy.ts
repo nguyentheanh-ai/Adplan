@@ -1,23 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { APP_SESSION_COOKIE } from "@/lib/auth/constants";
+import { isDevPreviewAuthEnabled } from "@/lib/auth/dev-preview";
 
-const protectedRoutes = ["/dashboard", "/ask", "/persona", "/plan", "/settings"];
+const protectedRoutes = ["/ads", "/dashboard", "/workspace", "/ask", "/persona", "/plan", "/settings"];
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isProtected = protectedRoutes.some((route) => pathname.startsWith(route));
   const hasSession = Boolean(request.cookies.get(APP_SESSION_COOKIE)?.value);
+  const previewAuth = isDevPreviewAuthEnabled();
 
-  if (isProtected && !hasSession) {
+  if (isProtected && !hasSession && !previewAuth) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (pathname === "/login" && hasSession) {
+  if (pathname === "/login" && (hasSession || previewAuth)) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/dashboard";
+    redirectUrl.pathname = "/";
     return NextResponse.redirect(redirectUrl);
   }
 

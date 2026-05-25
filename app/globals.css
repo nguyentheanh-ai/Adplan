@@ -153,3 +153,54 @@ select {
 .floating-anim {
   animation: floating 6s ease-in-out infinite;
 }
+
+@media (min-width: 768px) {
+  .student-mobile-action {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .student-mobile-action {
+    background: rgb(5 8 13 / 0.9);
+    border: 1px solid rgb(119 215 255 / 0.18);
+    border-radius: 18px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    box-shadow: 0 18px 52px rgb(0 0 0 / 0.34);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1.1fr 0.95fr 0.95fr;
+    left: 10px;
+    padding: 8px;
+    position: fixed;
+    right: 10px;
+    z-index: 60;
+  }
+
+  .student-mobile-action a {
+    align-items: center;
+    border-radius: 13px;
+    display: inline-flex;
+    font-size: 0.82rem;
+    font-weight: 950;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0 10px;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .student-mobile-action a:first-child {
+    background: #8bdcff;
+    color: #061018;
+  }
+
+  .student-mobile-action a:not(:first-child) {
+    background: rgb(255 255 255 / 0.1);
+    color: white;
+  }
+
+  .student-mobile-action--dark {
+    background: rgb(24 24 31 / 0.92);
+  }
+}

@@ -15,5 +15,6 @@ pnpm-debug.log*
 dev-server.log
 tsconfig.tsbuildinfo
 stitch_ai_fb_ads_planner/
+.codex-screenshots/
 
 .vercel

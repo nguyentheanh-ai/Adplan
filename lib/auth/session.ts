@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import { APP_SESSION_COOKIE } from "@/lib/auth/constants";
+import { createDevPreviewSession, isDevPreviewAuthEnabled } from "@/lib/auth/dev-preview";
 
 export { APP_SESSION_COOKIE };
 
@@ -49,7 +50,9 @@ export function decodeAppSession(cookieValue?: string | null) {
 
 export async function getAppSession() {
   const cookieStore = await cookies();
-  return decodeAppSession(cookieStore.get(APP_SESSION_COOKIE)?.value);
+  const session = decodeAppSession(cookieStore.get(APP_SESSION_COOKIE)?.value);
+  if (session) return session;
+  return isDevPreviewAuthEnabled() ? createDevPreviewSession() : null;
 }
 
 export async function requireAppSession() {

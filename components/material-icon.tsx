@@ -83,6 +83,7 @@ const icons: Record<string, LucideIcon> = {
   more_vert: MoreVertical,
   notifications: Bell,
   palette: Palette,
+  post_add: PenLine,
   refresh: RefreshCw,
   rocket_launch: Rocket,
   search: Search,
