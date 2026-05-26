@@ -258,6 +258,18 @@ describe("Greezhub workspace integration", () => {
     expect(route).toContain("isPrivateIpv4");
   });
 
+  it("merges remote ideas and prompts without dropping local browser edits", () => {
+    const app = read("public/greezhub-workspace/app.js");
+
+    expect(app).toContain("function mergeRemoteListWithLocal");
+    expect(app).toContain("function mergeRemotePromptsWithLocal");
+    expect(app).toContain("function mergeRemoteIdeasWithLocal");
+    expect(app).toContain("state.prompts = mergeRemotePromptsWithLocal(payload.prompts, state.prompts)");
+    expect(app).toContain("state.ideas = mergeRemoteIdeasWithLocal(payload.ideas, state.ideas)");
+    expect(app).not.toContain("state.prompts = payload.prompts;");
+    expect(app).not.toContain("state.ideas = normalizeIdeas(payload.ideas);");
+  });
+
   it("scopes legacy utility classes so the embedded app cannot override AppShell responsive UI", () => {
     const styles = read("public/greezhub-workspace/styles.css");
 

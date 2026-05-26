@@ -3941,6 +3941,28 @@ function mergeRemoteDocumentsWithLocal(remoteDocuments = [], localDocuments = []
   return [...localOnlyItems, ...remoteItems];
 }
 
+function mergeRemoteListWithLocal(remoteItems = [], localItems = [], normalize = (items) => items || []) {
+  const localNormalized = normalize(localItems);
+  const mergedById = new Map();
+  localNormalized.forEach((item) => {
+    if (item?.id) mergedById.set(String(item.id), item);
+  });
+  normalize(remoteItems).forEach((item) => {
+    if (!item?.id) return;
+    const id = String(item.id);
+    if (!mergedById.has(id)) mergedById.set(id, item);
+  });
+  return Array.from(mergedById.values());
+}
+
+function mergeRemotePromptsWithLocal(remotePrompts = [], localPrompts = []) {
+  return mergeRemoteListWithLocal(remotePrompts, localPrompts, (items) => (Array.isArray(items) ? items : []));
+}
+
+function mergeRemoteIdeasWithLocal(remoteIdeas = [], localIdeas = []) {
+  return mergeRemoteListWithLocal(remoteIdeas, localIdeas, normalizeIdeas);
+}
+
 const state = {
   page: pageFromPath() || localStorage.getItem("ta.page") || "calendar",
   search: "",
@@ -4291,13 +4313,13 @@ function applyRemoteState(payload) {
   if (!payload || typeof payload !== "object") return false;
   remoteLoading = true;
   if (Array.isArray(payload.tasks)) state.tasks = payload.tasks;
-  if (Array.isArray(payload.prompts)) state.prompts = payload.prompts;
+  if (Array.isArray(payload.prompts)) state.prompts = mergeRemotePromptsWithLocal(payload.prompts, state.prompts);
   if (Array.isArray(payload.alarms)) state.alarms = payload.alarms;
   if (Array.isArray(payload.courses)) state.courses = normalizeCourses(payload.courses);
   if (Array.isArray(payload.notes)) state.notes = payload.notes;
   if (Array.isArray(payload.documentFolders)) state.documentFolders = payload.documentFolders;
   if (Array.isArray(payload.documents)) state.documents = mergeRemoteDocumentsWithLocal(payload.documents, state.documents);
-  if (Array.isArray(payload.ideas)) state.ideas = normalizeIdeas(payload.ideas);
+  if (Array.isArray(payload.ideas)) state.ideas = mergeRemoteIdeasWithLocal(payload.ideas, state.ideas);
   if (Array.isArray(payload.contentPlans)) state.contentPlans = payload.contentPlans;
   if (typeof payload.selectedCourseId === "string") state.selectedCourseId = payload.selectedCourseId;
   if (typeof payload.selectedDocumentId === "string") state.selectedDocumentId = payload.selectedDocumentId;
@@ -4374,7 +4396,11 @@ async function initWorkspaceApiRemote() {
     remoteErrorShown = false;
     state.authReady = true;
     remoteStateId = payload.data?.user_id || "adplan-session";
-    if (payload.data?.payload) applyRemoteState(payload.data.payload);
+    if (payload.data?.payload) {
+      applyRemoteState(payload.data.payload);
+    } else {
+      saveRemoteState();
+    }
     return true;
   } catch {
     state.authReady = true;
