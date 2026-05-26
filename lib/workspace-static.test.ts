@@ -75,7 +75,11 @@ describe("Greezhub workspace integration", () => {
     expect(app).toContain('data-flow-diagram-connect');
     expect(app).toContain('data-flow-diagram-color');
     expect(app).toContain('data-flow-diagram-resize');
+    expect(app).toContain('data-flow-diagram-resize-direction');
+    expect(app).toContain('data-flow-diagram-drag');
     expect(app).toContain('data-flow-diagram-canvas-resize');
+    expect(app).toContain('["n", "e", "s", "w", "ne", "se", "sw", "nw"]');
+    expect(app).toContain('beginResize(event, item, resizeHandle.dataset.flowDiagramResizeDirection || "se")');
     expect(app).toContain("DOCUMENT_FLOW_DIAGRAM_CONNECTOR_SIDES");
     expect(app).toContain("DOCUMENT_FLOW_DIAGRAM_EDGE_SHAPES");
     expect(app).toContain("DOCUMENT_FLOW_DIAGRAM_EDGE_ARROWS");
@@ -115,7 +119,16 @@ describe("Greezhub workspace integration", () => {
     expect(styles).toContain(".document-flow-diagram__edge-hit");
     expect(styles).toContain(".document-flow-diagram__edge.is-selected");
     expect(styles).toContain(".document-flow-diagram__edge-tools");
+    expect(styles).toContain(".document-flow-diagram__drag");
     expect(styles).toContain(".document-flow-diagram__resize");
+    expect(styles).toContain(".document-flow-diagram__resize--n");
+    expect(styles).toContain(".document-flow-diagram__resize--e");
+    expect(styles).toContain(".document-flow-diagram__resize--s");
+    expect(styles).toContain(".document-flow-diagram__resize--w");
+    expect(styles).toContain(".document-flow-diagram__resize--ne");
+    expect(styles).toContain(".document-flow-diagram__resize--se");
+    expect(styles).toContain(".document-flow-diagram__resize--sw");
+    expect(styles).toContain(".document-flow-diagram__resize--nw");
     expect(styles).toContain(".document-flow-diagram__connector");
     expect(styles).toContain(".document-flow-diagram__connector--left");
     expect(styles).toContain(".document-flow-diagram__connector--right");
@@ -128,6 +141,8 @@ describe("Greezhub workspace integration", () => {
     expect(styles).toContain(".document-flow-diagram:not(.is-active) .document-flow-diagram__canvas-resize");
     expect(styles).toContain(".document-flow-diagram.is-active .document-flow-diagram__canvas-resize");
     expect(styles).toContain(".document-flow-diagram.is-active .document-flow-diagram__node:hover .document-flow-diagram__swatches");
+    expect(styles).toContain(".document-flow-diagram.is-active .document-flow-diagram__node:hover .document-flow-diagram__drag");
+    expect(styles).toContain(".document-flow-diagram.is-active .document-flow-diagram__node.is-selected .document-flow-diagram__resize");
     expect(styles).toContain(".document-flow-diagram.is-active .document-flow-diagram__node:focus-within .document-flow-diagram__connector");
     expect(styles).toContain(".document-flow-diagram:not(.is-active) .document-flow-diagram__viewport");
     expect(styles).toContain(".document-flow-diagram.is-active .document-flow-diagram__viewport:hover");

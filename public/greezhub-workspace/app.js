@@ -2716,30 +2716,53 @@ function createFlowDiagramNodeExtension() {
           document.addEventListener("mousemove", onMove);
           document.addEventListener("mouseup", onUp);
         };
-        const beginResize = (event, item) => {
+        const beginResize = (event, item, direction = "se") => {
           event.preventDefault();
           event.stopPropagation();
           selectedNodeId = item.id;
           selectedEdgeId = "";
           const startX = event.clientX;
           const startY = event.clientY;
+          const startLeft = Number(item.x) || 0;
+          const startTop = Number(item.y) || 0;
           const startWidth = Number(item.width) || 220;
           const startHeight = Number(item.height) || 86;
           const canvas = getCanvas();
           const nodeElement = event.target.closest("[data-flow-diagram-node]");
+          const minWidth = 120;
+          const minHeight = 64;
+          const resizeFromEvent = (moveEvent) => {
+            const deltaX = moveEvent.clientX - startX;
+            const deltaY = moveEvent.clientY - startY;
+            let x = startLeft;
+            let y = startTop;
+            let width = startWidth;
+            let height = startHeight;
+            if (direction.includes("e")) width = Math.min(canvas.width - startLeft, Math.max(minWidth, startWidth + deltaX));
+            if (direction.includes("s")) height = Math.min(canvas.height - startTop, Math.max(minHeight, startHeight + deltaY));
+            if (direction.includes("w")) {
+              x = Math.max(0, Math.min(startLeft + startWidth - minWidth, startLeft + deltaX));
+              width = startLeft + startWidth - x;
+            }
+            if (direction.includes("n")) {
+              y = Math.max(0, Math.min(startTop + startHeight - minHeight, startTop + deltaY));
+              height = startTop + startHeight - y;
+            }
+            return { x, y, width, height };
+          };
+          const applyNodeBox = (box) => {
+            nodeElement.style.left = `${box.x}px`;
+            nodeElement.style.top = `${box.y}px`;
+            nodeElement.style.width = `${box.width}px`;
+            nodeElement.style.height = `${box.height}px`;
+          };
           const onMove = (moveEvent) => {
-            const nextWidth = Math.max(120, Math.min(canvas.width - item.x, startWidth + moveEvent.clientX - startX));
-            const nextHeight = Math.max(64, Math.min(canvas.height - item.y, startHeight + moveEvent.clientY - startY));
-            nodeElement.style.width = `${nextWidth}px`;
-            nodeElement.style.height = `${nextHeight}px`;
+            applyNodeBox(resizeFromEvent(moveEvent));
           };
           const onUp = (upEvent) => {
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
-            updateNode(item.id, {
-              width: Math.max(120, Math.min(canvas.width - item.x, startWidth + upEvent.clientX - startX)),
-              height: Math.max(64, Math.min(canvas.height - item.y, startHeight + upEvent.clientY - startY)),
-            });
+            updateNode(item.id, resizeFromEvent(upEvent));
             render();
           };
           document.addEventListener("mousemove", onMove);
@@ -2927,6 +2950,15 @@ function createFlowDiagramNodeExtension() {
           label.value = item.text || "Block";
           element.appendChild(label);
 
+          const dragHandle = document.createElement("button");
+          dragHandle.type = "button";
+          dragHandle.className = "document-flow-diagram__drag";
+          dragHandle.dataset.flowDiagramDrag = item.id;
+          dragHandle.setAttribute("aria-label", "Kéo ô");
+          dragHandle.setAttribute("title", "Kéo ô");
+          dragHandle.innerHTML = icon("open_with");
+          element.appendChild(dragHandle);
+
           DOCUMENT_FLOW_DIAGRAM_CONNECTOR_SIDES.forEach((side) => {
             const connector = document.createElement("button");
             connector.type = "button";
@@ -2938,10 +2970,13 @@ function createFlowDiagramNodeExtension() {
             element.appendChild(connector);
           });
 
-          const resize = document.createElement("span");
-          resize.className = "document-flow-diagram__resize";
-          resize.dataset.flowDiagramResize = item.id;
-          element.appendChild(resize);
+          ["n", "e", "s", "w", "ne", "se", "sw", "nw"].forEach((direction) => {
+            const resize = document.createElement("span");
+            resize.className = `document-flow-diagram__resize document-flow-diagram__resize--${direction}`;
+            resize.dataset.flowDiagramResize = item.id;
+            resize.setAttribute("data-flow-diagram-resize-direction", direction);
+            element.appendChild(resize);
+          });
 
           const swatches = document.createElement("div");
           swatches.className = "document-flow-diagram__swatches";
@@ -2956,7 +2991,7 @@ function createFlowDiagramNodeExtension() {
           element.appendChild(swatches);
 
           element.addEventListener("mousedown", (event) => {
-            if (event.target?.closest?.("[data-flow-diagram-label], [data-flow-diagram-color], [data-flow-diagram-connect], [data-flow-diagram-resize]")) return;
+            if (event.target?.closest?.("[data-flow-diagram-label], [data-flow-diagram-color], [data-flow-diagram-connect], [data-flow-diagram-resize], [data-flow-diagram-drag]")) return;
             beginDrag(event, item);
           });
           element.addEventListener("click", (event) => {
@@ -2968,7 +3003,10 @@ function createFlowDiagramNodeExtension() {
             event.stopPropagation();
             render();
           });
-          element.querySelector("[data-flow-diagram-resize]")?.addEventListener("mousedown", (event) => beginResize(event, item));
+          element.querySelector("[data-flow-diagram-drag]")?.addEventListener("mousedown", (event) => beginDrag(event, item));
+          element.querySelectorAll("[data-flow-diagram-resize]").forEach((resizeHandle) => {
+            resizeHandle.addEventListener("mousedown", (event) => beginResize(event, item, resizeHandle.dataset.flowDiagramResizeDirection || "se"));
+          });
           element.querySelectorAll("[data-flow-diagram-connect]").forEach((connector) => {
             connector.addEventListener("mousedown", (event) => beginConnect(event, item, connector.dataset.flowDiagramSide || "right"));
           });

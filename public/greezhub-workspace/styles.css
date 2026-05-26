@@ -2002,6 +2002,29 @@ input.document-mindmap__node {
   user-select: none;
 }
 
+.document-flow-diagram__drag {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.78);
+  color: currentColor;
+  cursor: grab;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.document-flow-diagram__drag .material-symbols-outlined {
+  font-size: 16px;
+}
+
 .document-flow-diagram__node.is-selected {
   outline: 3px solid rgba(20, 184, 166, 0.22);
   outline-offset: 3px;
@@ -2102,16 +2125,77 @@ input.document-mindmap__node {
 
 .document-flow-diagram__resize {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 16px;
-  height: 16px;
-  border-right: 2px solid rgba(15, 23, 42, 0.45);
-  border-bottom: 2px solid rgba(15, 23, 42, 0.45);
-  cursor: nwse-resize;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(15, 23, 42, 0.38);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
   opacity: 0;
   pointer-events: none;
   transition: opacity 160ms ease;
+}
+
+.document-flow-diagram__resize--n,
+.document-flow-diagram__resize--s {
+  left: 50%;
+  width: 28px;
+  height: 8px;
+  border-radius: 999px;
+  cursor: ns-resize;
+}
+
+.document-flow-diagram__resize--e,
+.document-flow-diagram__resize--w {
+  top: 50%;
+  width: 8px;
+  height: 28px;
+  border-radius: 999px;
+  cursor: ew-resize;
+}
+
+.document-flow-diagram__resize--n {
+  top: -5px;
+  transform: translateX(-50%);
+}
+
+.document-flow-diagram__resize--s {
+  bottom: -5px;
+  transform: translateX(-50%);
+}
+
+.document-flow-diagram__resize--e {
+  right: -5px;
+  transform: translateY(-50%);
+}
+
+.document-flow-diagram__resize--w {
+  left: -5px;
+  transform: translateY(-50%);
+}
+
+.document-flow-diagram__resize--ne {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+
+.document-flow-diagram__resize--se {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+
+.document-flow-diagram__resize--sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+
+.document-flow-diagram__resize--nw {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
 }
 
 .document-flow-diagram__canvas-resize {
@@ -2164,8 +2248,13 @@ input.document-mindmap__node {
 
 .document-flow-diagram.is-active .document-flow-diagram__node:hover .document-flow-diagram__connector,
 .document-flow-diagram.is-active .document-flow-diagram__node:focus-within .document-flow-diagram__connector,
+.document-flow-diagram.is-active .document-flow-diagram__node.is-selected .document-flow-diagram__connector,
+.document-flow-diagram.is-active .document-flow-diagram__node:hover .document-flow-diagram__drag,
+.document-flow-diagram.is-active .document-flow-diagram__node:focus-within .document-flow-diagram__drag,
+.document-flow-diagram.is-active .document-flow-diagram__node.is-selected .document-flow-diagram__drag,
 .document-flow-diagram.is-active .document-flow-diagram__node:hover .document-flow-diagram__resize,
-.document-flow-diagram.is-active .document-flow-diagram__node:focus-within .document-flow-diagram__resize {
+.document-flow-diagram.is-active .document-flow-diagram__node:focus-within .document-flow-diagram__resize,
+.document-flow-diagram.is-active .document-flow-diagram__node.is-selected .document-flow-diagram__resize {
   opacity: 1;
   pointer-events: auto;
 }
