@@ -1197,15 +1197,16 @@ function createDocumentCommandBus(editor) {
         const level = Math.min(6, Math.max(1, Number(editor.getAttributes("heading")?.level) || 1) + 1);
         return run(chain.setHeading({ level }));
       }
-      return false;
+      return run(chain.insertContent("\u00a0\u00a0\u00a0\u00a0"));
     }
     if (commandId === "promoteBlockLevel") {
       const parentNames = getSelectionParentNodeNames(editor);
       if (parentNames.includes("listItem") && runCommand("liftListItem", "listItem")) return true;
       if (parentNames.includes("taskItem") && runCommand("liftListItem", "taskItem")) return true;
       if (editor.isActive("heading")) {
-        const level = Math.max(1, Math.min(6, Number(editor.getAttributes("heading")?.level) || 1) - 1);
-        return run(chain.setHeading({ level }));
+        const currentLevel = Math.min(6, Math.max(1, Number(editor.getAttributes("heading")?.level) || 1));
+        if (currentLevel <= 1) return run(chain.setParagraph());
+        return run(chain.setHeading({ level: currentLevel - 1 }));
       }
       return false;
     }
@@ -1989,11 +1990,57 @@ function executeDocumentUiCommand(session, documentItem, commandId) {
   return session.commandBus.execute(commandId, null);
 }
 
+function handleDocumentEditorShortcut(session, documentId, event, key, mod) {
+  const lowerKey = key || "";
+  const code = String(event.code || "").toLowerCase();
+  const digit = lowerKey.match(/^[0-6]$/) ? lowerKey : (code.match(/^digit([0-6])$/)?.[1] || "");
+
+  if (mod && event.altKey && digit) {
+    event.preventDefault();
+    session.commandBus.execute(digit === "0" ? "paragraph" : `heading${digit}`);
+    return true;
+  }
+
+  if (mod && event.shiftKey && lowerKey === "7") {
+    event.preventDefault();
+    session.commandBus.execute("orderedList");
+    return true;
+  }
+
+  if (mod && event.shiftKey && lowerKey === "8") {
+    event.preventDefault();
+    session.commandBus.execute("bulletList");
+    return true;
+  }
+
+  if (mod && event.shiftKey && lowerKey === "9") {
+    event.preventDefault();
+    session.commandBus.execute("taskList");
+    return true;
+  }
+
+  if (mod && event.altKey && lowerKey === "arrowleft") {
+    event.preventDefault();
+    session.commandBus.execute("promoteBlockLevel");
+    return true;
+  }
+
+  if (mod && event.altKey && lowerKey === "arrowright") {
+    event.preventDefault();
+    session.commandBus.execute("demoteBlockLevel");
+    return true;
+  }
+
+  return false;
+}
+
 function handleDocumentEditorKeydown(session, documentId, event) {
   if (!session?.editor || !session.commandBus) return;
   const isMac = navigator.platform.toLowerCase().includes("mac");
   const key = event.key?.toLowerCase();
   const mod = isMac ? event.metaKey : event.ctrlKey;
+
+  if (handleDocumentEditorShortcut(session, documentId, event, key, mod)) return;
 
   if (mod && key === "b") {
     event.preventDefault();
@@ -3862,6 +3909,7 @@ const state = {
   documentPanelOpen: false,
   documentFocusMode: localStorage.getItem("ta.documentFocusMode") === "true",
   documentTocHidden: localStorage.getItem("ta.documentTocHidden") !== "false",
+  documentToolbarHidden: localStorage.getItem("ta.documentToolbarHidden") === "true",
   documentTocCollapsed: localStorage.getItem("ta.documentTocCollapsed") === "true",
   documentTocCollapsedBranches: readStore("ta.documentTocCollapsedBranches", {}),
   documentFolderFormOpen: false,
@@ -5063,6 +5111,7 @@ function renderDocumentFocus(active) {
           <h1>${escapeUiText(active.title || "T\u00e0i li\u1ec7u ch\u01b0a \u0111\u1eb7t t\u00ean")}</h1>
         </div>
         <div class="document-focus-actions">
+          <button class="icon-button" type="button" data-document-toolbar-visibility aria-label="${state.documentToolbarHidden ? "Hi\u1ec7n thanh c\u00f4ng c\u1ee5" : "\u1ea8n thanh c\u00f4ng c\u1ee5"}" title="${state.documentToolbarHidden ? "Hi\u1ec7n thanh c\u00f4ng c\u1ee5" : "\u1ea8n thanh c\u00f4ng c\u1ee5"}">${icon(state.documentToolbarHidden ? "keyboard" : "keyboard_hide")}</button>
           <button class="icon-button" type="button" data-document-toc-visibility aria-label="${state.documentTocHidden ? "Hi\u1ec7n m\u1ee5c l\u1ee5c" : "\u1ea8n m\u1ee5c l\u1ee5c"}" title="${state.documentTocHidden ? "Hi\u1ec7n m\u1ee5c l\u1ee5c" : "\u1ea8n m\u1ee5c l\u1ee5c"}">${icon(state.documentTocHidden ? "view_sidebar" : "hide_source")}</button>
           <button class="icon-button document-id-copy" type="button" data-copy-document-id="${active.id}" aria-label="Sao ch\u00e9p ID t\u00e0i li\u1ec7u" title="Sao ch\u00e9p ID t\u00e0i li\u1ec7u">${icon("tag")}</button>
           <button class="icon-button" type="button" data-export-document-pdf="${active.id}" aria-label="T\u1ea3i PDF" title="T\u1ea3i PDF">${icon("picture_as_pdf")}</button>
@@ -5099,6 +5148,7 @@ function renderDocumentFocus(active) {
 }
 
 function documentEditorToolbar() {
+  if (state.documentToolbarHidden) return "";
   return `
     <div class="document-editor-toolbar">
       <button class="icon-button" type="button" data-document-command="bold" aria-label="In \u0111\u1eadm" title="In \u0111\u1eadm">${icon("format_bold")}</button>
@@ -6233,6 +6283,11 @@ function bindViewEvents() {
   document.querySelector("[data-document-toc-visibility]")?.addEventListener("click", () => {
     state.documentTocHidden = !state.documentTocHidden;
     localStorage.setItem("ta.documentTocHidden", String(state.documentTocHidden));
+    render();
+  });
+  document.querySelector("[data-document-toolbar-visibility]")?.addEventListener("click", () => {
+    state.documentToolbarHidden = !state.documentToolbarHidden;
+    localStorage.setItem("ta.documentToolbarHidden", String(state.documentToolbarHidden));
     render();
   });
   document.querySelectorAll("[data-copy-document-id]").forEach((button) => {

@@ -148,6 +148,8 @@ describe("Greezhub workspace integration", () => {
     expect(app).toContain("data-export-document-doc");
     expect(app).toContain("data-document-toc-visibility");
     expect(app).toContain("ta.documentTocHidden");
+    expect(app).toContain("data-document-toolbar-visibility");
+    expect(app).toContain("ta.documentToolbarHidden");
     expect(styles).toContain(".document-id-strip");
     expect(styles).toContain("word-break: break-all");
     expect(styles).toContain(".document-focus-actions");
@@ -161,6 +163,12 @@ describe("Greezhub workspace integration", () => {
     expect(app).toContain("function getBrowserEditorSelection");
     expect(app).toContain("function convertSelectionToSimpleList");
     expect(app).toContain("documentEditorCommandSelection");
+    expect(app).toContain("function handleDocumentEditorShortcut");
+    expect(app).toContain('session.commandBus.execute(digit === "0" ? "paragraph" : `heading${digit}`)');
+    expect(app).toContain('session.commandBus.execute("orderedList")');
+    expect(app).toContain('session.commandBus.execute("bulletList")');
+    expect(app).toContain('session.commandBus.execute("taskList")');
+    expect(app).toContain('chain.insertContent("\\u00a0\\u00a0\\u00a0\\u00a0")');
     expect(app).toContain('if (commandId === "undo") return run(chain.undo())');
     expect(app).toContain('if (commandId === "redo") return run(chain.redo())');
     expect(app).toContain("newGroupDelay: 250");
