@@ -1064,6 +1064,59 @@ function normalizeTiptapEditorClass() {
   return core.Editor || core.default?.Editor || null;
 }
 
+function getBrowserEditorSelection(editor) {
+  const selection = window.getSelection();
+  if (!editor?.view?.dom || !selection?.rangeCount || !selection.anchorNode || !selection.focusNode) return null;
+  if (!editor.view.dom.contains(selection.anchorNode) || !editor.view.dom.contains(selection.focusNode)) return null;
+  const range = selection.getRangeAt(0);
+  const text = selection.toString();
+  if (!text.trim()) return null;
+  const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalize(editor.view.dom.innerText || editor.view.dom.textContent).includes(normalize(text))) return null;
+  try {
+    const from = editor.view.posAtDOM(range.startContainer, range.startOffset);
+    const to = editor.view.posAtDOM(range.endContainer, range.endOffset);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return null;
+    return { from: Math.min(from, to), to: Math.max(from, to), text };
+  } catch {
+    return null;
+  }
+}
+
+function convertSelectionToSimpleList(editor, listType = "bulletList") {
+  const selection = editor?.state?.selection;
+  const browserSelection = getBrowserEditorSelection(editor);
+  const savedSelection = documentEditorCommandSelection;
+  const from = browserSelection?.from ?? savedSelection?.from ?? selection?.from;
+  const to = browserSelection?.to ?? savedSelection?.to ?? selection?.to;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) return false;
+  const text = browserSelection?.text || savedSelection?.text || editor.state.doc.textBetween(from, to, "\n", "\n");
+  const lines = String(text || "")
+    .split(/\n+/)
+    .map((line) => sanitizeDocumentText(line).trim())
+    .filter(Boolean);
+  if (!lines.length) return false;
+  documentEditorCommandSelection = null;
+  const tag = listType === "orderedList" ? "ol" : "ul";
+  const listHtml = `<${tag}>${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</${tag}>`;
+  const resolvedFrom = editor.state.doc.resolve(Math.max(0, Math.min(from, editor.state.doc.content.size)));
+  const resolvedTo = editor.state.doc.resolve(Math.max(0, Math.min(to, editor.state.doc.content.size)));
+  const selectedAllText = String(editor.view.dom.innerText || editor.view.dom.textContent || "").replace(/\s+/g, " ").trim() === String(text || "").replace(/\s+/g, " ").trim();
+  const replaceFrom = selectedAllText ? 0 : (resolvedFrom.depth ? resolvedFrom.before(1) : from);
+  const replaceTo = selectedAllText ? editor.state.doc.content.size : (resolvedTo.depth ? resolvedTo.after(1) : to);
+  if (browserSelection && document.queryCommandSupported?.("insertHTML")) {
+    const inserted = document.execCommand("insertHTML", false, listHtml);
+    if (inserted) {
+      editor.commands.setContent(editor.view.dom.innerHTML, true);
+      return true;
+    }
+  }
+  if (typeof editor.commands?.insertContentAt === "function") {
+    return Boolean(editor.commands.insertContentAt({ from: replaceFrom, to: replaceTo }, listHtml));
+  }
+  return Boolean(editor.chain().focus().deleteRange({ from: replaceFrom, to: replaceTo }).insertContent(listHtml).run());
+}
+
 function resolveSessionMenu(session, id) {
   if (!session?.menus) return null;
   return session.menus[id] || null;
@@ -1092,8 +1145,14 @@ function createDocumentCommandBus(editor) {
     if (commandId === "blockquote") return run(chain.toggleBlockquote());
     if (commandId === "codeBlock") return run(chain.toggleCodeBlock());
     if (commandId === "horizontalRule") return run(chain.setHorizontalRule());
-    if (commandId === "bulletList") return run(chain.toggleBulletList());
-    if (commandId === "orderedList") return run(chain.toggleOrderedList());
+    if (commandId === "bulletList") {
+      if (!editor.state.selection.empty && convertSelectionToSimpleList(editor, "bulletList")) return true;
+      return run(chain.toggleBulletList()) || convertSelectionToSimpleList(editor, "bulletList");
+    }
+    if (commandId === "orderedList") {
+      if (!editor.state.selection.empty && convertSelectionToSimpleList(editor, "orderedList")) return true;
+      return run(chain.toggleOrderedList()) || convertSelectionToSimpleList(editor, "orderedList");
+    }
     if (commandId === "taskList") return run(chain.toggleTaskList());
     if (commandId === "bold") return run(chain.toggleBold());
     if (commandId === "italic") return run(chain.toggleItalic());
@@ -1232,8 +1291,8 @@ function createDocumentCommandBus(editor) {
       },
       content: [{ type: "paragraph", content: [] }],
     }));
-    if (commandId === "undo") return editor.can().chain().focus().undo().run();
-    if (commandId === "redo") return editor.can().chain().focus().redo().run();
+    if (commandId === "undo") return run(chain.undo());
+    if (commandId === "redo") return run(chain.redo());
     if (commandId === "copyBlock") return copyCurrentDocumentBlock(editor);
     if (commandId === "convertSelectionToMindMap") {
       const { from, to } = editor.state.selection;
@@ -1282,7 +1341,11 @@ function createDocumentCommandBus(editor) {
 function buildDocumentEditorExtensions() {
   const lib = getDocumentEditorLib();
   const extensionList = [];
-  if (lib.StarterKit) extensionList.push(lib.StarterKit);
+  if (lib.StarterKit) {
+    extensionList.push(typeof lib.StarterKit.configure === "function"
+      ? lib.StarterKit.configure({ history: { newGroupDelay: 250 } })
+      : lib.StarterKit);
+  }
   if (lib.TextAlign) extensionList.push(lib.TextAlign.configure({ types: ["heading", "paragraph", "blockquote"] }));
   if (lib.TextStyle) extensionList.push(lib.TextStyle);
   if (lib.Color) extensionList.push(lib.Color);
@@ -2090,8 +2153,8 @@ function ensureDocumentEditorSession(documentItem = null) {
   if (!root) return null;
   if (!EditorClass) {
     ensureDocumentEditorLibraryLoaded();
-    root.innerHTML = `<p class="document-editor-loading">Äang táº£i editor...</p>`;
-    setDocumentSaveState(documentItem.id, window.__documentEditorLibError ? "Lá»—i táº£i editor" : "Äang táº£i editor...");
+    root.replaceChildren();
+    setDocumentSaveState(documentItem.id, window.__documentEditorLibError ? "Lỗi tải editor" : "");
     return null;
   }
 
@@ -2476,6 +2539,7 @@ function createFlowDiagramNodeExtension() {
         };
         const handleDiagramKeyDown = (event) => {
           if (!toolsActive) return;
+          if (!dom.contains(event.target)) return;
           const key = event.key.toLowerCase();
           const isUndo = (event.ctrlKey || event.metaKey) && key === "z";
           const isRedo = ((event.ctrlKey || event.metaKey) && key === "y") || (isUndo && event.shiftKey);
@@ -3679,6 +3743,7 @@ const documentEditorSessions = new Map();
 function pageFromPath(pathname = window.location.pathname) {
   const normalized = pathname.replace(/\/+$/, "") || "/";
   if (normalized === "/workspace/calendar") return "calendar";
+  if (normalized === "/workspace/documents" || normalized.startsWith("/workspace/documents/")) return "documents";
   const exactPage = pages.find((page) => page.path === normalized);
   if (!exactPage) return "";
   if (!exactPage.isSpace) return exactPage.id;
@@ -3697,10 +3762,37 @@ function currentModuleSpace(pageId = state.page) {
 function canonicalPathForCurrentRoute(pathname = window.location.pathname) {
   const normalized = pathname.replace(/\/+$/, "") || "/";
   if (normalized === "/workspace/calendar") return "";
+  if (normalized === "/workspace/documents" || normalized.startsWith("/workspace/documents/")) return "";
   const exactPage = pages.find((page) => page.path === normalized);
   if (!exactPage?.isSpace) return "";
   const space = moduleSpaces.find((item) => item.pageId === exactPage.id);
   return routeForPage(space?.pages[0]);
+}
+
+function documentRouteIdFromPath(pathname = window.location.pathname) {
+  const normalized = pathname.replace(/\/+$/, "") || "/";
+  const prefix = "/workspace/documents/";
+  if (!normalized.startsWith(prefix)) return "";
+  try {
+    return decodeURIComponent(normalized.slice(prefix.length)).trim();
+  } catch {
+    return normalized.slice(prefix.length).trim();
+  }
+}
+
+function findDocumentByRouteId(routeId = "") {
+  const normalizedRouteId = String(routeId || "").trim();
+  if (!normalizedRouteId) return null;
+  return state.documents.find((documentItem) => (
+    documentItem.id === normalizedRouteId ||
+    documentStableId(documentItem) === normalizedRouteId ||
+    documentDisplayId(documentItem).toLowerCase() === normalizedRouteId.toLowerCase()
+  )) || null;
+}
+
+function documentRouteFor(documentItem = null) {
+  if (!documentItem) return "/workspace/documents";
+  return `/workspace/documents/${encodeURIComponent(documentStableId(documentItem))}`;
 }
 
 function knowledgeSeedDocuments() {
@@ -3754,6 +3846,13 @@ function normalizeStoredDocuments(documents = []) {
   return (documents || []).map(migrateDocumentItem).filter(Boolean);
 }
 
+function mergeRemoteDocumentsWithLocal(remoteDocuments = [], localDocuments = []) {
+  const remoteItems = normalizeStoredDocuments(mergeKnowledgeDocuments(remoteDocuments));
+  const remoteIds = new Set(remoteItems.map((item) => item.id).filter(Boolean));
+  const localOnlyItems = normalizeStoredDocuments(localDocuments).filter((item) => item?.id && !remoteIds.has(item.id));
+  return [...localOnlyItems, ...remoteItems];
+}
+
 const state = {
   page: pageFromPath() || localStorage.getItem("ta.page") || "calendar",
   search: "",
@@ -3804,6 +3903,15 @@ const zoomValue = document.querySelector("#zoomValue");
 if (!state.selectedCourseId && state.courses[0]) state.selectedCourseId = state.courses[0].id;
 if (!state.selectedNoteId && state.notes[0]) state.selectedNoteId = state.notes[0].id;
 if (!pages.some((page) => page.id === state.page)) state.page = "calendar";
+if (state.page === "documents") {
+  const routeDocument = findDocumentByRouteId(documentRouteIdFromPath());
+  if (routeDocument) {
+    state.selectedDocumentId = routeDocument.id;
+    state.documentFocusMode = true;
+    localStorage.setItem("ta.selectedDocumentId", routeDocument.id);
+    localStorage.setItem("ta.documentFocusMode", "true");
+  }
+}
 const canonicalPath = canonicalPathForCurrentRoute();
 if (canonicalPath && window.location.pathname !== canonicalPath) {
   history.replaceState({ page: state.page }, "", canonicalPath);
@@ -3818,6 +3926,7 @@ let remoteReady = false;
 let remoteLoading = false;
 let remoteErrorShown = false;
 let documentSelectionRange = null;
+let documentEditorCommandSelection = null;
 
 function seedTasks() {
   return [
@@ -4045,13 +4154,20 @@ function applyRemoteState(payload) {
   if (Array.isArray(payload.courses)) state.courses = normalizeCourses(payload.courses);
   if (Array.isArray(payload.notes)) state.notes = payload.notes;
   if (Array.isArray(payload.documentFolders)) state.documentFolders = payload.documentFolders;
-  if (Array.isArray(payload.documents)) state.documents = normalizeStoredDocuments(mergeKnowledgeDocuments(payload.documents));
+  if (Array.isArray(payload.documents)) state.documents = mergeRemoteDocumentsWithLocal(payload.documents, state.documents);
   if (Array.isArray(payload.ideas)) state.ideas = payload.ideas;
   if (Array.isArray(payload.contentPlans)) state.contentPlans = payload.contentPlans;
   if (typeof payload.selectedCourseId === "string") state.selectedCourseId = payload.selectedCourseId;
   if (typeof payload.selectedDocumentId === "string") state.selectedDocumentId = payload.selectedDocumentId;
   if (!state.selectedCourseId && state.courses[0]) state.selectedCourseId = state.courses[0].id;
   if (!state.selectedDocumentId && state.documents[0]) state.selectedDocumentId = state.documents[0].id;
+  if (state.page === "documents") {
+    const routeDocument = findDocumentByRouteId(documentRouteIdFromPath());
+    if (routeDocument) {
+      state.selectedDocumentId = routeDocument.id;
+      state.documentFocusMode = true;
+    }
+  }
   localStorage.setItem("ta.tasks", JSON.stringify(state.tasks));
   localStorage.setItem("ta.prompts", JSON.stringify(state.prompts));
   localStorage.setItem("ta.alarms", JSON.stringify(state.alarms));
@@ -4342,13 +4458,28 @@ function copyText(text, label = "ÄÃ£ sao chÃ©p") {
   }
 }
 
+function shouldDelayDocumentRouteSync() {
+  const routeId = documentRouteIdFromPath();
+  return Boolean(routeId && !findDocumentByRouteId(routeId) && !remoteReady);
+}
+
+function syncDocumentUrl(options = {}) {
+  if (state.page !== "documents") return;
+  if (!options.force && shouldDelayDocumentRouteSync()) return;
+  const active = state.documentFocusMode ? selectedDocument() : null;
+  const nextPath = active ? documentRouteFor(active) : routeForPage("documents");
+  if (window.location.pathname === nextPath) return;
+  const method = options.replace ? "replaceState" : "pushState";
+  history[method]({ page: state.page, documentId: active?.id || "" }, "", nextPath);
+}
+
 function setPage(page, options = {}) {
   state.page = page;
   state.search = "";
   state.courseFocus = false;
   searchInput.value = "";
   localStorage.setItem("ta.page", page);
-  const nextPath = routeForPage(page);
+  const nextPath = page === "documents" && state.documentFocusMode ? documentRouteFor(selectedDocument()) : routeForPage(page);
   if (options.push !== false && window.location.pathname !== nextPath) {
     history.pushState({ page }, "", nextPath);
   }
@@ -4454,6 +4585,7 @@ function render() {
   repairRenderedVietnameseText(app);
   const activeDocument = state.page === "documents" && state.documentFocusMode ? selectedDocument() : null;
   if (activeDocument) {
+    syncDocumentUrl({ replace: true });
     ensureDocumentEditorSession(activeDocument);
     setDocumentTocClickHandlers();
   } else {
@@ -4674,6 +4806,7 @@ function deleteDocumentById(documentId) {
   localStorage.setItem("ta.selectedDocumentId", state.selectedDocumentId);
   localStorage.setItem("ta.documentFocusMode", "false");
   writeStore("ta.documents", state.documents);
+  syncDocumentUrl({ replace: true });
   showToast("ÄÃ£ xÃ³a tÃ i liá»‡u");
   render();
   return true;
@@ -4813,7 +4946,7 @@ function documentStableId(documentItem = {}) {
 }
 
 function documentDisplayId(documentItem = {}) {
-  return `DOC-${documentStableId(documentItem).slice(0, 8).toUpperCase()}`;
+  return `DOC-${documentStableId(documentItem).toUpperCase()}`;
 }
 
 function documentFileSlug(documentItem = {}) {
@@ -4938,8 +5071,8 @@ function renderDocumentFocus(active) {
         </div>
       </header>
       <div class="document-id-strip">
-        <span>${icon("fingerprint")} ${escapeUiText(documentDisplayId(active))}</span>
-        <code>${escapeHtml(documentStableId(active))}</code>
+        <span>${icon("fingerprint")} ID: ${escapeUiText(documentDisplayId(active))}</span>
+        <code>URL: ${escapeHtml(documentRouteFor(active))}</code>
       </div>
       <div class="document-focus-meta">
         <input class="doc-title-input" data-document-title="${active.id}" value="${escapeUiText(active.title)}" placeholder="T\u00ean t\u00e0i li\u1ec7u" />
@@ -6012,6 +6145,7 @@ function bindViewEvents() {
     localStorage.setItem("ta.selectedDocumentId", documentItem.id);
     localStorage.setItem("ta.documentFocusMode", "true");
     writeStore("ta.documents", state.documents);
+    syncDocumentUrl({ force: true });
     render();
   });
   document.querySelector("#newDocumentFolderButton")?.addEventListener("click", () => {
@@ -6049,6 +6183,7 @@ function bindViewEvents() {
       localStorage.setItem("ta.selectedDocumentId", state.selectedDocumentId);
       localStorage.setItem("ta.documentFocusMode", "true");
       scheduleRemoteSave();
+      syncDocumentUrl();
       render();
     });
   });
@@ -6084,6 +6219,7 @@ function bindViewEvents() {
     state.documentFocusMode = false;
     localStorage.setItem("ta.documentFocusMode", "false");
     destroyDocumentEditorSession(state.selectedDocumentId);
+    syncDocumentUrl();
     render();
   });
   document.querySelector("[data-close-document]")?.addEventListener("click", () => {
@@ -6091,6 +6227,7 @@ function bindViewEvents() {
     state.documentFocusMode = false;
     localStorage.setItem("ta.documentFocusMode", "false");
     destroyDocumentEditorSession(state.selectedDocumentId);
+    syncDocumentUrl();
     render();
   });
   document.querySelector("[data-document-toc-visibility]")?.addEventListener("click", () => {
@@ -6118,8 +6255,13 @@ function bindViewEvents() {
     });
   });
   document.querySelector(".document-editor-toolbar")?.addEventListener("mousedown", (event) => {
+    const commandButton = event.target?.closest?.("[data-document-command]");
+    if (commandButton) {
+      const session = findActiveDocumentSession(state.selectedDocumentId);
+      documentEditorCommandSelection = session?.editor ? getBrowserEditorSelection(session.editor) : null;
+    }
     if (event.target?.closest?.("[data-document-command], [data-document-table-toggle], [data-document-table-size]")) event.preventDefault();
-  });
+  }, true);
   document.querySelectorAll("[data-document-command]").forEach((button) => {
     button.addEventListener("mousedown", (event) => event.preventDefault());
     button.addEventListener("click", () => {

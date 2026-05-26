@@ -134,6 +134,12 @@ describe("Greezhub workspace integration", () => {
 
     expect(app).toContain("function documentStableId");
     expect(app).toContain("function documentDisplayId");
+    expect(app).toContain("function documentRouteFor");
+    expect(app).toContain("function findDocumentByRouteId");
+    expect(app).toContain("function mergeRemoteDocumentsWithLocal");
+    expect(app).toContain("function shouldDelayDocumentRouteSync");
+    expect(app).toContain("documentRouteFor(active)");
+    expect(app).toContain('return `DOC-${documentStableId(documentItem).toUpperCase()}`');
     expect(app).toContain("function documentExportHtml");
     expect(app).toContain("function exportDocumentAsPdf");
     expect(app).toContain("function exportDocumentAsDoc");
@@ -143,8 +149,24 @@ describe("Greezhub workspace integration", () => {
     expect(app).toContain("data-document-toc-visibility");
     expect(app).toContain("ta.documentTocHidden");
     expect(styles).toContain(".document-id-strip");
+    expect(styles).toContain("word-break: break-all");
     expect(styles).toContain(".document-focus-actions");
     expect(styles).toContain(".document-focus-layout.is-toc-hidden");
+  });
+
+  it("keeps document editing commands usable for undo and lists", () => {
+    const app = read("public/greezhub-workspace/app.js");
+    const styles = read("public/greezhub-workspace/styles.css");
+
+    expect(app).toContain("function getBrowserEditorSelection");
+    expect(app).toContain("function convertSelectionToSimpleList");
+    expect(app).toContain("documentEditorCommandSelection");
+    expect(app).toContain('if (commandId === "undo") return run(chain.undo())');
+    expect(app).toContain('if (commandId === "redo") return run(chain.redo())');
+    expect(app).toContain("newGroupDelay: 250");
+    expect(app).toContain('if (!dom.contains(event.target)) return;');
+    expect(styles).toContain(".document-free-editor .ProseMirror ul");
+    expect(styles).toContain("list-style: disc");
   });
 
   it("repairs Vietnamese mojibake in document defaults and table of contents", () => {
@@ -153,6 +175,8 @@ describe("Greezhub workspace integration", () => {
     expect(app).toContain('title: "Tài liệu mới"');
     expect(app).toContain("Bắt đầu viết nội dung tài liệu tại đây");
     expect(app).toContain("const itemTitle = repairVietnameseText(item.title)");
+    expect(app).not.toContain("document-editor-loading");
+    expect(app).not.toContain("Đang tải editor");
     expect(app).not.toContain('title: "TÃ i liá»‡u má»›i"');
   });
 

@@ -2827,9 +2827,29 @@ body.document-focus .main {
 
 .document-id-strip code {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-all;
+}
+
+.document-free-editor .ProseMirror ul,
+.document-free-editor .ProseMirror ol {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+
+.document-free-editor .ProseMirror ul {
+  list-style: disc;
+}
+
+.document-free-editor .ProseMirror ol {
+  list-style: decimal;
+}
+
+.document-free-editor .ProseMirror li {
+  margin: 0.25em 0;
+  padding-left: 0.2em;
 }
 
 .document-focus-layout {
