@@ -2918,12 +2918,13 @@ function createFlowDiagramNodeExtension() {
           element.style.width = `${item.width}px`;
           element.style.height = `${item.height}px`;
 
-          const label = document.createElement("div");
+          const label = document.createElement("textarea");
           label.className = "document-flow-diagram__label";
-          label.contentEditable = "true";
+          label.draggable = false;
+          label.rows = 1;
           label.spellcheck = false;
           label.dataset.flowDiagramLabel = item.id;
-          label.textContent = item.text || "Block";
+          label.value = item.text || "Block";
           element.appendChild(label);
 
           DOCUMENT_FLOW_DIAGRAM_CONNECTOR_SIDES.forEach((side) => {
@@ -2971,8 +2972,29 @@ function createFlowDiagramNodeExtension() {
           element.querySelectorAll("[data-flow-diagram-connect]").forEach((connector) => {
             connector.addEventListener("mousedown", (event) => beginConnect(event, item, connector.dataset.flowDiagramSide || "right"));
           });
-          label.addEventListener("input", () => updateNode(item.id, { text: sanitizeDocumentText(label.textContent || "Block") }));
+          label.addEventListener("mousedown", (event) => {
+            selectedNodeId = item.id;
+            selectedEdgeId = "";
+            element.classList.add("is-selected");
+            event.stopPropagation();
+          });
+          label.addEventListener("click", (event) => {
+            selectedNodeId = item.id;
+            selectedEdgeId = "";
+            element.classList.add("is-selected");
+            event.stopPropagation();
+          });
+          label.addEventListener("focus", () => {
+            selectedNodeId = item.id;
+            selectedEdgeId = "";
+            element.classList.add("is-selected");
+          });
+          label.addEventListener("input", () => updateNode(item.id, { text: sanitizeDocumentText(label.value || "Block") }));
           label.addEventListener("keydown", (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+              event.stopPropagation();
+              return;
+            }
             if (event.key === "Enter") {
               event.preventDefault();
               label.blur();

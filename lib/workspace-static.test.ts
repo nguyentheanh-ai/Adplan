@@ -88,6 +88,12 @@ describe("Greezhub workspace integration", () => {
     expect(app).toContain('data-flow-diagram-edge-arrow');
     expect(app).toContain('data-flow-diagram-edge-delete');
     expect(app).toContain('data-flow-diagram-side');
+    expect(app).toContain('document.createElement("textarea")');
+    expect(app).toContain("label.draggable = false;");
+    expect(app).toContain("label.value = item.text || \"Block\";");
+    expect(app).toContain('label.addEventListener("mousedown"');
+    expect(app).toContain('label.addEventListener("click"');
+    expect(app).toContain("sanitizeDocumentText(label.value || \"Block\")");
     expect(app).toContain("handleDiagramKeyDown");
     expect(app).toContain("editor.commands?.undo?.()");
     expect(app).toContain("editor.commands?.redo?.()");
@@ -126,6 +132,8 @@ describe("Greezhub workspace integration", () => {
     expect(styles).toContain(".document-flow-diagram:not(.is-active) .document-flow-diagram__viewport");
     expect(styles).toContain(".document-flow-diagram.is-active .document-flow-diagram__viewport:hover");
     expect(styles).toContain(".document-flow-diagram__viewport::-webkit-scrollbar");
+    expect(styles).toContain("cursor: text;");
+    expect(styles).toContain("user-select: text;");
   });
 
   it("shows a stable document ID and export actions for each document", () => {

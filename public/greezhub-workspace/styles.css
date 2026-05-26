@@ -2042,11 +2042,17 @@ input.document-mindmap__node {
   min-width: 0;
   max-height: 100%;
   overflow: auto;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-weight: 800;
   line-height: 1.35;
   text-align: center;
   outline: none;
   cursor: text;
+  resize: none;
   user-select: text;
 }
 
