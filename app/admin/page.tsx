@@ -12,7 +12,7 @@ export default async function AdminPage() {
 
   const permission = await getCurrentPermission();
   if (!permission || (permission.role !== "owner" && permission.role !== "manager")) {
-    redirect("/dashboard");
+    redirect("/ads-facebook");
   }
   const integrationStatuses = [
     { name: "GEMINI_API_KEY", configured: Boolean(process.env.GEMINI_API_KEY), purpose: "AI tư vấn, Creator Ads AI, phân tích kế hoạch." },

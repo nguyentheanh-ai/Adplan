@@ -221,7 +221,7 @@ export function MetaIntelligenceDashboard({ userName, planCount }: { userName: s
               <MaterialIcon name="refresh" />
               {loading ? "Đang tải..." : "Làm mới"}
             </Button>
-            <Link href="/reports">
+            <Link href="/ads-facebook/reports">
               <Button variant="secondary">Báo cáo Ads</Button>
             </Link>
           </div>

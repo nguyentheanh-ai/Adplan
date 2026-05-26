@@ -7,7 +7,7 @@ import { canCurrentUserAccessSection } from "@/lib/admin/permissions";
 export default async function CampaignBuilderPage() {
   const session = await getAppSession();
   if (!session) redirect("/login");
-  if (!(await canCurrentUserAccessSection("campaign_builder"))) redirect("/dashboard");
+  if (!(await canCurrentUserAccessSection("campaign_builder"))) redirect("/ads-facebook");
 
   return (
     <AppShell

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { toast } from "sonner";
 import { MaterialIcon } from "@/components/material-icon";
@@ -25,11 +26,14 @@ export function LoginForm() {
     <main className="flex min-h-screen overflow-hidden bg-background text-on-background">
       <section className="relative z-10 flex w-full flex-col bg-surface-container-lowest p-6 shadow-2xl md:w-[480px] md:p-12 lg:w-[560px]">
         <div className="mb-12">
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-container text-on-primary">
-              <MaterialIcon filled name="insights" />
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-[86px] items-center justify-center overflow-hidden rounded-xl border border-outline-variant bg-white shadow-sm">
+              <Image alt="TA Marketing" className="h-full w-full object-contain" height={48} priority src="/brand/ta-logo.svg" width={86} />
             </div>
-            <span className="text-[24px] font-extrabold text-primary">AdPlanner AI</span>
+            <div>
+              <p className="text-[22px] font-extrabold leading-none text-on-background">TA Marketing</p>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Greezhub Workspace</p>
+            </div>
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import {
   createAdsetFromSourceOnMeta,
   createPausedMetaCampaign,
   getMetaAdAccounts,
+  getMetaManagedPages,
   getMetaCampaigns
 } from "./facebook";
 
@@ -115,6 +116,78 @@ describe("classifyMetaError", () => {
     expect(headers.Authorization).toBe("Bearer facebook-provider-token");
     expect(String(requestInit.body)).toContain("status=PAUSED");
     expect(String(requestInit.body)).toContain("buying_type=AUCTION");
+  });
+
+  it("merges pages from direct account, Business Manager and ad account promoted pages", async () => {
+    vi.stubEnv("META_API_VERSION", "v23.0");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [{ id: "page_direct", name: "Direct Page", category: "Education", access_token: "direct_page_token" }]
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [
+            {
+              id: "business_1",
+              owned_pages: {
+                data: [{ id: "page_owned", name: "Owned Page", category: "Marketing", access_token: "owned_page_token" }]
+              },
+              client_pages: {
+                data: [{ id: "page_direct", name: "Direct Page Duplicate", access_token: "duplicate_token" }]
+              }
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [{ id: "act_123", name: "Ad Account" }]
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [
+            { id: "page_promoted", name: "Promoted Page", category: "Business", access_token: "promoted_page_token" },
+            { id: "page_owned", name: "Owned Page Duplicate", access_token: "duplicate_token" }
+          ]
+        })
+      );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const pages = await getMetaManagedPages("facebook-provider-token");
+
+    expect(pages).toEqual([
+      { id: "page_direct", name: "Direct Page", category: "Education", access_token: "direct_page_token" },
+      { id: "page_owned", name: "Owned Page", category: "Marketing", access_token: "owned_page_token" },
+      { id: "page_promoted", name: "Promoted Page", category: "Business", access_token: "promoted_page_token" }
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: expect.stringContaining("/v23.0/me/accounts?")
+      }),
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: expect.stringContaining("/v23.0/me/businesses?")
+      }),
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: expect.stringContaining("/v23.0/me/adaccounts?")
+      }),
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: expect.stringContaining("/v23.0/act_123/promote_pages?")
+      }),
+      expect.any(Object)
+    );
   });
 
   it("copies an adset through Meta copies endpoint with campaign_id and deep copy", async () => {

@@ -4,10 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Textarea } from "@/components/ui/input";
 import { MaterialIcon } from "@/components/material-icon";
-import { normalizeAgentPostDraft, type FacebookDraftInboxItem, type NormalizedAgentPostDraft } from "@/lib/facebook-publisher";
-import { AgentKeyManager } from "./agent-key-manager";
+import { type FacebookDraftInboxItem, type NormalizedAgentPostDraft } from "@/lib/facebook-publisher";
+import { buildPublisherAccessState, getSimplePublisherSteps, type PublisherAccessState } from "@/lib/facebook-publisher-ui";
 
 type FacebookPage = {
   id: string;
@@ -30,35 +29,16 @@ type DraftSummary = {
   scheduled: number;
 };
 
-type ScheduleSettings = {
-  page_id: string;
-  daily_post_count: number;
-  schedule_times: string[];
-  active: boolean;
-};
-
 type ImagePreviewModal = {
   src: string;
   alt: string;
 };
 
-const defaultPageStorageKey = "adplan-facebook-publisher-default-page-id";
-const defaultDailyScheduleTimes = ["09:00", "14:00", "20:00"];
 const emptyDraftSummary: DraftSummary = {
   published: 0,
   draft: 0,
   hidden: 0,
   scheduled: 0
-};
-
-const starterDraft: NormalizedAgentPostDraft = {
-  title: "Bài đăng mới từ Agent",
-  message: "",
-  link: "",
-  imageUrl: "",
-  imageDataUrl: "",
-  media: [],
-  approved: false
 };
 
 async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -73,26 +53,8 @@ function postUrlFromId(postId: string) {
   return `https://www.facebook.com/${postId}`;
 }
 
-function toDateTimeLocalValue(value?: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function fromDateTimeLocalValue(value: string) {
-  if (!value) return undefined;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return undefined;
-  return date.toISOString();
-}
-
-function getDraftImageSrc(draft: NormalizedAgentPostDraft) {
-  return getDraftImages(draft)[0]?.src || "";
-}
-
-function getDraftImages(draft: NormalizedAgentPostDraft) {
+function getDraftImages(draft?: NormalizedAgentPostDraft) {
+  if (!draft) return [];
   const media = draft.media?.length
     ? draft.media
     : draft.imageDataUrl || draft.imageUrl
@@ -107,382 +69,171 @@ function getDraftImages(draft: NormalizedAgentPostDraft) {
     .filter((item) => item.src);
 }
 
-function sortDraftsByCreatedAt(items: FacebookDraftInboxItem[]) {
-  return [...items].sort((first, second) => {
-    const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
-    const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : 0;
-    return firstTime - secondTime;
-  });
+function getDraftImageSrc(draft: NormalizedAgentPostDraft) {
+  return getDraftImages(draft)[0]?.src || "";
 }
 
-function buildScheduledPublishTime(slot: string, dayOffset: number, shouldStartTomorrow: boolean) {
-  const [hourRaw, minuteRaw] = slot.split(":");
-  const date = new Date();
-  date.setDate(date.getDate() + dayOffset + (shouldStartTomorrow ? 1 : 0));
-  date.setHours(Number(hourRaw), Number(minuteRaw), 0, 0);
-  return date.toISOString();
+function formatDateTime(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
 }
 
-export function FacebookPublisherClient() {
+export function FacebookPublisherClient({ hasFacebookConnection }: { hasFacebookConnection: boolean }) {
+  const accessState = buildPublisherAccessState({ hasAppSession: true, hasFacebookConnection });
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [selectedPageId, setSelectedPageId] = useState("");
-  const [defaultPageId, setDefaultPageId] = useState("");
-  const [draft, setDraft] = useState<NormalizedAgentPostDraft>(starterDraft);
-  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [draftInbox, setDraftInbox] = useState<FacebookDraftInboxItem[]>([]);
   const [draftSummary, setDraftSummary] = useState<DraftSummary>(emptyDraftSummary);
-  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
-  const [dailyPostCount, setDailyPostCount] = useState(3);
-  const [dailyScheduleTimes, setDailyScheduleTimes] = useState(defaultDailyScheduleTimes);
-  const [autoScheduleActive, setAutoScheduleActive] = useState(false);
-  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
-  const [agentJson, setAgentJson] = useState("");
-  const [approved, setApproved] = useState(false);
-  const [isLoadingPages, setIsLoadingPages] = useState(true);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [isLoadingPages, setIsLoadingPages] = useState(accessState.kind === "ready");
+  const [isLoadingDrafts, setIsLoadingDrafts] = useState(accessState.kind === "ready");
   const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [imageModal, setImageModal] = useState<ImagePreviewModal | null>(null);
 
+  const selectedPage = useMemo(() => pages.find((page) => page.id === selectedPageId), [pages, selectedPageId]);
+  const selectedDraftItem = useMemo(
+    () => draftInbox.find((item) => item.id === activeDraftId) ?? null,
+    [activeDraftId, draftInbox]
+  );
+  const selectedDraft = selectedDraftItem?.draft;
+  const draftImages = useMemo(() => getDraftImages(selectedDraft), [selectedDraft]);
+  const selectedPageCanPublish = selectedPage?.has_access_token !== false;
+  const canPublish = Boolean(selectedPageId && selectedDraft?.message.trim() && selectedPageCanPublish && !isPublishing);
+  const steps = getSimplePublisherSteps();
+
+  async function loadPages() {
+    setError("");
+    setIsLoadingPages(true);
+    try {
+      const payload = await readJson<{ data: FacebookPage[] }>("/api/meta/pages");
+      const nextPages = payload.data ?? [];
+      setPages(nextPages);
+      setSelectedPageId((current) => {
+        if (current && nextPages.some((page) => page.id === current)) return current;
+        return nextPages[0]?.id || "";
+      });
+    } catch (loadError) {
+      setPages([]);
+      setSelectedPageId("");
+      setError(loadError instanceof Error ? loadError.message : "Không tải được danh sách Fanpage.");
+    } finally {
+      setIsLoadingPages(false);
+    }
+  }
+
   async function loadDraftInbox() {
+    setError("");
+    setIsLoadingDrafts(true);
     try {
       const payload = await readJson<{ data: FacebookDraftInboxItem[]; summary?: DraftSummary; storage?: string }>("/api/facebook-publisher/drafts");
-      setDraftInbox(payload.data ?? []);
+      const nextDrafts = payload.data ?? [];
+      setDraftInbox(nextDrafts);
       setDraftSummary(payload.summary ?? emptyDraftSummary);
-      setSelectedDraftIds((current) => current.filter((id) => (payload.data ?? []).some((item) => item.id === id)));
+      setActiveDraftId((current) => {
+        if (current && nextDrafts.some((item) => item.id === current)) return current;
+        return nextDrafts[0]?.id ?? null;
+      });
       if (payload.storage === "missing_schema") {
-        setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
+        setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts.");
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Không tải được draft từ Agent.");
+      setDraftInbox([]);
+      setActiveDraftId(null);
+      setError(loadError instanceof Error ? loadError.message : "Không tải được draft.");
+    } finally {
+      setIsLoadingDrafts(false);
     }
   }
 
   useEffect(() => {
-    const storedDefault = window.localStorage.getItem(defaultPageStorageKey) || "";
+    if (accessState.kind !== "ready") return;
 
     let cancelled = false;
-    readJson<{ data: FacebookPage[] }>("/api/meta/pages")
-      .then((payload) => {
+
+    async function loadInitialData() {
+      try {
+        const [pagesPayload, draftsPayload] = await Promise.all([
+          readJson<{ data: FacebookPage[] }>("/api/meta/pages"),
+          readJson<{ data: FacebookDraftInboxItem[]; summary?: DraftSummary; storage?: string }>("/api/facebook-publisher/drafts")
+        ]);
         if (cancelled) return;
-        const nextPages = payload.data ?? [];
-        const nextDefault = nextPages.some((page) => page.id === storedDefault) ? storedDefault : "";
+
+        const nextPages = pagesPayload.data ?? [];
+        const nextDrafts = draftsPayload.data ?? [];
         setPages(nextPages);
-        setDefaultPageId(nextDefault);
-        setSelectedPageId(nextDefault || nextPages[0]?.id || "");
-      })
-      .catch((loadError) => {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Không tải được danh sách Fanpage.");
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingPages(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    readJson<{ data: ScheduleSettings; storage?: string }>("/api/facebook-publisher/schedule-settings")
-      .then((payload) => {
-        if (cancelled) return;
-        const nextCount = Math.max(1, Math.min(10, payload.data.daily_post_count || 3));
-        if (payload.data.page_id) setSelectedPageId(payload.data.page_id);
-        setDailyPostCount(nextCount);
-        setDailyScheduleTimes(
-          Array.from(
-            { length: nextCount },
-            (_, index) => payload.data.schedule_times?.[index] || defaultDailyScheduleTimes[index] || "09:00"
-          )
-        );
-        setAutoScheduleActive(payload.data.active === true);
-        if (payload.storage === "missing_schema") {
-          setNotice("Chưa có bảng lưu lịch tự động. Hãy chạy migration facebook_publisher_schedule_settings.");
+        setSelectedPageId(nextPages[0]?.id || "");
+        setDraftInbox(nextDrafts);
+        setDraftSummary(draftsPayload.summary ?? emptyDraftSummary);
+        setActiveDraftId(nextDrafts[0]?.id ?? null);
+        if (draftsPayload.storage === "missing_schema") {
+          setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts.");
         }
-      })
-      .catch((settingsError) => {
-        if (!cancelled) setError(settingsError instanceof Error ? settingsError.message : "Không tải được lịch tự động.");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    readJson<{ data: FacebookDraftInboxItem[]; summary?: DraftSummary; storage?: string }>("/api/facebook-publisher/drafts")
-      .then((payload) => {
-        if (cancelled) return;
-        setDraftInbox(payload.data ?? []);
-        setDraftSummary(payload.summary ?? emptyDraftSummary);
-        if (payload.storage === "missing_schema") {
-          setNotice("Chưa có bảng lưu draft Agent. Hãy chạy migration facebook_post_drafts để Agent tự nạp bài.");
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Không tải được dữ liệu đăng bài.");
         }
-      })
-      .catch((loadError) => {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Không tải được draft từ Agent.");
-      });
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPages(false);
+          setIsLoadingDrafts(false);
+        }
+      }
+    }
+
+    void loadInitialData();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [accessState.kind]);
 
-  const selectedPage = useMemo(() => pages.find((page) => page.id === selectedPageId), [pages, selectedPageId]);
-  const selectedPageCanPublish = selectedPage?.has_access_token !== false;
-  const selectedInboxDrafts = useMemo(
-    () => draftInbox.filter((item) => selectedDraftIds.includes(item.id)),
-    [draftInbox, selectedDraftIds]
-  );
-  const draftImages = getDraftImages(draft);
-  const canPublish = Boolean(selectedPageId && selectedPageCanPublish && draft.message.trim() && approved && !isPublishing);
-  const canBatchPublish = Boolean(selectedDraftIds.length && selectedPageId && selectedPageCanPublish && approved && !isPublishing);
-
-  function updateDraft(patch: Partial<NormalizedAgentPostDraft>) {
-    setDraft((current) => ({ ...current, ...patch }));
+  function chooseDraft(item: FacebookDraftInboxItem) {
+    setActiveDraftId(item.id);
     setPublishResult(null);
     setNotice("");
-  }
-
-  function getQueueDraft(item: FacebookDraftInboxItem) {
-    return activeDraftId === item.id ? draft : item.draft;
-  }
-
-  function saveDefaultPage() {
-    if (!selectedPageId) return;
-    window.localStorage.setItem(defaultPageStorageKey, selectedPageId);
-    setDefaultPageId(selectedPageId);
-    setNotice("Đã lưu Fanpage mặc định cho lần đăng sau.");
-  }
-
-  function importAgentJson() {
     setError("");
-    setNotice("");
-    try {
-      const parsed = JSON.parse(agentJson);
-      const normalized = normalizeAgentPostDraft(parsed);
-      setDraft({ ...starterDraft, ...normalized });
-      setActiveDraftId(null);
-      setApproved(normalized.approved);
-      setNotice("Đã nạp draft từ Agent. Anh/chị kiểm tra preview trước khi đăng.");
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : "JSON từ Agent không hợp lệ.");
-    }
-  }
-
-  function applyInboxDraft(item: FacebookDraftInboxItem) {
-    setDraft({ ...starterDraft, ...item.draft });
-    setActiveDraftId(item.id);
-    setApproved(item.draft.approved);
     if (item.pageId && pages.some((page) => page.id === item.pageId)) {
       setSelectedPageId(item.pageId);
     }
-    setPublishResult(null);
-    setError("");
-    setNotice("Đã nạp draft Agent vào preview. Khách chỉ cần kiểm tra, tick duyệt và bấm đăng.");
   }
 
-  function toggleInboxDraft(item: FacebookDraftInboxItem) {
-    setSelectedDraftIds((current) => {
-      if (current.includes(item.id)) return current.filter((id) => id !== item.id);
-      return [...current, item.id];
-    });
-
-    if (!selectedDraftIds.includes(item.id)) {
-      applyInboxDraft(item);
-    }
-  }
-
-  function updateDailyPostCount(value: string) {
-    const nextCount = Math.max(1, Math.min(10, Number(value) || 1));
-    setDailyPostCount(nextCount);
-    setDailyScheduleTimes((current) =>
-      Array.from({ length: nextCount }, (_, index) => current[index] || defaultDailyScheduleTimes[index] || "09:00")
-    );
-  }
-
-  function updateDailyScheduleTime(index: number, value: string) {
-    setDailyScheduleTimes((current) => {
-      const next = [...current];
-      next[index] = value;
-      return next;
-    });
-  }
-
-  async function saveScheduleSettings() {
-    if (!selectedPageId) {
-      setError("Chọn Fanpage trước khi lưu lịch tự động.");
-      return;
-    }
-
-    setError("");
-    setNotice("");
-    setIsSavingSchedule(true);
-    try {
-      const payload = await readJson<{ data: ScheduleSettings }>("/api/facebook-publisher/schedule-settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          page_id: selectedPageId,
-          daily_post_count: dailyPostCount,
-          schedule_times: dailyScheduleTimes.slice(0, dailyPostCount),
-          active: autoScheduleActive
-        })
-      });
-      setAutoScheduleActive(payload.data.active);
-      setNotice(payload.data.active ? "Đã bật lịch tự động. Cron sẽ tự xếp lịch các draft mới theo khung giờ này." : "Đã lưu lịch và tạm tắt tự động đăng.");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Không lưu được lịch tự động.");
-    } finally {
-      setIsSavingSchedule(false);
-    }
-  }
-
-  function loadExample() {
-    const example = {
-      title: "Post bán hàng từ Agent",
-      caption: "Bạn đang có content nhưng chưa biến nó thành lịch đăng đều?\nAdplan AI giúp nạp draft, duyệt và đăng lên Fanpage từ một màn hình.",
-      cta: "Inbox để nhận tư vấn",
-      link: "https://www.theanhmarketing.com/",
-      media: [
-        {
-          url: "",
-          alt: "Ảnh social post do Agent tạo"
-        }
-      ],
-      approved: false
-    };
-    setAgentJson(JSON.stringify(example, null, 2));
-  }
-
-  async function readImageFile(file: File) {
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(new Error("Không đọc được file ảnh."));
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function handleImageFiles(files?: FileList | null) {
-    const selectedFiles = Array.from(files ?? []);
-    if (!selectedFiles.length) return;
-    if (selectedFiles.some((file) => !file.type.startsWith("image/"))) {
-      setError("File upload phải là ảnh.");
-      return;
-    }
-
-    try {
-      const uploadedMedia = await Promise.all(
-        selectedFiles.map(async (file) => ({
-          dataUrl: await readImageFile(file),
-          alt: file.name
-        }))
-      );
-      updateDraft({
-        imageDataUrl: uploadedMedia[0]?.dataUrl || "",
-        imageUrl: "",
-        imageAlt: uploadedMedia[0]?.alt || "",
-        media: uploadedMedia
-      });
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Không đọc được file ảnh.");
-    }
-  }
-
-  function updateDraftMediaUrls(value: string) {
-    const urls = value
-      .split(/\r?\n/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-    updateDraft({
-      imageUrl: urls[0] || "",
-      imageDataUrl: "",
-      media: urls.map((url) => ({ url }))
-    });
-  }
-
-  async function markDraftDone(draftId: string, result: PublishResult, status: "published" | "scheduled" = "published") {
+  async function markDraftDone(draftId: string, result: PublishResult) {
     await readJson<{ data: FacebookDraftInboxItem }>("/api/facebook-publisher/drafts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: draftId,
-        status,
+        status: "published",
         publish_result: result
       })
     });
-    setDraftInbox((current) => current.filter((item) => item.id !== draftId));
-    setSelectedDraftIds((current) => current.filter((id) => id !== draftId));
-    if (activeDraftId === draftId) setActiveDraftId(null);
     await loadDraftInbox();
-  }
-
-  async function hideDraft(draftId: string) {
-    await readJson<{ data: FacebookDraftInboxItem }>("/api/facebook-publisher/drafts", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: draftId,
-        status: "hidden",
-        publish_result: { hidden_at: new Date().toISOString() }
-      })
-    });
-    setDraftInbox((current) => current.filter((item) => item.id !== draftId));
-    setSelectedDraftIds((current) => current.filter((id) => id !== draftId));
-    if (activeDraftId === draftId) {
-      setActiveDraftId(null);
-      setDraft(starterDraft);
-      setApproved(false);
-    }
-    await loadDraftInbox();
-  }
-
-  async function publishOne(options?: {
-    draftToPublish?: NormalizedAgentPostDraft;
-    pageId?: string;
-    draftId?: string | null;
-    completionStatus?: "published" | "scheduled";
-  }) {
-    const draftToPublish = options?.draftToPublish ?? draft;
-    const pageId = options?.pageId || selectedPageId;
-    if (!pageId) {
-      throw new Error("Chọn Fanpage cần đăng trước khi gửi bài.");
-    }
-    const payload = await readJson<{ data: PublishResult }>("/api/facebook-publisher/publish", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        page_id: pageId,
-        approved: true,
-        draft: draftToPublish
-      })
-    });
-
-    if (options?.draftId) {
-      await markDraftDone(options.draftId, payload.data, options.completionStatus);
-    }
-
-    return payload.data;
   }
 
   async function publishCurrent() {
+    if (!selectedDraft || !activeDraftId || !selectedPageId) return;
     setError("");
     setNotice("");
     setPublishResult(null);
     setIsPublishing(true);
 
     try {
-      const result = await publishOne({
-        draftId: activeDraftId,
-        completionStatus: draft.scheduledPublishTime ? "scheduled" : "published"
+      const payload = await readJson<{ data: PublishResult }>("/api/facebook-publisher/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page_id: selectedPageId,
+          approved: true,
+          draft: { ...selectedDraft, approved: true, scheduledPublishTime: undefined }
+        })
       });
-      setPublishResult(result);
-      setNotice(draft.scheduledPublishTime ? "Đã lên lịch đăng tự động trên Meta. Draft đã được ẩn khỏi hàng chờ." : "Đã gửi bài sang Meta. Draft đã được ẩn khỏi hàng chờ.");
+      setPublishResult(payload.data);
+      await markDraftDone(activeDraftId, payload.data);
+      setNotice("Đã đăng bài lên Fanpage. Draft đã được đưa khỏi hàng chờ.");
     } catch (publishError) {
       setError(publishError instanceof Error ? publishError.message : "Không đăng được bài.");
     } finally {
@@ -490,93 +241,12 @@ export function FacebookPublisherClient() {
     }
   }
 
-  async function publishSelectedDrafts() {
-    setError("");
-    setNotice("");
-    setPublishResult(null);
-    setIsPublishing(true);
-
-    try {
-      let successCount = 0;
-      for (const item of sortDraftsByCreatedAt(selectedInboxDrafts)) {
-        const draftToPublish = getQueueDraft(item);
-        await publishOne({
-          draftToPublish: { ...draftToPublish, scheduledPublishTime: undefined, approved: true },
-          pageId: selectedPageId,
-          draftId: item.id,
-          completionStatus: "published"
-        });
-        successCount += 1;
-      }
-      setNotice(`Đã đăng ngay ${successCount} bài theo thứ tự bài nạp vào trước đăng trước.`);
-    } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : "Không đăng được danh sách bài đã chọn.");
-    } finally {
-      setIsPublishing(false);
-    }
-  }
-
-  async function scheduleSelectedDrafts() {
-    const slots = dailyScheduleTimes.slice(0, dailyPostCount);
-    if (!selectedInboxDrafts.length) {
-      setError("Tick chọn bài nháp cần lên lịch trước.");
-      return;
-    }
-    if (slots.some((slot) => !slot)) {
-      setError("Điền đủ khung giờ đăng trước khi lên lịch.");
-      return;
-    }
-
-    setError("");
-    setNotice("");
-    setPublishResult(null);
-    setIsPublishing(true);
-
-    try {
-      const orderedDrafts = sortDraftsByCreatedAt(selectedInboxDrafts);
-      const [firstHour, firstMinute] = slots[0].split(":").map(Number);
-      const firstSlotToday = new Date();
-      firstSlotToday.setHours(firstHour, firstMinute, 0, 0);
-      const shouldStartTomorrow = firstSlotToday.getTime() <= Date.now() + 15 * 60_000;
-      let successCount = 0;
-
-      for (let index = 0; index < orderedDrafts.length; index += 1) {
-        const item = orderedDrafts[index];
-        const draftToPublish = getQueueDraft(item);
-        const slot = slots[index % slots.length];
-        const dayOffset = Math.floor(index / slots.length);
-        const scheduledPublishTime = buildScheduledPublishTime(slot, dayOffset, shouldStartTomorrow);
-
-        await publishOne({
-          draftToPublish: { ...draftToPublish, scheduledPublishTime, approved: true },
-          pageId: selectedPageId,
-          draftId: item.id,
-          completionStatus: "scheduled"
-        });
-        successCount += 1;
-      }
-
-      setNotice(`Đã lên lịch ${successCount} bài: ${slots.length} bài/ngày, lặp lại theo các khung giờ đã chọn.`);
-    } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : "Không lên lịch được danh sách bài đã chọn.");
-    } finally {
-      setIsPublishing(false);
-    }
-  }
-
-  async function deleteInboxDraft(item: FacebookDraftInboxItem) {
-    setError("");
-    setNotice("");
-    try {
-      await hideDraft(item.id);
-      setNotice("Đã xóa bài khỏi hàng chờ.");
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Không xóa được bài.");
-    }
+  if (accessState.kind === "needs_facebook") {
+    return <FacebookRequiredState accessState={accessState} />;
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+    <div className="space-y-6">
       {imageModal ? (
         <div
           aria-modal="true"
@@ -599,402 +269,259 @@ export function FacebookPublisherClient() {
         </div>
       ) : null}
 
-      <div className="space-y-6">
-        <AgentKeyManager pages={pages} />
-
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle>Chọn Fanpage đăng bài</CardTitle>
-                <CardDescription>Chọn Page trước tiên để Agent, draft và lịch đăng luôn đi đúng kênh. Token chỉ dùng server-side.</CardDescription>
-              </div>
-              <Badge>{isLoadingPages ? "Đang tải Page" : `${pages.length} Page`}</Badge>
-            </div>
-          </CardHeader>
-
-          {pages.length ? (
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-              <select
-                className="dashboard-input"
-                value={selectedPageId}
-                onChange={(event) => setSelectedPageId(event.target.value)}
+      <section className="rounded-2xl border border-[#dbe7fb] bg-white p-5 shadow-[0_22px_70px_rgba(15,23,42,0.08)]">
+        <div className="grid gap-3 md:grid-cols-4">
+          {steps.map((step, index) => {
+            const active =
+              (index === 0 && !selectedPageId) ||
+              (index === 1 && selectedPageId && !selectedDraft) ||
+              (index === 2 && selectedPageId && selectedDraft && !publishResult) ||
+              (index === 3 && publishResult);
+            return (
+              <div
+                key={step}
+                className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
+                  active ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600"
+                }`}
               >
-                {pages.map((page) => (
-                  <option key={page.id} value={page.id}>
-                    {page.name} {page.category ? `- ${page.category}` : ""} {page.has_access_token === false ? "(thiếu quyền đăng)" : ""}
-                  </option>
-                ))}
-              </select>
-              <Button variant="secondary" onClick={saveDefaultPage}>
-                <MaterialIcon name={defaultPageId === selectedPageId ? "star" : "star_border"} />
-                {defaultPageId === selectedPageId ? "Page mặc định" : "Đặt mặc định"}
-              </Button>
-              <Button variant="secondary" onClick={() => window.location.assign("/api/auth/facebook/start?force=1")}>
-                <MaterialIcon name="sync" />
-                Kết nối lại
-              </Button>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-outline-variant bg-surface-container-low p-5">
-              <p className="text-sm font-bold text-on-surface">Chưa đọc được Fanpage.</p>
-              <p className="mt-2 text-sm leading-6 text-on-surface-variant">
-                Hãy đăng nhập lại Facebook và cấp quyền pages_show_list, pages_read_engagement, pages_manage_posts.
-              </p>
-              <Button className="mt-4" onClick={() => window.location.assign("/api/auth/facebook/start?force=1")}>
-                <MaterialIcon name="login" />
-                Đăng nhập Facebook
-              </Button>
-            </div>
-          )}
-          {selectedPage && selectedPage.has_access_token === false ? (
-            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-              <p className="font-bold">Facebook thấy Page này nhưng chưa trả Page Access Token.</p>
-              <p className="mt-1">
-                Cách xử lý: bấm Kết nối lại, chọn đúng Page ở màn Facebook, bật quyền tạo/quản lý bài viết. Nếu vẫn chưa được,
-                kiểm tra tài khoản Facebook có Full control hoặc content task trên Page trong Business Manager.
-              </p>
-            </div>
-          ) : null}
-        </Card>
+                <span className="grid size-8 place-items-center rounded-full bg-white text-sm font-extrabold shadow-sm">{index + 1}</span>
+                <span className="text-sm font-extrabold">{step}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_430px]">
+        <div className="space-y-6">
+          <Card className="rounded-2xl border-[#dbe7fb] bg-white shadow-sm">
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div>
-                <CardTitle>Báo cáo đăng bài</CardTitle>
-                <CardDescription>Theo dõi nhanh trạng thái bài viết trong hệ thống.</CardDescription>
+                <CardTitle>1. Chọn page</CardTitle>
+                <CardDescription>Chọn Fanpage sẽ nhận bài đăng. App dùng token server-side từ lần đăng nhập Facebook hiện tại.</CardDescription>
               </div>
-              <Button variant="secondary" onClick={loadDraftInbox}>
-                <MaterialIcon name="refresh" />
-                Cập nhật
-              </Button>
-            </div>
-          </CardHeader>
-          <div className="grid gap-3 p-6 pt-0 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg border border-outline-variant bg-white p-4">
-              <p className="text-sm font-bold text-on-surface-variant">Bài đã đăng</p>
-              <p className="mt-2 text-3xl font-extrabold text-on-surface">{draftSummary.published}</p>
-            </div>
-            <div className="rounded-lg border border-outline-variant bg-white p-4">
-              <p className="text-sm font-bold text-on-surface-variant">Bài Draft</p>
-              <p className="mt-2 text-3xl font-extrabold text-on-surface">{draftSummary.draft}</p>
-            </div>
-            <div className="rounded-lg border border-outline-variant bg-white p-4">
-              <p className="text-sm font-bold text-on-surface-variant">Bài đã xóa</p>
-              <p className="mt-2 text-3xl font-extrabold text-on-surface">{draftSummary.hidden}</p>
-            </div>
-            <div className="rounded-lg border border-outline-variant bg-white p-4">
-              <p className="text-sm font-bold text-on-surface-variant">Bài đang lên lịch</p>
-              <p className="mt-2 text-3xl font-extrabold text-on-surface">{draftSummary.scheduled}</p>
-            </div>
-          </div>
-        </Card>
+              <Badge>{isLoadingPages ? "Đang tải" : `${pages.length} Page`}</Badge>
+            </CardHeader>
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle>Draft Agent chờ duyệt</CardTitle>
-                <CardDescription>Chọn một bài để sửa, hoặc tick nhiều bài để đăng/lên lịch hàng loạt.</CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={loadDraftInbox}>
-                  <MaterialIcon name="refresh" />
-                  Tải lại
-                </Button>
-                <Button disabled={!canBatchPublish} onClick={publishSelectedDrafts}>
-                  <MaterialIcon name="send" />
-                  Đăng bài
-                </Button>
-                <Button disabled={!canBatchPublish} onClick={scheduleSelectedDrafts}>
-                  <MaterialIcon name="schedule_send" />
-                  Lên lịch
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-
-          <div className="grid gap-4 rounded-lg border border-outline-variant bg-surface-container-low p-4 md:grid-cols-[220px_minmax(0,1fr)]">
-            <label className="space-y-2">
-              <span className="text-sm font-bold text-on-surface">Số lượng bài đăng/ngày</span>
-              <Input min={1} max={10} type="number" value={dailyPostCount} onChange={(event) => updateDailyPostCount(event.target.value)} />
-            </label>
-            <div className="space-y-2">
-              <p className="text-sm font-bold text-on-surface">Khung giờ đăng hằng ngày</p>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {dailyScheduleTimes.slice(0, dailyPostCount).map((time, index) => (
-                  <label key={index} className="flex items-center gap-2 rounded-lg border border-outline-variant bg-white p-2 text-sm font-semibold text-on-surface">
-                    <span className="shrink-0 text-on-surface-variant">Bài {index + 1}</span>
-                    <Input
-                      aria-label={`Khung giờ đăng bài ${index + 1}`}
-                      type="time"
-                      value={time}
-                      onChange={(event) => updateDailyScheduleTime(index, event.target.value)}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 md:col-span-2">
-              <label className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-bold text-on-surface">
-                <input type="checkbox" checked={autoScheduleActive} onChange={(event) => setAutoScheduleActive(event.target.checked)} />
-                Bật tự động xếp lịch draft mới
-              </label>
-              <Button variant="secondary" disabled={isSavingSchedule || !selectedPageId} onClick={() => void saveScheduleSettings()}>
-                <MaterialIcon name={isSavingSchedule ? "hourglass_top" : "save"} />
-                Lưu lịch tự động
-              </Button>
-            </div>
-          </div>
-
-          {draftInbox.length ? (
-            <div className="grid max-h-[560px] gap-3 overflow-y-auto overscroll-contain pr-2">
-              {draftInbox.map((item) => {
-                const isSelected = selectedDraftIds.includes(item.id);
-                const draftPageIsDifferent = Boolean(item.pageId && item.pageId !== selectedPageId);
-                const draftImage = getDraftImageSrc(item.draft);
-                return (
-                  <div
-                    key={item.id}
-                    className="rounded-lg border border-outline-variant bg-white p-4 transition hover:border-primary hover:bg-primary-fixed/10"
-                  >
-                    <div className="flex items-start gap-3">
-                      <input
-                        aria-label={`Chọn ${item.draft.title}`}
-                        className="mt-1"
-                        checked={isSelected}
-                        onChange={() => toggleInboxDraft(item)}
-                        type="checkbox"
-                      />
-                      {draftImage ? (
-                        <button
-                          aria-label={`Phóng to ảnh của ${item.draft.title}`}
-                          className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low"
-                          onClick={() => setImageModal({ src: draftImage, alt: item.draft.imageAlt || item.draft.title })}
-                          type="button"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img alt={item.draft.imageAlt || item.draft.title} className="h-full w-full object-cover transition group-hover:scale-105" src={draftImage} />
-                          <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-white opacity-0 transition group-hover:opacity-100">
-                            <MaterialIcon className="text-[18px]" name="open_in_full" />
-                          </span>
-                        </button>
-                      ) : (
-                        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-outline-variant bg-surface-container-low px-2 text-center text-[11px] font-bold leading-4 text-on-surface-variant">
-                          Chưa có ảnh
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
-                          <button className="min-w-0 text-left" onClick={() => applyInboxDraft(item)} type="button">
-                            <div className="flex flex-wrap items-start gap-3">
-                              <p className="font-extrabold text-on-surface">{item.draft.title}</p>
-                              <Badge>{item.status}</Badge>
-                              {draftPageIsDifferent ? <Badge>Sẽ đăng theo Page đang chọn</Badge> : null}
-                            </div>
-                            <p className="mt-2 line-clamp-2 text-sm leading-6 text-on-surface-variant">{item.draft.message || "Chưa có caption"}</p>
-                          </button>
-                          <div className="flex justify-end">
-                            <Button variant="danger" disabled={isPublishing} onClick={() => void deleteInboxDraft(item)}>
-                              <MaterialIcon name="delete" />
-                              Xóa
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-outline">
-                          {item.createdAt ? <span>Nạp lúc {new Date(item.createdAt).toLocaleString("vi-VN")}</span> : null}
-                          {item.draft.scheduledPublishTime ? <span>Lịch đăng {new Date(item.draft.scheduledPublishTime).toLocaleString("vi-VN")}</span> : null}
-                        </div>
-                      </div>
-                    </div>
+            {pages.length ? (
+              <div className="grid gap-3">
+                <select
+                  className="min-h-12 w-full rounded-xl border border-[#dbe7fb] bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  value={selectedPageId}
+                  onChange={(event) => {
+                    setSelectedPageId(event.target.value);
+                    setPublishResult(null);
+                  }}
+                >
+                  {pages.map((page) => (
+                    <option key={page.id} value={page.id}>
+                      {page.name} {page.category ? `- ${page.category}` : ""} {page.has_access_token === false ? "(thiếu quyền đăng)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedPage?.has_access_token === false ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                    Page này chưa có quyền đăng bài. Hãy kiểm tra quyền Page trong Facebook rồi kết nối lại tài khoản nếu cần.
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-outline-variant bg-surface-container-low p-5 text-sm leading-6 text-on-surface-variant">
-              Chưa có draft nào từ Agent. Agent có thể gọi <span className="font-mono font-bold">POST /api/facebook-publisher/drafts</span> để tự nạp bài vào hàng chờ này.
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle>Nạp draft từ Agent</CardTitle>
-                <CardDescription>Dán JSON do Agent tạo hoặc nhập trực tiếp caption và ảnh bên dưới.</CardDescription>
-              </div>
-              <Button variant="ghost" onClick={loadExample}>
-                Dùng mẫu
-              </Button>
-            </div>
-          </CardHeader>
-
-          <Textarea
-            className="min-h-[220px] font-mono text-xs"
-            placeholder='{"caption":"Nội dung bài đăng...", "link":"https://...", "scheduledPublishTime":"2026-06-01T03:00:00.000Z"}'
-            value={agentJson}
-            onChange={(event) => setAgentJson(event.target.value)}
-          />
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Button onClick={importAgentJson}>
-              <MaterialIcon name="upload_file" />
-              Nạp từ JSON
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setAgentJson("");
-                setDraft(starterDraft);
-                setActiveDraftId(null);
-                setApproved(false);
-                setPublishResult(null);
-              }}
-            >
-              Làm mới
-            </Button>
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Chỉnh nội dung trước khi đăng</CardTitle>
-            <CardDescription>Khách có thể sửa caption, link, ảnh và lịch đăng ngay trên web trước khi bấm đăng.</CardDescription>
-          </CardHeader>
-
-          <div className="grid gap-4">
-            <label className="space-y-2">
-              <span className="text-sm font-bold text-on-surface">Tiêu đề nội bộ</span>
-              <Input value={draft.title} onChange={(event) => updateDraft({ title: event.target.value })} />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-bold text-on-surface">Caption</span>
-              <Textarea value={draft.message} onChange={(event) => updateDraft({ message: event.target.value })} />
-            </label>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm font-bold text-on-surface">Link đính kèm</span>
-                <Input placeholder="https://..." value={draft.link || ""} onChange={(event) => updateDraft({ link: event.target.value })} />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-bold text-on-surface">Lên lịch đăng tự động</span>
-                <Input
-                  type="datetime-local"
-                  value={toDateTimeLocalValue(draft.scheduledPublishTime)}
-                  onChange={(event) => updateDraft({ scheduledPublishTime: fromDateTimeLocalValue(event.target.value) })}
-                />
-              </label>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm font-bold text-on-surface">Link ảnh public</span>
-                <Textarea
-                  className="min-h-[112px]"
-                  placeholder={"https://...\nhttps://..."}
-                  value={draft.media?.length ? draft.media.map((item) => item.url || "").filter(Boolean).join("\n") : draft.imageUrl || ""}
-                  onChange={(event) => updateDraftMediaUrls(event.target.value)}
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-bold text-on-surface">Upload ảnh từ Agent</span>
-                <Input type="file" multiple accept="image/*" onChange={(event) => void handleImageFiles(event.target.files)} />
-              </label>
-            </div>
-            {draftImages.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {draftImages.map((item, index) => (
-                  <button
-                    key={`${item.src}-${index}`}
-                    className="group relative aspect-square overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low"
-                    onClick={() => setImageModal({ src: item.src, alt: item.alt })}
-                    type="button"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img alt={item.alt} className="h-full w-full object-cover transition group-hover:scale-105" src={item.src} />
-                    <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-1 text-xs font-bold text-white">Ảnh {index + 1}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </Card>
-      </div>
-
-      <aside className="space-y-6">
-        <Card className="sticky top-24">
-          <CardHeader>
-            <CardTitle>Preview trước đăng</CardTitle>
-            <CardDescription>{selectedPage ? `Fanpage: ${selectedPage.name}` : "Chưa chọn Fanpage"}</CardDescription>
-          </CardHeader>
-
-          <div className="rounded-lg border border-outline-variant bg-white p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white">
-                <MaterialIcon filled name="flag" />
-              </div>
-              <div>
-                <p className="font-extrabold text-on-surface">{selectedPage?.name || "Fanpage"}</p>
-                <p className="text-xs text-on-surface-variant">
-                  {draft.scheduledPublishTime ? `Lên lịch ${new Date(draft.scheduledPublishTime).toLocaleString("vi-VN")}` : "Bản xem trước từ Adplan AI"}
-                </p>
-              </div>
-            </div>
-            <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-on-surface">{draft.message || "Caption sẽ hiển thị ở đây."}</p>
-            {draft.link ? <p className="mt-3 break-all text-sm font-bold text-primary">{draft.link}</p> : null}
-            {draftImages.length ? (
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {draftImages.map((item, index) => (
-                  <button
-                    key={`${item.src}-${index}`}
-                    className={draftImages.length === 1 ? "col-span-2 overflow-hidden rounded-lg" : "overflow-hidden rounded-lg"}
-                    onClick={() => setImageModal({ src: item.src, alt: item.alt })}
-                    type="button"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img alt={item.alt} className="aspect-square w-full object-cover" src={item.src} />
-                  </button>
-                ))}
+                ) : null}
               </div>
             ) : (
-              <div className="mt-4 flex aspect-square items-center justify-center rounded-lg bg-surface-container-low text-sm font-bold text-on-surface-variant">
-                Chưa có ảnh
-              </div>
+              <EmptyPanel
+                icon="flag"
+                title={isLoadingPages ? "Đang tải Fanpage..." : "Chưa đọc được Fanpage"}
+                description="Nếu tài khoản Facebook đã kết nối nhưng chưa thấy Page, hãy kiểm tra quyền quản trị Page và quyền pages_manage_posts."
+                actionLabel="Tải lại Page"
+                onAction={() => void loadPages()}
+              />
             )}
+          </Card>
+
+          <Card className="rounded-2xl border-[#dbe7fb] bg-white shadow-sm">
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div>
+                <CardTitle>2. Chọn bài trong Draft</CardTitle>
+                <CardDescription>Danh sách bài đã được Agent nạp vào app. Chọn một bài để xem preview và đăng.</CardDescription>
+              </div>
+              <Button variant="secondary" onClick={() => void loadDraftInbox()}>
+                <MaterialIcon name="refresh" />
+                Tải lại
+              </Button>
+            </CardHeader>
+
+            {draftInbox.length ? (
+              <div className="grid max-h-[620px] gap-3 overflow-y-auto pr-2">
+                {draftInbox.map((item) => {
+                  const active = item.id === activeDraftId;
+                  const draftImage = getDraftImageSrc(item.draft);
+                  return (
+                    <button
+                      key={item.id}
+                      className={`grid gap-4 rounded-2xl border p-4 text-left transition md:grid-cols-[88px_minmax(0,1fr)] ${
+                        active ? "border-blue-500 bg-blue-50 shadow-sm" : "border-[#dbe7fb] bg-white hover:border-blue-300 hover:bg-slate-50"
+                      }`}
+                      onClick={() => chooseDraft(item)}
+                      type="button"
+                    >
+                      {draftImage ? (
+                        <span className="block h-24 overflow-hidden rounded-xl bg-slate-100 md:h-20">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img alt={item.draft.imageAlt || item.draft.title} className="h-full w-full object-cover" src={draftImage} />
+                        </span>
+                      ) : (
+                        <span className="grid h-24 place-items-center rounded-xl bg-slate-100 text-xs font-bold text-slate-500 md:h-20">
+                          Chưa có ảnh
+                        </span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="line-clamp-1 text-base font-extrabold text-slate-950">{item.draft.title}</span>
+                          <Badge>{item.status}</Badge>
+                        </span>
+                        <span className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{item.draft.message || "Chưa có caption"}</span>
+                        <span className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-slate-400">
+                          {item.createdAt ? <span>Nạp lúc {formatDateTime(item.createdAt)}</span> : null}
+                          {item.pageId ? <span>Page gợi ý: {item.pageId}</span> : null}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyPanel
+                icon="article"
+                title={isLoadingDrafts ? "Đang tải Draft..." : "Chưa có bài trong Draft"}
+                description="Khi Agent nạp bài vào app, bài sẽ xuất hiện ở đây để anh/chị chọn và đăng."
+                actionLabel="Tải lại Draft"
+                onAction={() => void loadDraftInbox()}
+              />
+            )}
+          </Card>
+
+          <div className="grid gap-3 rounded-2xl border border-[#dbe7fb] bg-white p-5 text-sm text-slate-600 md:grid-cols-4">
+            <Stat label="Draft chờ đăng" value={draftSummary.draft} />
+            <Stat label="Đã đăng" value={draftSummary.published} />
+            <Stat label="Đang lên lịch" value={draftSummary.scheduled} />
+            <Stat label="Đã ẩn" value={draftSummary.hidden} />
           </div>
+        </div>
 
-          <label className="mt-5 flex items-start gap-3 rounded-lg bg-surface-container-low p-4 text-sm leading-6 text-on-surface">
-            <input className="mt-1" type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} />
-            <span>Tôi đã kiểm tra nội dung, link, hình ảnh, lịch đăng và đồng ý đăng bài lên Fanpage đã chọn.</span>
-          </label>
+        <aside className="space-y-6">
+          <Card className="sticky top-24 rounded-2xl border-[#dbe7fb] bg-white shadow-[0_22px_70px_rgba(15,23,42,0.08)]">
+            <CardHeader>
+              <CardTitle>3. Preview</CardTitle>
+              <CardDescription>{selectedPage ? `Fanpage: ${selectedPage.name}` : "Chưa chọn Fanpage"}</CardDescription>
+            </CardHeader>
 
-          {selectedDraftIds.length ? (
-            <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-4 text-sm font-semibold text-on-surface-variant">
-              Đang chọn {selectedDraftIds.length} bài trong hàng chờ. Nút đăng nhiều bài nằm ở khối Draft Agent.
+            <div className="rounded-2xl border border-[#dbe7fb] bg-white p-4">
+              <div className="flex items-center gap-3">
+                <div className="grid size-11 place-items-center rounded-full bg-blue-600 text-white">
+                  <MaterialIcon filled name="flag" />
+                </div>
+                <div>
+                  <p className="font-extrabold text-slate-950">{selectedPage?.name || "Fanpage"}</p>
+                  <p className="text-xs font-semibold text-slate-400">Bản xem trước</p>
+                </div>
+              </div>
+
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-800">{selectedDraft?.message || "Chọn một draft để xem nội dung bài đăng."}</p>
+              {selectedDraft?.link ? <p className="mt-3 break-all text-sm font-bold text-blue-600">{selectedDraft.link}</p> : null}
+
+              {draftImages.length ? (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {draftImages.map((item, index) => (
+                    <button
+                      key={`${item.src}-${index}`}
+                      className={draftImages.length === 1 ? "col-span-2 overflow-hidden rounded-xl" : "overflow-hidden rounded-xl"}
+                      onClick={() => setImageModal({ src: item.src, alt: item.alt })}
+                      type="button"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img alt={item.alt} className="aspect-square w-full object-cover" src={item.src} />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-4 grid aspect-square place-items-center rounded-xl bg-slate-100 text-sm font-bold text-slate-500">
+                  Chưa có ảnh
+                </div>
+              )}
             </div>
-          ) : null}
 
-          {error ? <div className="mt-4 rounded-lg border border-error/30 bg-error/10 p-4 text-sm font-semibold text-error">{error}</div> : null}
-          {notice ? <div className="mt-4 rounded-lg border border-primary/20 bg-primary-fixed/20 p-4 text-sm font-semibold text-primary">{notice}</div> : null}
+            {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
+            {notice ? <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-700">{notice}</div> : null}
 
-          <Button className="mt-5 w-full" disabled={!canPublish} onClick={publishCurrent}>
-            <MaterialIcon name={isPublishing ? "hourglass_top" : draft.scheduledPublishTime ? "schedule_send" : "send"} />
-            {isPublishing ? "Đang xử lý..." : draft.scheduledPublishTime ? "Lên lịch đăng" : "Đăng lên Fanpage"}
-          </Button>
+            <Button className="mt-5 w-full min-h-12 rounded-xl text-base" disabled={!canPublish} onClick={() => void publishCurrent()}>
+              <MaterialIcon name={isPublishing ? "hourglass_top" : "send"} />
+              {isPublishing ? "Đang đăng..." : "4. Đăng"}
+            </Button>
 
-          {publishResult ? (
-            <div className="mt-5 rounded-lg border border-outline-variant bg-surface-container-low p-4 text-sm leading-6">
-              <p className="font-extrabold text-on-surface">Meta đã trả kết quả</p>
-              <p className="text-on-surface-variant">Loại bài: {publishResult.mode === "photo" ? "Ảnh" : "Text/link"}</p>
-              <p className="break-all text-on-surface-variant">Post ID: {publishResult.post_id}</p>
-              <a className="mt-2 inline-flex font-bold text-primary hover:underline" href={postUrlFromId(publishResult.post_id)} target="_blank">
-                Mở bài trên Facebook
-              </a>
-            </div>
-          ) : null}
-        </Card>
-      </aside>
+            {publishResult ? (
+              <div className="mt-5 rounded-xl border border-[#dbe7fb] bg-slate-50 p-4 text-sm leading-6">
+                <p className="font-extrabold text-slate-950">Đã nhận kết quả từ Meta</p>
+                <p className="text-slate-600">Loại bài: {publishResult.mode === "photo" ? "Ảnh" : "Text/link"}</p>
+                <p className="break-all text-slate-600">Post ID: {publishResult.post_id}</p>
+                <a className="mt-2 inline-flex font-bold text-blue-600 hover:underline" href={postUrlFromId(publishResult.post_id)} target="_blank">
+                  Mở bài trên Facebook
+                </a>
+              </div>
+            ) : null}
+          </Card>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function FacebookRequiredState({ accessState }: { accessState: Extract<PublisherAccessState, { kind: "needs_facebook" }> }) {
+  return (
+    <Card className="mx-auto max-w-2xl rounded-2xl border-[#dbe7fb] bg-white p-8 text-center shadow-[0_22px_70px_rgba(15,23,42,0.08)]">
+      <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+        <MaterialIcon className="text-[28px]" name="login" />
+      </div>
+      <h2 className="mt-5 text-2xl font-extrabold text-slate-950">{accessState.title}</h2>
+      <p className="mt-3 text-sm leading-6 text-slate-600">{accessState.message}</p>
+      <Button className="mt-6 min-h-12 rounded-xl px-6" onClick={() => window.location.assign("/api/auth/facebook/start?force=1")}>
+        <span className="grid size-6 place-items-center rounded-md bg-white text-blue-600">f</span>
+        Kết nối Facebook
+      </Button>
+    </Card>
+  );
+}
+
+function EmptyPanel({
+  icon,
+  title,
+  description,
+  actionLabel,
+  onAction
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-[#cbd8ee] bg-slate-50 p-6 text-center">
+      <div className="mx-auto grid size-12 place-items-center rounded-xl bg-white text-blue-600 shadow-sm">
+        <MaterialIcon name={icon} />
+      </div>
+      <p className="mt-4 font-extrabold text-slate-950">{title}</p>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">{description}</p>
+      <Button className="mt-5" variant="secondary" onClick={onAction}>
+        <MaterialIcon name="refresh" />
+        {actionLabel}
+      </Button>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl bg-slate-50 px-4 py-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 text-2xl font-extrabold text-slate-950">{value}</p>
     </div>
   );
 }

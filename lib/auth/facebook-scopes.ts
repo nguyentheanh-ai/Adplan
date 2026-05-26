@@ -8,3 +8,4 @@ export const REQUIRED_FACEBOOK_SCOPES = [
   "pages_manage_posts"
 ] as const;
 
+export const OPTIONAL_FACEBOOK_SCOPES = ["business_management"] as const;

@@ -170,13 +170,13 @@ function PlanView({
           Bước tiếp theo sẽ gửi kế hoạch đã duyệt sang n8n để chuẩn bị workflow kết nối Meta Marketing API.
         </p>
         <div className="flex flex-wrap justify-center gap-4">
-          <Link href="/dashboard/meta">
+          <Link href="/ads-facebook">
             <Button variant="ai">
               <MaterialIcon name="hub" />
               Mở Meta API
             </Button>
           </Link>
-          <Link href="/dashboard">
+          <Link href="/ads-facebook">
             <Button variant="secondary">Về dashboard</Button>
           </Link>
         </div>

@@ -7,7 +7,7 @@ import { canCurrentUserAccessSection } from "@/lib/admin/permissions";
 export default async function CreativePage() {
   const session = await getAppSession();
   if (!session) redirect("/login");
-  if (!(await canCurrentUserAccessSection("creative"))) redirect("/dashboard");
+  if (!(await canCurrentUserAccessSection("creative"))) redirect("/ads-facebook");
 
   return (
     <AppShell title="Creative" description="Theo dõi số lượng creative, phễu hiệu suất và bảng so sánh theo lead, tin nhắn, tương tác.">

@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     const profile = await getFacebookProfile(token.accessToken);
     const userId = await ensureFacebookSupabaseProfile(profile);
     const maxAge = Math.max(60 * 30, Math.min(token.expiresIn, 60 * 60 * 24 * 60));
-    const response = NextResponse.redirect(`${getSiteUrl()}/dashboard`);
+    const response = NextResponse.redirect(`${getSiteUrl()}/ads-facebook`);
 
     response.cookies.delete("fb_oauth_state");
     response.cookies.set(

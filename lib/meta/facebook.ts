@@ -16,6 +16,13 @@ import type {
 export type MetaAdAccount = AdAccount;
 export type MetaCampaign = Campaign;
 
+type MetaManagedPage = {
+  id: string;
+  name: string;
+  category?: string;
+  access_token?: string;
+};
+
 export type MetaApiErrorPayload = {
   error?: {
     message?: string;
@@ -466,17 +473,90 @@ export async function getMetaAdsWithCreatives(
 }
 
 export async function getMetaManagedPages(accessToken?: string | null) {
-  const payload = await metaFetch<{
-    data: Array<{ id: string; name: string; category?: string; access_token?: string }>;
-  }>("me/accounts", {
+  const [directPages, businessPages, promotedPages] = await Promise.all([
+    getDirectManagedPages(accessToken),
+    getBusinessManagedPages(accessToken),
+    getAdAccountPromotedPages(accessToken)
+  ]);
+
+  return dedupeManagedPages([...directPages, ...businessPages, ...promotedPages]);
+}
+
+async function getDirectManagedPages(accessToken?: string | null) {
+  const payload = await metaFetch<{ data: MetaManagedPage[] }>("me/accounts", {
     accessToken,
     params: {
       fields: "id,name,category,access_token",
-      limit: "50"
+      limit: "100"
     }
   });
 
   return payload.data ?? [];
+}
+
+async function getBusinessManagedPages(accessToken?: string | null) {
+  try {
+    const payload = await metaFetch<{
+      data?: Array<{
+        owned_pages?: { data?: MetaManagedPage[] };
+        client_pages?: { data?: MetaManagedPage[] };
+      }>;
+    }>("me/businesses", {
+      accessToken,
+      params: {
+        fields: "owned_pages.limit(100){id,name,category,access_token},client_pages.limit(100){id,name,category,access_token}",
+        limit: "50"
+      }
+    });
+
+    return (payload.data ?? []).flatMap((business) => [
+      ...(business.owned_pages?.data ?? []),
+      ...(business.client_pages?.data ?? [])
+    ]);
+  } catch (error) {
+    if (error instanceof MetaApiError) return [];
+    throw error;
+  }
+}
+
+async function getAdAccountPromotedPages(accessToken?: string | null) {
+  try {
+    const adAccounts = await getMetaAdAccounts(accessToken);
+    const pageGroups = await Promise.all(
+      adAccounts.slice(0, 25).map(async (account) => {
+        try {
+          const payload = await metaFetch<{ data?: MetaManagedPage[] }>(`${account.id}/promote_pages`, {
+            accessToken,
+            params: {
+              fields: "id,name,category,access_token",
+              limit: "100"
+            }
+          });
+          return payload.data ?? [];
+        } catch (error) {
+          if (error instanceof MetaApiError) return [];
+          throw error;
+        }
+      })
+    );
+    return pageGroups.flat();
+  } catch (error) {
+    if (error instanceof MetaApiError) return [];
+    throw error;
+  }
+}
+
+function dedupeManagedPages(pages: MetaManagedPage[]) {
+  const seen = new Set<string>();
+  const result: MetaManagedPage[] = [];
+
+  for (const page of pages) {
+    if (!page.id || seen.has(page.id)) continue;
+    seen.add(page.id);
+    result.push(page);
+  }
+
+  return result;
 }
 
 export function sanitizeMetaPage(page: { id: string; name: string; category?: string; access_token?: string }) {

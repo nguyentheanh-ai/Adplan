@@ -26,11 +26,11 @@ export default async function AdsPage() {
     .eq("user_id", session.userId);
 
   return (
-    <AppShell contentClassName="px-gutter pb-12 pt-24">
-      <div className="mb-6">
+    <AppShell contentClassName="px-6 pb-24 pt-28 md:px-10 md:pb-12 md:pt-32">
+      <div className="mx-auto max-w-[1280px] space-y-6">
         <AdsFeatureLauncher />
+        <MetaIntelligenceDashboard userName={session.name ?? "Facebook user"} planCount={count ?? 0} />
       </div>
-      <MetaIntelligenceDashboard userName={session.name ?? "Facebook user"} planCount={count ?? 0} />
     </AppShell>
   );
 }

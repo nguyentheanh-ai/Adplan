@@ -3,8 +3,8 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Ads Planner",
-  description: "Tạo kế hoạch Facebook Ads bằng AI cho SME Việt Nam."
+  title: "Greezhub Workspace",
+  description: "SaaS dashboard cho Workspace, kế hoạch nội dung và Ads Facebook."
 };
 
 export default function RootLayout({

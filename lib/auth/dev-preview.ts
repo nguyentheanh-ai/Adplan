@@ -2,11 +2,11 @@ import type { AppSession } from "@/lib/auth/session";
 
 type PreviewEnv = {
   NODE_ENV?: string;
-  ADPLAN_DISABLE_PREVIEW_AUTH?: string;
+  ADPLAN_ENABLE_PREVIEW_AUTH?: string;
 };
 
 export function isDevPreviewAuthEnabled(env: PreviewEnv = process.env) {
-  return env.NODE_ENV === "development" && env.ADPLAN_DISABLE_PREVIEW_AUTH !== "1";
+  return env.NODE_ENV === "development" && env.ADPLAN_ENABLE_PREVIEW_AUTH === "1";
 }
 
 export function createDevPreviewSession(now = Date.now()): AppSession {

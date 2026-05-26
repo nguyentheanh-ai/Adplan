@@ -1,5 +1,5 @@
 ﻿const pages = [
-  { id: "calendar", label: "Home", title: "Calendar", icon: "home", space: "home", path: "/workspace" },
+  { id: "calendar", label: "Tổng quan", title: "Workspace", icon: "dashboard", space: "home", path: "/workspace" },
   { id: "noi-dung", label: "KhÃ´ng gian ná»™i dung", title: "KhÃ´ng gian ná»™i dung", icon: "inventory_2", space: "content", path: "/workspace/content", isSpace: true },
   { id: "van-hanh", label: "KhÃ´ng gian váº­n hÃ nh", title: "KhÃ´ng gian váº­n hÃ nh", icon: "hub", space: "operations", path: "/workspace/operations", isSpace: true },
   { id: "documents", label: "TÃ i liá»‡u", title: "TÃ i liá»‡u", icon: "folder_copy", space: "content", path: "/workspace/documents" },
@@ -39,14 +39,20 @@ const DOCUMENT_DOCUMENT_TAGS = new Set([
   "callout",
   "mindMap",
   "stickyNote",
+  "flowDiagram",
   "text",
 ]);
 const DOCUMENT_MIND_MAP_TYPE = "mindMap";
 const DOCUMENT_STICKY_NOTE_TYPE = "stickyNote";
+const DOCUMENT_FLOW_DIAGRAM_TYPE = "flowDiagram";
 const DOCUMENT_AUTOSAVE_DELAY_MS = 1100;
 const DOCUMENT_HISTORY_LIMIT = 20;
 const DOCUMENT_DEFAULT_HIGHLIGHT_COLOR = "#fff2ac";
 const DOCUMENT_STICKY_NOTE_COLORS = ["yellow", "pink", "blue", "green", "purple"];
+const DOCUMENT_FLOW_DIAGRAM_COLORS = ["blue", "green", "pink", "yellow", "purple", "white"];
+const DOCUMENT_FLOW_DIAGRAM_CONNECTOR_SIDES = ["left", "right", "top", "bottom"];
+const DOCUMENT_FLOW_DIAGRAM_EDGE_SHAPES = ["curve", "straight", "elbow"];
+const DOCUMENT_FLOW_DIAGRAM_EDGE_ARROWS = ["none", "end", "both"];
 const DOCUMENT_EDITOR_IMPORT_URLS = {
   core: "https://esm.sh/@tiptap/core@2.7.2",
   StarterKit: "https://esm.sh/@tiptap/starter-kit@2.7.2",
@@ -84,6 +90,7 @@ const DOCUMENT_SLASH_COMMANDS = [
   { id: "image", label: "Image", tags: ["image", "picture", "media"], commandId: "insertImage" },
   { id: "callout", label: "Callout", tags: ["callout", "note", "tip"], commandId: "callout" },
   { id: "sticky-note", label: "Sticky note", tags: ["note", "sticky", "giay note"], commandId: "stickyNote" },
+  { id: "flow-diagram", label: "So do", tags: ["diagram", "flow", "block", "node", "wire", "so do"], commandId: "flowDiagram" },
 ];
 const DOCUMENT_COMMAND_ALIAS = {
   bold: "toggleBold",
@@ -369,6 +376,203 @@ function mindMapAttrsToOutline(attrs = {}) {
   };
   appendNodes(displayMindMapBranchNodes(attrs.nodes || [], attrs.title || ""));
   return lines.join("\n");
+}
+
+function normalizeFlowDiagramColor(value = "") {
+  const color = sanitizeDocumentText(value || "blue").toLowerCase();
+  return DOCUMENT_FLOW_DIAGRAM_COLORS.includes(color) ? color : "blue";
+}
+
+function normalizeFlowDiagramConnectorSide(value = "", fallback = "right") {
+  const side = sanitizeDocumentText(value || fallback).toLowerCase();
+  return DOCUMENT_FLOW_DIAGRAM_CONNECTOR_SIDES.includes(side) ? side : fallback;
+}
+
+function normalizeFlowDiagramEdgeShape(value = "") {
+  const shape = sanitizeDocumentText(value || "curve").toLowerCase();
+  return DOCUMENT_FLOW_DIAGRAM_EDGE_SHAPES.includes(shape) ? shape : "curve";
+}
+
+function normalizeFlowDiagramEdgeArrow(value = "") {
+  const arrow = sanitizeDocumentText(value || "end").toLowerCase();
+  return DOCUMENT_FLOW_DIAGRAM_EDGE_ARROWS.includes(arrow) ? arrow : "end";
+}
+
+function normalizeFlowDiagramNodes(nodes = []) {
+  return (Array.isArray(nodes) ? nodes : [])
+    .filter((node) => node && typeof node === "object")
+    .map((node, index) => ({
+      id: String(node.id || crypto.randomUUID()),
+      text: sanitizeDocumentText(node.text || `Block ${index + 1}`),
+      x: Math.max(0, Math.min(1800, Number(node.x) || 0)),
+      y: Math.max(0, Math.min(1200, Number(node.y) || 0)),
+      width: Math.max(120, Math.min(520, Number(node.width) || 220)),
+      height: Math.max(64, Math.min(260, Number(node.height) || 86)),
+      color: normalizeFlowDiagramColor(node.color),
+      autoPlaced: node.autoPlaced !== false,
+    }));
+}
+
+function normalizeFlowDiagramEdges(edges = [], nodes = [], canvas = {}) {
+  const nodeIds = new Set((Array.isArray(nodes) ? nodes : []).map((node) => String(node.id || "")));
+  const canvasWidth = Math.max(520, Number(canvas.width) || 860);
+  const canvasHeight = Math.max(320, Number(canvas.height) || 420);
+  return (Array.isArray(edges) ? edges : [])
+    .filter((edge) => edge && typeof edge === "object")
+    .map((edge) => {
+      const from = String(edge.from || edge.fromNodeId || "");
+      const to = String(edge.to || edge.toNodeId || "");
+      const toPoint = edge.toPoint && typeof edge.toPoint === "object"
+        ? {
+          x: Math.max(0, Math.min(canvasWidth, Number(edge.toPoint.x) || 0)),
+          y: Math.max(0, Math.min(canvasHeight, Number(edge.toPoint.y) || 0)),
+        }
+        : null;
+      if (!nodeIds.has(from)) return null;
+      if (!nodeIds.has(to) && !toPoint) return null;
+      return {
+        id: String(edge.id || crypto.randomUUID()),
+        from,
+        to: nodeIds.has(to) ? to : "",
+        fromSide: normalizeFlowDiagramConnectorSide(edge.fromSide || edge.sourceSide, "right"),
+        toSide: normalizeFlowDiagramConnectorSide(edge.toSide || edge.targetSide, "left"),
+        shape: normalizeFlowDiagramEdgeShape(edge.shape),
+        arrow: normalizeFlowDiagramEdgeArrow(edge.arrow),
+        toPoint,
+        label: sanitizeDocumentText(edge.label || ""),
+      };
+    })
+    .filter(Boolean);
+}
+
+function flowDiagramCanvasAttrs(attrs = {}) {
+  return {
+    width: Math.max(640, Math.min(1800, Number(attrs.width) || Number(attrs.canvasWidth) || 900)),
+    height: Math.max(380, Math.min(1200, Number(attrs.height) || Number(attrs.canvasHeight) || 460)),
+    align: ["center", "left"].includes(String(attrs.align || "").toLowerCase()) ? String(attrs.align).toLowerCase() : "center",
+  };
+}
+
+function autoLayoutFlowDiagramNodes(nodes = [], attrs = {}) {
+  const canvas = flowDiagramCanvasAttrs(attrs);
+  const safeNodes = normalizeFlowDiagramNodes(nodes);
+  if (!safeNodes.length) return [];
+  const gap = 34;
+  const totalWidth = safeNodes.reduce((sum, node) => sum + node.width, 0) + gap * Math.max(0, safeNodes.length - 1);
+  const startX = canvas.align === "left" ? 48 : Math.max(32, Math.round((canvas.width - totalWidth) / 2));
+  const centerY = Math.round(canvas.height / 2);
+  let cursorX = startX;
+  return safeNodes.map((node) => {
+    const placed = {
+      ...node,
+      x: Math.max(16, Math.min(canvas.width - node.width - 16, cursorX)),
+      y: Math.max(28, Math.min(canvas.height - node.height - 28, centerY - Math.round(node.height / 2))),
+      autoPlaced: true,
+    };
+    cursorX += node.width + gap;
+    return placed;
+  });
+}
+
+function createFlowDiagramNode(index = 1, attrs = {}) {
+  return {
+    id: String(attrs.id || crypto.randomUUID()),
+    text: sanitizeDocumentText(attrs.text || `Block ${index}`),
+    x: Math.max(0, Number(attrs.x) || 0),
+    y: Math.max(0, Number(attrs.y) || 0),
+    width: Math.max(120, Math.min(520, Number(attrs.width) || 220)),
+    height: Math.max(64, Math.min(260, Number(attrs.height) || 86)),
+    color: normalizeFlowDiagramColor(attrs.color),
+    autoPlaced: attrs.autoPlaced !== false,
+  };
+}
+
+function createFlowDiagramDocumentNode(attrs = {}) {
+  const canvas = flowDiagramCanvasAttrs(attrs);
+  const rawNodes = Array.isArray(attrs.nodes) && attrs.nodes.length
+    ? attrs.nodes
+    : [createFlowDiagramNode(1, { text: attrs.text || "Block 1", color: attrs.color || "blue" })];
+  const nodes = autoLayoutFlowDiagramNodes(rawNodes, canvas);
+  return {
+    type: DOCUMENT_FLOW_DIAGRAM_TYPE,
+    attrs: {
+      ...canvas,
+      nodes,
+      edges: normalizeFlowDiagramEdges(attrs.edges || [], nodes, canvas),
+    },
+  };
+}
+
+function flowDiagramNodeCenter(node = {}) {
+  return {
+    x: Math.round((Number(node.x) || 0) + (Number(node.width) || 220) / 2),
+    y: Math.round((Number(node.y) || 0) + (Number(node.height) || 86) / 2),
+  };
+}
+
+function flowDiagramNodeAnchor(node = {}, side = "right") {
+  const normalized = normalizeFlowDiagramConnectorSide(side, "right");
+  const x = Number(node.x) || 0;
+  const y = Number(node.y) || 0;
+  const width = Number(node.width) || 220;
+  const height = Number(node.height) || 86;
+  if (normalized === "left") return { x, y: Math.round(y + height / 2), side: normalized };
+  if (normalized === "top") return { x: Math.round(x + width / 2), y, side: normalized };
+  if (normalized === "bottom") return { x: Math.round(x + width / 2), y: y + height, side: normalized };
+  return { x: x + width, y: Math.round(y + height / 2), side: normalized };
+}
+
+function flowDiagramSideVector(side = "right") {
+  const normalized = normalizeFlowDiagramConnectorSide(side, "right");
+  if (normalized === "left") return { x: -1, y: 0 };
+  if (normalized === "top") return { x: 0, y: -1 };
+  if (normalized === "bottom") return { x: 0, y: 1 };
+  return { x: 1, y: 0 };
+}
+
+function flowDiagramEdgePath(fromNode, toNodeOrPoint, edge = {}) {
+  const from = flowDiagramNodeAnchor(fromNode, edge.fromSide || "right");
+  const to = toNodeOrPoint?.width ? flowDiagramNodeAnchor(toNodeOrPoint, edge.toSide || "left") : {
+    x: Math.round(Number(toNodeOrPoint?.x) || from.x + 120),
+    y: Math.round(Number(toNodeOrPoint?.y) || from.y),
+    side: edge.toSide || "left",
+  };
+  const shape = normalizeFlowDiagramEdgeShape(edge.shape);
+  if (shape === "straight") return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  if (shape === "elbow") {
+    if (from.side === "top" || from.side === "bottom") {
+      const midY = Math.round((from.y + to.y) / 2);
+      return `M ${from.x} ${from.y} L ${from.x} ${midY} L ${to.x} ${midY} L ${to.x} ${to.y}`;
+    }
+    const midX = Math.round((from.x + to.x) / 2);
+    return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
+  }
+  const fromVector = flowDiagramSideVector(from.side);
+  const toVector = toNodeOrPoint?.width ? flowDiagramSideVector(to.side) : { x: -fromVector.x, y: -fromVector.y };
+  const tension = Math.max(70, Math.min(150, Math.round(Math.hypot(to.x - from.x, to.y - from.y) / 2)));
+  const c1 = { x: Math.round(from.x + fromVector.x * tension), y: Math.round(from.y + fromVector.y * tension) };
+  const c2 = { x: Math.round(to.x - toVector.x * tension), y: Math.round(to.y - toVector.y * tension) };
+  return `M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`;
+}
+
+function renderFlowDiagramHtml(attrs = {}) {
+  const canvas = flowDiagramCanvasAttrs(attrs);
+  const nodes = normalizeFlowDiagramNodes(attrs.nodes || []);
+  const edges = normalizeFlowDiagramEdges(attrs.edges || [], nodes, canvas);
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const edgeMarkup = edges.map((edge) => {
+    const fromNode = nodeById.get(edge.from);
+    const target = edge.to ? nodeById.get(edge.to) : edge.toPoint;
+    if (!fromNode || !target) return "";
+    return `<path class="document-flow-diagram__edge" d="${escapeHtml(flowDiagramEdgePath(fromNode, target, edge))}" marker-end="url(#document-flow-arrow)" />`;
+  }).join("");
+  return `<div class="document-flow-diagram document-flow-diagram--${canvas.align}" data-type="${DOCUMENT_FLOW_DIAGRAM_TYPE}" style="--flow-width:${canvas.width}px;--flow-height:${canvas.height}px">
+    <svg class="document-flow-diagram__edge-layer" viewBox="0 0 ${canvas.width} ${canvas.height}" aria-hidden="true">
+      <defs><marker id="document-flow-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>
+      ${edgeMarkup}
+    </svg>
+    ${nodes.map((node) => `<div class="document-flow-diagram__node document-flow-diagram__node--${escapeHtml(node.color)}" style="left:${node.x}px;top:${node.y}px;width:${node.width}px;height:${node.height}px">${escapeHtml(node.text || "Block")}</div>`).join("")}
+  </div>`;
 }
 
 function createDocumentTableNode(rows = 3, cols = 3) {
@@ -697,6 +901,18 @@ function sanitizeDocumentDocumentJson(json) {
     if (node.type === "tableRow") return { type: "tableRow", content: normalizeChildren(node.content || []) };
     if (node.type === "tableCell") return { type: "tableCell", attrs: { colspan: Math.max(1, Number(node.attrs?.colspan) || 1), rowspan: Math.max(1, Number(node.attrs?.rowspan) || 1) }, content: normalizeChildren(node.content || []) };
     if (node.type === DOCUMENT_MIND_MAP_TYPE) return { type: DOCUMENT_MIND_MAP_TYPE, attrs: { ...(node.attrs || {}), nodes: Array.isArray(node.attrs?.nodes) ? node.attrs.nodes : [] } };
+    if (node.type === DOCUMENT_FLOW_DIAGRAM_TYPE) {
+      const canvas = flowDiagramCanvasAttrs(node.attrs || {});
+      const nodes = normalizeFlowDiagramNodes(node.attrs?.nodes || []);
+      return {
+        type: DOCUMENT_FLOW_DIAGRAM_TYPE,
+        attrs: {
+          ...canvas,
+          nodes,
+          edges: normalizeFlowDiagramEdges(node.attrs?.edges || [], nodes, canvas),
+        },
+      };
+    }
     if (node.type === DOCUMENT_STICKY_NOTE_TYPE) {
       return {
         type: DOCUMENT_STICKY_NOTE_TYPE,
@@ -971,6 +1187,9 @@ function createDocumentCommandBus(editor) {
       const offset = existingNotes.length * 22;
       return insertDocumentContentSafely(editor, [createStickyNoteDocumentNode({ x: 56 + offset, y: 170 + offset, ...(payload || {}) }), { type: "paragraph", content: [] }]);
     }
+    if (commandId === "flowDiagram") {
+      return insertDocumentContentSafely(editor, [createFlowDiagramDocumentNode(payload || {}), { type: "paragraph", content: [] }]);
+    }
     if (commandId === "insertMindMap") {
       const attrs = payload?.attrs || payload || {};
       return insertDocumentContentSafely(editor, [createMindMapDocumentNode(attrs), { type: "paragraph", content: [] }]);
@@ -1079,9 +1298,11 @@ function buildDocumentEditorExtensions() {
   if (lib.TaskItem) extensionList.push(lib.TaskItem.configure({ nested: true }));
 
   const mindMapExt = createMindMapNodeExtension();
+  const flowDiagramExt = createFlowDiagramNodeExtension();
   const calloutExt = createCalloutNodeExtension();
   const stickyNoteExt = createStickyNoteNodeExtension();
   if (mindMapExt) extensionList.push(mindMapExt);
+  if (flowDiagramExt) extensionList.push(flowDiagramExt);
   if (calloutExt) extensionList.push(calloutExt);
   if (stickyNoteExt) extensionList.push(stickyNoteExt);
   return extensionList;
@@ -1183,11 +1404,12 @@ function renderDocumentTocInner(active) {
         const hasChildren = documentTocItemHasChildren(items, index);
         const isCollapsed = Boolean(state.documentTocCollapsedBranches?.[item.id]);
         const isHidden = documentTocItemIsHidden(items, index);
+        const itemTitle = repairVietnameseText(item.title);
         return `
           <div class="document-toc__row toc-${item.level}${isHidden ? " is-toc-hidden" : ""}" data-document-toc-row="${escapeHtml(item.id)}">
             ${hasChildren ? `<button class="document-toc__branch-toggle" type="button" data-document-toc-branch-toggle="${escapeHtml(item.id)}" aria-label="${isCollapsed ? "M\u1edf nh\u00e1nh" : "Thu nh\u00e1nh"}" title="${isCollapsed ? "M\u1edf nh\u00e1nh" : "Thu nh\u00e1nh"}">${isCollapsed ? "+" : "-"}</button>` : `<span class="document-toc__branch-spacer"></span>`}
-            <button class="document-toc__link" type="button" data-document-heading="${escapeHtml(item.id)}" data-document-heading-title="${escapeHtml(item.title)}" data-document-heading-index="${index}">
-              ${escapeHtml(item.title)}
+            <button class="document-toc__link" type="button" data-document-heading="${escapeHtml(item.id)}" data-document-heading-title="${escapeHtml(itemTitle)}" data-document-heading-index="${index}">
+              ${escapeHtml(itemTitle)}
             </button>
           </div>
         `;
@@ -2193,6 +2415,553 @@ function createMindMapNodeExtension() {
     },
   });
 }
+
+function createFlowDiagramNodeExtension() {
+  const { core } = getDocumentEditorLib();
+  const { Node, mergeAttributes } = core;
+  if (!Node || !core.Node) return null;
+  return Node.create({
+    name: DOCUMENT_FLOW_DIAGRAM_TYPE,
+    group: "block",
+    atom: true,
+    selectable: true,
+    draggable: true,
+    addAttributes() {
+      return {
+        width: { default: 900 },
+        height: { default: 460 },
+        align: { default: "center" },
+        nodes: { default: [] },
+        edges: { default: [] },
+      };
+    },
+    parseHTML() {
+      return [
+        { tag: "div.document-flow-diagram" },
+        { tag: `div[data-type="${DOCUMENT_FLOW_DIAGRAM_TYPE}"]` },
+      ];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return [
+        "div",
+        mergeAttributes(HTMLAttributes, {
+          "data-type": DOCUMENT_FLOW_DIAGRAM_TYPE,
+          class: `document-flow-diagram document-flow-diagram--${HTMLAttributes?.align || "center"}`,
+        }),
+      ];
+    },
+    renderText({ node }) {
+      const nodes = normalizeFlowDiagramNodes(node?.attrs?.nodes || []);
+      return nodes.length ? `Flow diagram: ${nodes.map((item) => item.text).join(" -> ")}` : "Flow diagram";
+    },
+    addNodeView() {
+      return ({ node, editor, getPos }) => {
+        let currentNode = node;
+        let selectedNodeId = "";
+        let selectedEdgeId = "";
+        let connectFromId = "";
+        let connectFromSide = "right";
+        let toolsActive = false;
+        const dom = document.createElement("div");
+        const activateTools = () => {
+          toolsActive = true;
+          dom.classList.add("is-active");
+        };
+        const handleOutsidePress = (event) => {
+          if (dom.contains(event.target) || !toolsActive) return;
+          toolsActive = false;
+          selectedNodeId = "";
+          selectedEdgeId = "";
+          render();
+        };
+        const handleDiagramKeyDown = (event) => {
+          if (!toolsActive) return;
+          const key = event.key.toLowerCase();
+          const isUndo = (event.ctrlKey || event.metaKey) && key === "z";
+          const isRedo = ((event.ctrlKey || event.metaKey) && key === "y") || (isUndo && event.shiftKey);
+          if (isRedo) {
+            event.preventDefault();
+            event.stopPropagation();
+            editor.commands?.redo?.();
+            return;
+          }
+          if (isUndo) {
+            event.preventDefault();
+            event.stopPropagation();
+            editor.commands?.undo?.();
+            return;
+          }
+          if ((event.key === "Delete" || event.key === "Backspace") && selectedEdgeId && !event.target?.closest?.("[contenteditable='true']")) {
+            event.preventDefault();
+            event.stopPropagation();
+            deleteEdge(selectedEdgeId);
+          }
+        };
+        dom.addEventListener("mousedown", activateTools, true);
+        document.addEventListener("mousedown", handleOutsidePress, true);
+        document.addEventListener("keydown", handleDiagramKeyDown, true);
+
+        const getCanvas = () => flowDiagramCanvasAttrs(currentNode.attrs || {});
+        const getNodes = () => normalizeFlowDiagramNodes(currentNode.attrs?.nodes || []);
+        const getEdges = (nodes = getNodes()) => normalizeFlowDiagramEdges(currentNode.attrs?.edges || [], nodes, getCanvas());
+        const updateAttrs = (attrs) => {
+          const position = typeof getPos === "function" ? getPos() : null;
+          if (!Number.isFinite(position)) return;
+          const canvas = flowDiagramCanvasAttrs({ ...currentNode.attrs, ...attrs });
+          const nodes = normalizeFlowDiagramNodes(attrs.nodes || currentNode.attrs?.nodes || []);
+          const nextAttrs = {
+            ...currentNode.attrs,
+            ...attrs,
+            ...canvas,
+            nodes,
+            edges: normalizeFlowDiagramEdges(attrs.edges || currentNode.attrs?.edges || [], nodes, canvas),
+          };
+          currentNode = { ...currentNode, attrs: nextAttrs };
+          const transaction = editor.state.tr.setNodeMarkup(position, undefined, nextAttrs);
+          editor.view.dispatch(transaction);
+        };
+        const updateNode = (nodeId, patch) => {
+          const nodes = getNodes().map((item) => item.id === nodeId ? { ...item, ...patch, autoPlaced: false } : item);
+          updateAttrs({ nodes });
+        };
+        const updateEdge = (edgeId, patch) => {
+          const edges = getEdges().map((edge) => edge.id === edgeId ? {
+            ...edge,
+            ...patch,
+            shape: normalizeFlowDiagramEdgeShape(patch.shape || edge.shape),
+            arrow: normalizeFlowDiagramEdgeArrow(patch.arrow || edge.arrow),
+          } : edge);
+          selectedEdgeId = edgeId;
+          updateAttrs({ edges });
+          render();
+        };
+        const deleteEdge = (edgeId) => {
+          const edges = getEdges().filter((edge) => edge.id !== edgeId);
+          selectedEdgeId = "";
+          updateAttrs({ edges });
+          render();
+        };
+        const addNode = () => {
+          const canvas = getCanvas();
+          const nodes = getNodes();
+          const nodeIndex = nodes.length + 1;
+          const newNode = createFlowDiagramNode(nodeIndex, {
+            text: `Block ${nodeIndex}`,
+            x: Math.max(24, Math.round(canvas.width / 2 - 110 + nodes.length * 18)),
+            y: Math.max(32, Math.round(canvas.height / 2 - 43 + nodes.length * 18)),
+            color: DOCUMENT_FLOW_DIAGRAM_COLORS[nodes.length % DOCUMENT_FLOW_DIAGRAM_COLORS.length],
+          });
+          const nextNodes = nodes.length && nodes.every((item) => item.autoPlaced !== false)
+            ? autoLayoutFlowDiagramNodes([...nodes, newNode], canvas)
+            : [...nodes, newNode];
+          selectedNodeId = newNode.id;
+          updateAttrs({ nodes: nextNodes });
+          render();
+        };
+        const alignNodes = (align) => {
+          const canvas = { ...getCanvas(), align };
+          const nodes = autoLayoutFlowDiagramNodes(getNodes().map((item) => ({ ...item, autoPlaced: true })), canvas);
+          updateAttrs({ align, nodes });
+          render();
+        };
+        const addEdge = (from, to, toPoint = null, fromSide = "right", toSide = "left") => {
+          if (!from || (!to && !toPoint)) return;
+          const nodes = getNodes();
+          const edges = getEdges(nodes);
+          const sourceSide = normalizeFlowDiagramConnectorSide(fromSide, "right");
+          const targetSide = normalizeFlowDiagramConnectorSide(toSide, "left");
+          if (to && edges.some((edge) => edge.from === from && edge.to === to && edge.fromSide === sourceSide && edge.toSide === targetSide)) return;
+          const nextEdge = { id: crypto.randomUUID(), from, to: to || "", fromSide: sourceSide, toSide: targetSide, shape: "curve", arrow: "end", toPoint };
+          selectedEdgeId = nextEdge.id;
+          updateAttrs({ edges: [...edges, nextEdge] });
+          render();
+        };
+        const beginDrag = (event, item) => {
+          event.preventDefault();
+          event.stopPropagation();
+          selectedNodeId = item.id;
+          selectedEdgeId = "";
+          const startX = event.clientX;
+          const startY = event.clientY;
+          const startLeft = Number(item.x) || 0;
+          const startTop = Number(item.y) || 0;
+          const canvas = getCanvas();
+          const nodeElement = event.currentTarget;
+          const onMove = (moveEvent) => {
+            const nextX = Math.max(0, Math.min(canvas.width - item.width, startLeft + moveEvent.clientX - startX));
+            const nextY = Math.max(0, Math.min(canvas.height - item.height, startTop + moveEvent.clientY - startY));
+            nodeElement.style.left = `${nextX}px`;
+            nodeElement.style.top = `${nextY}px`;
+          };
+          const onUp = (upEvent) => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            updateNode(item.id, {
+              x: Math.max(0, Math.min(canvas.width - item.width, startLeft + upEvent.clientX - startX)),
+              y: Math.max(0, Math.min(canvas.height - item.height, startTop + upEvent.clientY - startY)),
+            });
+            render();
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        };
+        const beginResize = (event, item) => {
+          event.preventDefault();
+          event.stopPropagation();
+          selectedNodeId = item.id;
+          selectedEdgeId = "";
+          const startX = event.clientX;
+          const startY = event.clientY;
+          const startWidth = Number(item.width) || 220;
+          const startHeight = Number(item.height) || 86;
+          const canvas = getCanvas();
+          const nodeElement = event.target.closest("[data-flow-diagram-node]");
+          const onMove = (moveEvent) => {
+            const nextWidth = Math.max(120, Math.min(canvas.width - item.x, startWidth + moveEvent.clientX - startX));
+            const nextHeight = Math.max(64, Math.min(canvas.height - item.y, startHeight + moveEvent.clientY - startY));
+            nodeElement.style.width = `${nextWidth}px`;
+            nodeElement.style.height = `${nextHeight}px`;
+          };
+          const onUp = (upEvent) => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            updateNode(item.id, {
+              width: Math.max(120, Math.min(canvas.width - item.x, startWidth + upEvent.clientX - startX)),
+              height: Math.max(64, Math.min(canvas.height - item.y, startHeight + upEvent.clientY - startY)),
+            });
+            render();
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        };
+        const beginCanvasResize = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const startX = event.clientX;
+          const startY = event.clientY;
+          const canvas = getCanvas();
+          const startWidth = canvas.width;
+          const startHeight = canvas.height;
+          const stage = dom.querySelector("[data-flow-diagram-stage]");
+          const applySize = (width, height) => {
+            dom.style.setProperty("--flow-width", `${width}px`);
+            dom.style.setProperty("--flow-height", `${height}px`);
+            if (stage) {
+              stage.style.width = `${width}px`;
+              stage.style.minWidth = `${width}px`;
+              stage.style.height = `${height}px`;
+            }
+          };
+          const nextSize = (moveEvent) => ({
+            width: Math.max(640, Math.min(1800, startWidth + moveEvent.clientX - startX)),
+            height: Math.max(380, Math.min(1200, startHeight + moveEvent.clientY - startY)),
+          });
+          const onMove = (moveEvent) => {
+            const size = nextSize(moveEvent);
+            applySize(size.width, size.height);
+          };
+          const onUp = (upEvent) => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            const size = nextSize(upEvent);
+            updateAttrs(size);
+            render();
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        };
+        const beginConnect = (event, item, side = "right") => {
+          event.preventDefault();
+          event.stopPropagation();
+          connectFromId = item.id;
+          connectFromSide = normalizeFlowDiagramConnectorSide(side, "right");
+          selectedNodeId = item.id;
+          selectedEdgeId = "";
+          const onUp = (upEvent) => {
+            document.removeEventListener("mouseup", onUp);
+            const targetConnector = upEvent.target?.closest?.("[data-flow-diagram-connect]");
+            const targetNode = upEvent.target?.closest?.("[data-flow-diagram-node]");
+            const targetNodeId = targetConnector?.dataset?.flowDiagramConnect || targetNode?.dataset?.flowDiagramNode || "";
+            const targetSide = targetConnector?.dataset?.flowDiagramSide || "left";
+            if (targetNodeId && targetNodeId !== connectFromId) {
+              addEdge(connectFromId, targetNodeId, null, connectFromSide, targetSide);
+            } else {
+              const stage = dom.querySelector("[data-flow-diagram-stage]");
+              const rect = stage?.getBoundingClientRect();
+              if (rect) addEdge(connectFromId, "", {
+                x: Math.max(0, Math.min(getCanvas().width, upEvent.clientX - rect.left)),
+                y: Math.max(0, Math.min(getCanvas().height, upEvent.clientY - rect.top)),
+              }, connectFromSide, "left");
+            }
+            connectFromId = "";
+          };
+          document.addEventListener("mouseup", onUp);
+        };
+        const edgeToolsPosition = (edge, nodeById) => {
+          const fromNode = nodeById.get(edge.from);
+          const target = edge.to ? nodeById.get(edge.to) : edge.toPoint;
+          if (!fromNode || !target) return { x: 28, y: 28 };
+          const from = flowDiagramNodeAnchor(fromNode, edge.fromSide || "right");
+          const to = target.width ? flowDiagramNodeAnchor(target, edge.toSide || "left") : target;
+          return {
+            x: Math.round((from.x + to.x) / 2),
+            y: Math.round((from.y + to.y) / 2),
+          };
+        };
+        const createEdgeToolsElement = (edge, nodeById) => {
+          const position = edgeToolsPosition(edge, nodeById);
+          const element = document.createElement("div");
+          element.className = "document-flow-diagram__edge-tools";
+          element.style.left = `${position.x}px`;
+          element.style.top = `${position.y}px`;
+          element.innerHTML = `
+            <button type="button" class="icon-button${edge.shape === "curve" ? " is-active" : ""}" data-flow-diagram-edge-shape="curve" aria-label="D\u00e2y cong" title="D\u00e2y cong">${icon("timeline")}</button>
+            <button type="button" class="icon-button${edge.shape === "straight" ? " is-active" : ""}" data-flow-diagram-edge-shape="straight" aria-label="D\u00e2y th\u1eb3ng" title="D\u00e2y th\u1eb3ng">${icon("show_chart")}</button>
+            <button type="button" class="icon-button${edge.shape === "elbow" ? " is-active" : ""}" data-flow-diagram-edge-shape="elbow" aria-label="D\u00e2y vu\u00f4ng g\u00f3c" title="D\u00e2y vu\u00f4ng g\u00f3c">${icon("turn_right")}</button>
+            <button type="button" class="icon-button${edge.arrow === "none" ? " is-active" : ""}" data-flow-diagram-edge-arrow="none" aria-label="Kh\u00f4ng m\u0169i t\u00ean" title="Kh\u00f4ng m\u0169i t\u00ean">${icon("remove")}</button>
+            <button type="button" class="icon-button${edge.arrow === "end" ? " is-active" : ""}" data-flow-diagram-edge-arrow="end" aria-label="M\u0169i t\u00ean cu\u1ed1i" title="M\u0169i t\u00ean cu\u1ed1i">${icon("arrow_forward")}</button>
+            <button type="button" class="icon-button${edge.arrow === "both" ? " is-active" : ""}" data-flow-diagram-edge-arrow="both" aria-label="M\u0169i t\u00ean hai \u0111\u1ea7u" title="M\u0169i t\u00ean hai \u0111\u1ea7u">${icon("compare_arrows")}</button>
+            <button type="button" class="icon-button danger-button" data-flow-diagram-edge-delete aria-label="X\u00f3a d\u00e2y" title="X\u00f3a d\u00e2y">${icon("delete")}</button>
+          `;
+          element.querySelectorAll("[data-flow-diagram-edge-shape]").forEach((button) => {
+            button.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              updateEdge(edge.id, { shape: button.dataset.flowDiagramEdgeShape });
+            });
+          });
+          element.querySelectorAll("[data-flow-diagram-edge-arrow]").forEach((button) => {
+            button.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              updateEdge(edge.id, { arrow: button.dataset.flowDiagramEdgeArrow });
+            });
+          });
+          element.querySelector("[data-flow-diagram-edge-delete]")?.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            deleteEdge(edge.id);
+          });
+          return element;
+        };
+        const renderEdges = (svg, nodes, edges) => {
+          const canvas = getCanvas();
+          const nodeById = new Map(nodes.map((item) => [item.id, item]));
+          svg.setAttribute("viewBox", `0 0 ${canvas.width} ${canvas.height}`);
+          svg.replaceChildren();
+          const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+          const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+          marker.setAttribute("id", "document-flow-arrow");
+          marker.setAttribute("markerWidth", "10");
+          marker.setAttribute("markerHeight", "10");
+          marker.setAttribute("refX", "9");
+          marker.setAttribute("refY", "5");
+          marker.setAttribute("orient", "auto");
+          const markerPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          markerPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+          marker.appendChild(markerPath);
+          defs.appendChild(marker);
+          const startMarker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+          startMarker.setAttribute("id", "document-flow-arrow-start");
+          startMarker.setAttribute("markerWidth", "10");
+          startMarker.setAttribute("markerHeight", "10");
+          startMarker.setAttribute("refX", "1");
+          startMarker.setAttribute("refY", "5");
+          startMarker.setAttribute("orient", "auto");
+          const startMarkerPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          startMarkerPath.setAttribute("d", "M 10 0 L 0 5 L 10 10 z");
+          startMarker.appendChild(startMarkerPath);
+          defs.appendChild(startMarker);
+          svg.appendChild(defs);
+          edges.forEach((edge) => {
+            const fromNode = nodeById.get(edge.from);
+            const target = edge.to ? nodeById.get(edge.to) : edge.toPoint;
+            if (!fromNode || !target) return;
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("class", `document-flow-diagram__edge${edge.id === selectedEdgeId ? " is-selected" : ""}`);
+            path.setAttribute("d", flowDiagramEdgePath(fromNode, target, edge));
+            path.dataset.flowDiagramEdge = edge.id;
+            if (edge.arrow === "end" || edge.arrow === "both") path.setAttribute("marker-end", "url(#document-flow-arrow)");
+            if (edge.arrow === "both") path.setAttribute("marker-start", "url(#document-flow-arrow-start)");
+            svg.appendChild(path);
+            const hitPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            hitPath.setAttribute("class", "document-flow-diagram__edge-hit");
+            hitPath.setAttribute("d", flowDiagramEdgePath(fromNode, target, edge));
+            hitPath.dataset.flowDiagramEdge = edge.id;
+            hitPath.addEventListener("mousedown", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              selectedEdgeId = edge.id;
+              selectedNodeId = "";
+              render();
+            });
+            svg.appendChild(hitPath);
+          });
+        };
+        const createNodeElement = (item) => {
+          const element = document.createElement("div");
+          element.className = `document-flow-diagram__node document-flow-diagram__node--${item.color}${selectedNodeId === item.id ? " is-selected" : ""}`;
+          element.dataset.flowDiagramNode = item.id;
+          element.style.left = `${item.x}px`;
+          element.style.top = `${item.y}px`;
+          element.style.width = `${item.width}px`;
+          element.style.height = `${item.height}px`;
+
+          const label = document.createElement("div");
+          label.className = "document-flow-diagram__label";
+          label.contentEditable = "true";
+          label.spellcheck = false;
+          label.dataset.flowDiagramLabel = item.id;
+          label.textContent = item.text || "Block";
+          element.appendChild(label);
+
+          DOCUMENT_FLOW_DIAGRAM_CONNECTOR_SIDES.forEach((side) => {
+            const connector = document.createElement("button");
+            connector.type = "button";
+            connector.className = `document-flow-diagram__connector document-flow-diagram__connector--${side}`;
+            connector.dataset.flowDiagramConnect = item.id;
+            connector.setAttribute("data-flow-diagram-side", side);
+            connector.setAttribute("aria-label", `K\u00e9o d\u00e2y ${side}`);
+            connector.setAttribute("title", `K\u00e9o d\u00e2y ${side}`);
+            element.appendChild(connector);
+          });
+
+          const resize = document.createElement("span");
+          resize.className = "document-flow-diagram__resize";
+          resize.dataset.flowDiagramResize = item.id;
+          element.appendChild(resize);
+
+          const swatches = document.createElement("div");
+          swatches.className = "document-flow-diagram__swatches";
+          DOCUMENT_FLOW_DIAGRAM_COLORS.forEach((color) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `document-flow-diagram__color document-flow-diagram__color--${color}${item.color === color ? " is-active" : ""}`;
+            button.dataset.flowDiagramColor = `${item.id}:${color}`;
+            button.setAttribute("aria-label", `Màu ${color}`);
+            swatches.appendChild(button);
+          });
+          element.appendChild(swatches);
+
+          element.addEventListener("mousedown", (event) => {
+            if (event.target?.closest?.("[data-flow-diagram-label], [data-flow-diagram-color], [data-flow-diagram-connect], [data-flow-diagram-resize]")) return;
+            beginDrag(event, item);
+          });
+          element.addEventListener("click", (event) => {
+            selectedNodeId = item.id;
+            if (event.target?.closest?.("[data-flow-diagram-color]")) {
+              const [, color] = String(event.target.closest("[data-flow-diagram-color]").dataset.flowDiagramColor || "").split(":");
+              updateNode(item.id, { color: normalizeFlowDiagramColor(color) });
+            }
+            event.stopPropagation();
+            render();
+          });
+          element.querySelector("[data-flow-diagram-resize]")?.addEventListener("mousedown", (event) => beginResize(event, item));
+          element.querySelectorAll("[data-flow-diagram-connect]").forEach((connector) => {
+            connector.addEventListener("mousedown", (event) => beginConnect(event, item, connector.dataset.flowDiagramSide || "right"));
+          });
+          label.addEventListener("input", () => updateNode(item.id, { text: sanitizeDocumentText(label.textContent || "Block") }));
+          label.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              label.blur();
+            }
+            event.stopPropagation();
+          });
+          return element;
+        };
+        const render = () => {
+          const canvas = getCanvas();
+          const nodes = getNodes();
+          const edges = getEdges(nodes);
+          dom.replaceChildren();
+          dom.className = `document-flow-diagram document-flow-diagram--${canvas.align}${toolsActive ? " is-active" : ""}`;
+          dom.setAttribute("data-type", DOCUMENT_FLOW_DIAGRAM_TYPE);
+          dom.style.setProperty("--flow-width", `${canvas.width}px`);
+          dom.style.setProperty("--flow-height", `${canvas.height}px`);
+
+          const toolbar = document.createElement("div");
+          toolbar.className = "document-flow-diagram__toolbar";
+          toolbar.innerHTML = `
+            <button type="button" class="icon-button" data-flow-diagram-add-node aria-label="Th\u00eam \u00f4" title="Th\u00eam \u00f4">${icon("add")}</button>
+            <button type="button" class="icon-button${canvas.align === "center" ? " is-active" : ""}" data-flow-diagram-align="center" aria-label="C\u0103n gi\u1eefa" title="C\u0103n gi\u1eefa">${icon("format_align_center")}</button>
+            <button type="button" class="icon-button${canvas.align === "left" ? " is-active" : ""}" data-flow-diagram-align="left" aria-label="C\u0103n tr\u00e1i" title="C\u0103n tr\u00e1i">${icon("format_align_left")}</button>
+          `;
+          dom.appendChild(toolbar);
+
+          const viewport = document.createElement("div");
+          viewport.className = "document-flow-diagram__viewport";
+          viewport.dataset.flowDiagramViewport = "true";
+          const stage = document.createElement("div");
+          stage.className = "document-flow-diagram__stage";
+          stage.dataset.flowDiagramStage = "true";
+          const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          svg.setAttribute("class", "document-flow-diagram__edge-layer");
+          svg.setAttribute("aria-hidden", "true");
+          renderEdges(svg, nodes, edges);
+          stage.appendChild(svg);
+          nodes.forEach((item) => stage.appendChild(createNodeElement(item)));
+          const nodeById = new Map(nodes.map((item) => [item.id, item]));
+          const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
+          if (selectedEdge) stage.appendChild(createEdgeToolsElement(selectedEdge, nodeById));
+          viewport.appendChild(stage);
+          dom.appendChild(viewport);
+
+          const canvasResize = document.createElement("button");
+          canvasResize.type = "button";
+          canvasResize.className = "document-flow-diagram__canvas-resize";
+          canvasResize.setAttribute("data-flow-diagram-canvas-resize", "true");
+          canvasResize.setAttribute("aria-label", "K\u00e9o t\u0103ng gi\u1ea3m kh\u00f4ng gian");
+          canvasResize.setAttribute("title", "K\u00e9o t\u0103ng gi\u1ea3m kh\u00f4ng gian");
+          dom.appendChild(canvasResize);
+
+          toolbar.querySelector("[data-flow-diagram-add-node]")?.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            addNode();
+          });
+          toolbar.querySelectorAll("[data-flow-diagram-align]").forEach((button) => {
+            button.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              alignNodes(button.dataset.flowDiagramAlign || "center");
+            });
+          });
+          canvasResize.addEventListener("mousedown", beginCanvasResize);
+          stage.addEventListener("click", (event) => {
+            if (event.target === stage || event.target === svg) {
+              selectedNodeId = "";
+              selectedEdgeId = "";
+              render();
+            }
+          });
+        };
+        render();
+        return {
+          dom,
+          update(updatedNode) {
+            if (updatedNode.type.name !== DOCUMENT_FLOW_DIAGRAM_TYPE) return false;
+            currentNode = updatedNode;
+            if (dom.contains(document.activeElement) && document.activeElement?.closest?.("[data-flow-diagram-label]")) return true;
+            render();
+            return true;
+          },
+          stopEvent(event) {
+            return Boolean(event.target?.closest?.(".document-flow-diagram"));
+          },
+          ignoreMutation(mutation) {
+            return Boolean(mutation.target?.closest?.(".document-flow-diagram"));
+          },
+          destroy() {
+            document.removeEventListener("mousedown", handleOutsidePress, true);
+            document.removeEventListener("keydown", handleDiagramKeyDown, true);
+          },
+        };
+      };
+    },
+  });
+}
+
 function createCalloutNodeExtension() {
   const { core } = getDocumentEditorLib();
   const { Node, mergeAttributes } = core;
@@ -2834,6 +3603,9 @@ function serializeDocumentNode(node) {
     const nodes = displayMindMapBranchNodes(node.attrs?.nodes, node?.attrs?.title || "");
     return `<div class="document-mindmap"><div class="document-mindmap__canvas"><div class="document-mindmap__root">${title}</div>${renderMindMapHtmlBranches(nodes)}</div></div>`;
   }
+  if (node.type === DOCUMENT_FLOW_DIAGRAM_TYPE) {
+    return renderFlowDiagramHtml(node.attrs || {});
+  }
   if (node.type === DOCUMENT_STICKY_NOTE_TYPE) {
     const x = Math.max(0, Number(node.attrs?.x) || 48);
     const y = Math.max(0, Number(node.attrs?.y) || 180);
@@ -2876,6 +3648,16 @@ function serializeDocumentToMarkdown(documentJson = createEmptyDocumentJson()) {
       const nodes = node.attrs?.nodes || [];
       return nodes.length ? nodes.map((item) => `- ${escapeHtml(item?.text || "")}`).join("\n") : "";
     }
+    if (node.type === DOCUMENT_FLOW_DIAGRAM_TYPE) {
+      const nodes = normalizeFlowDiagramNodes(node.attrs?.nodes || []);
+      const edges = normalizeFlowDiagramEdges(node.attrs?.edges || [], nodes, node.attrs || {});
+      const edgeText = edges.map((edge) => {
+        const from = nodes.find((item) => item.id === edge.from)?.text || "Block";
+        const to = edge.to ? nodes.find((item) => item.id === edge.to)?.text || "Block" : "Mũi tên tự do";
+        return `${from} -> ${to}`;
+      });
+      return [`Flow diagram: ${nodes.map((item) => item.text).join(", ")}`, ...edgeText].filter(Boolean).join("\n");
+    }
     if (node.type === DOCUMENT_STICKY_NOTE_TYPE) return `> ${sanitizeDocumentText(node.attrs?.text || "Ghi chÃº má»›i")}\n\n`;
     return "";
   };
@@ -2896,6 +3678,7 @@ const documentEditorSessions = new Map();
 
 function pageFromPath(pathname = window.location.pathname) {
   const normalized = pathname.replace(/\/+$/, "") || "/";
+  if (normalized === "/workspace/calendar") return "calendar";
   const exactPage = pages.find((page) => page.path === normalized);
   if (!exactPage) return "";
   if (!exactPage.isSpace) return exactPage.id;
@@ -2913,6 +3696,7 @@ function currentModuleSpace(pageId = state.page) {
 
 function canonicalPathForCurrentRoute(pathname = window.location.pathname) {
   const normalized = pathname.replace(/\/+$/, "") || "/";
+  if (normalized === "/workspace/calendar") return "";
   const exactPage = pages.find((page) => page.path === normalized);
   if (!exactPage?.isSpace) return "";
   const space = moduleSpaces.find((item) => item.pageId === exactPage.id);
@@ -2978,6 +3762,7 @@ const state = {
   ideaFormOpen: false,
   documentPanelOpen: false,
   documentFocusMode: localStorage.getItem("ta.documentFocusMode") === "true",
+  documentTocHidden: localStorage.getItem("ta.documentTocHidden") !== "false",
   documentTocCollapsed: localStorage.getItem("ta.documentTocCollapsed") === "true",
   documentTocCollapsedBranches: readStore("ta.documentTocCollapsedBranches", {}),
   documentFolderFormOpen: false,
@@ -4022,6 +4807,103 @@ function renderDocumentContentHtml(documentItem) {
   return serializeDocumentToHtml(documentItem.contentJson || parseLegacyDocumentContent(documentItem.legacyContent || documentItem.content || ""));
 }
 
+function documentStableId(documentItem = {}) {
+  const raw = sanitizeDocumentText(documentItem.id || "").trim() || crypto.randomUUID();
+  return raw.replace(/[^a-zA-Z0-9-]/g, "-").replace(/-+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function documentDisplayId(documentItem = {}) {
+  return `DOC-${documentStableId(documentItem).slice(0, 8).toUpperCase()}`;
+}
+
+function documentFileSlug(documentItem = {}) {
+  const title = repairVietnameseText(documentItem.title || "tai-lieu")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .replace(/-+/g, "-");
+  return `${title || "tai-lieu"}-${documentDisplayId(documentItem).toLowerCase()}`;
+}
+
+function syncDocumentEditorBeforeExport(documentItem) {
+  const session = findActiveDocumentSession(documentItem?.id);
+  if (session?.editor?.getJSON) {
+    updateDocumentSessionDocumentJson(documentItem.id, session.editor.getJSON());
+    writeStore("ta.documents", state.documents);
+  }
+  return state.documents.find((item) => item.id === documentItem?.id) || documentItem;
+}
+
+function documentExportHtml(documentItem = {}) {
+  const safeDocument = syncDocumentEditorBeforeExport(documentItem);
+  const title = repairVietnameseText(safeDocument.title || "Tài liệu");
+  const summary = repairVietnameseText(safeDocument.summary || "");
+  const docId = documentDisplayId(safeDocument);
+  const html = renderDocumentContentHtml(safeDocument);
+  return `<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)} - ${escapeHtml(docId)}</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #111827; font-family: Arial, "Segoe UI", sans-serif; line-height: 1.65; }
+    h1, h2, h3 { color: #0f172a; line-height: 1.2; }
+    .document-export-meta { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #dbe7fb; color: #475569; font-size: 13px; }
+    .document-export-id { display: inline-block; margin-bottom: 8px; padding: 4px 8px; border: 1px solid #bfdbfe; border-radius: 999px; color: #004cca; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    td, th { border: 1px solid #cbd5e1; padding: 8px; vertical-align: top; }
+    img { max-width: 100%; height: auto; }
+    .document-flow-diagram { border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; overflow: hidden; }
+    .document-flow-diagram__toolbar, .document-flow-diagram__canvas-resize, .document-flow-diagram__connector, .document-flow-diagram__resize, .document-flow-diagram__swatches, .document-flow-diagram__edge-tools { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="document-export-id">${escapeHtml(docId)}</p>
+    <h1>${escapeHtml(title)}</h1>
+    <div class="document-export-meta">
+      <div>ID gốc: ${escapeHtml(documentStableId(safeDocument))}</div>
+      <div>Loại: ${escapeUiText(safeDocument.type || "Doc")} · Thư mục: ${escapeUiText(documentFolderName(safeDocument))}</div>
+      ${summary ? `<p>${escapeUiText(summary)}</p>` : ""}
+    </div>
+    ${html || "<p></p>"}
+  </main>
+</body>
+</html>`;
+}
+
+function downloadDocumentFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function exportDocumentAsDoc(documentItem) {
+  const safeDocument = syncDocumentEditorBeforeExport(documentItem);
+  downloadDocumentFile(`${documentFileSlug(safeDocument)}.doc`, documentExportHtml(safeDocument), "application/msword;charset=utf-8");
+  showToast("Đã tải DOC");
+}
+
+function exportDocumentAsPdf(documentItem) {
+  const safeDocument = syncDocumentEditorBeforeExport(documentItem);
+  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=960,height=720");
+  if (!printWindow) return showToast("Trình duyệt đang chặn cửa sổ PDF");
+  printWindow.document.open();
+  printWindow.document.write(documentExportHtml(safeDocument));
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => printWindow.print(), 350);
+  showToast("Chọn Lưu thành PDF trong hộp thoại in");
+}
+
 function documentTocItems(content = "") {
   if (!content) return [];
   if (content?.id && (content.contentJson || content.content || content.legacyContent)) return collectDocumentHeadings(content);
@@ -4030,6 +4912,7 @@ function documentTocItems(content = "") {
 }
 
 function renderDocumentToc(active) {
+  if (state.documentTocHidden) return "";
   return `
     <aside class="document-toc${state.documentTocCollapsed ? " is-collapsed" : ""}">
       ${renderDocumentTocInner(active)}
@@ -4046,8 +4929,18 @@ function renderDocumentFocus(active) {
           <span class="eyebrow">${icon("folder_copy")} ${escapeUiText(active.type || "Doc")}</span>
           <h1>${escapeUiText(active.title || "T\u00e0i li\u1ec7u ch\u01b0a \u0111\u1eb7t t\u00ean")}</h1>
         </div>
-        <button class="secondary-button danger-button" type="button" data-delete-document="${active.id}" aria-label="X\u00f3a t\u00e0i li\u1ec7u" title="X\u00f3a t\u00e0i li\u1ec7u">${icon("delete")} X\u00f3a t\u00e0i li\u1ec7u</button>
+        <div class="document-focus-actions">
+          <button class="icon-button" type="button" data-document-toc-visibility aria-label="${state.documentTocHidden ? "Hi\u1ec7n m\u1ee5c l\u1ee5c" : "\u1ea8n m\u1ee5c l\u1ee5c"}" title="${state.documentTocHidden ? "Hi\u1ec7n m\u1ee5c l\u1ee5c" : "\u1ea8n m\u1ee5c l\u1ee5c"}">${icon(state.documentTocHidden ? "view_sidebar" : "hide_source")}</button>
+          <button class="icon-button document-id-copy" type="button" data-copy-document-id="${active.id}" aria-label="Sao ch\u00e9p ID t\u00e0i li\u1ec7u" title="Sao ch\u00e9p ID t\u00e0i li\u1ec7u">${icon("tag")}</button>
+          <button class="icon-button" type="button" data-export-document-pdf="${active.id}" aria-label="T\u1ea3i PDF" title="T\u1ea3i PDF">${icon("picture_as_pdf")}</button>
+          <button class="icon-button" type="button" data-export-document-doc="${active.id}" aria-label="T\u1ea3i DOC" title="T\u1ea3i DOC">${icon("description")}</button>
+          <button class="icon-button danger-button" type="button" data-delete-document="${active.id}" aria-label="X\u00f3a t\u00e0i li\u1ec7u" title="X\u00f3a t\u00e0i li\u1ec7u">${icon("delete")}</button>
+        </div>
       </header>
+      <div class="document-id-strip">
+        <span>${icon("fingerprint")} ${escapeUiText(documentDisplayId(active))}</span>
+        <code>${escapeHtml(documentStableId(active))}</code>
+      </div>
       <div class="document-focus-meta">
         <input class="doc-title-input" data-document-title="${active.id}" value="${escapeUiText(active.title)}" placeholder="T\u00ean t\u00e0i li\u1ec7u" />
         <textarea class="doc-desc-input compact-desc" data-document-summary="${active.id}" placeholder="M\u00f4 t\u1ea3 ng\u1eafn...">${escapeUiText(active.summary || "")}</textarea>
@@ -4056,7 +4949,7 @@ function renderDocumentFocus(active) {
         <select data-document-color="${active.id}" aria-label="M\u00e0u t\u00e0i li\u1ec7u">${documentColorOptions(active.color)}</select>
         <select data-document-folder-field="${active.id}" aria-label="Th\u01b0 m\u1ee5c t\u00e0i li\u1ec7u">${documentFolderOptions(documentFolderName(active))}</select>
       </div>
-      <div class="document-focus-layout">
+      <div class="document-focus-layout${state.documentTocHidden ? " is-toc-hidden" : ""}">
         ${renderDocumentToc(active)}
         <article class="document-focus-sheet">
           ${documentEditorToolbar()}
@@ -4097,6 +4990,7 @@ function documentEditorToolbar() {
       <button class="icon-button" type="button" data-document-command="insertImage" aria-label="Nh\u1eadp URL \u1ea3nh" title="Nh\u1eadp URL \u1ea3nh">${icon("image")}</button>
       <button class="icon-button" type="button" data-document-command="uploadImage" aria-label="T\u1ea3i \u1ea3nh l\u00ean" title="T\u1ea3i \u1ea3nh l\u00ean">${icon("image")}</button>
       <button class="icon-button" type="button" data-document-command="stickyNote" aria-label="D\u00e1n note" title="D\u00e1n note">${icon("sticky_note_2")}</button>
+      <button class="icon-button" type="button" data-document-command="flowDiagram" aria-label="S\u01a1 \u0111\u1ed3" title="S\u01a1 \u0111\u1ed3">${icon("hub")}</button>
       <span class="document-table-picker">
         <button class="icon-button" type="button" data-document-command="table" data-document-table-toggle aria-label="T\u1ea1o b\u1ea3ng" title="T\u1ea1o b\u1ea3ng - nh\u1ea5p \u0111\u00f4i t\u1ea1o nhanh 4x4">${icon("table")}</button>
         <span class="document-table-picker__grid" role="menu" aria-label="Ch\u1ecdn k\u00edch th\u01b0\u1edbc b\u1ea3ng">
@@ -5101,14 +5995,14 @@ function bindViewEvents() {
   document.querySelector("#newDocumentButton")?.addEventListener("click", () => {
     const documentItem = {
       id: crypto.randomUUID(),
-      title: "TÃ i liá»‡u má»›i",
+      title: "Tài liệu mới",
       type: "Doc",
       color: "blue",
       folder: state.documentFolderFilter === "all" ? "T\u00e0i li\u1ec7u chung" : repairVietnameseText(state.documentFolderFilter),
       summary: "",
       sourceUrl: "",
       contentJson: createEmptyDocumentJson(),
-      content: "<p>Báº¯t Ä‘áº§u viáº¿t ná»™i dung tÃ i liá»‡u táº¡i Ä‘Ã¢y...</p>",
+      content: "<p>Bắt đầu viết nội dung tài liệu tại đây...</p>",
       updatedAt: new Date().toISOString(),
     };
     state.documents.unshift(documentItem);
@@ -5198,6 +6092,30 @@ function bindViewEvents() {
     localStorage.setItem("ta.documentFocusMode", "false");
     destroyDocumentEditorSession(state.selectedDocumentId);
     render();
+  });
+  document.querySelector("[data-document-toc-visibility]")?.addEventListener("click", () => {
+    state.documentTocHidden = !state.documentTocHidden;
+    localStorage.setItem("ta.documentTocHidden", String(state.documentTocHidden));
+    render();
+  });
+  document.querySelectorAll("[data-copy-document-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const documentItem = state.documents.find((item) => item.id === button.dataset.copyDocumentId);
+      if (!documentItem) return;
+      copyText(documentStableId(documentItem), "Đã sao chép ID tài liệu");
+    });
+  });
+  document.querySelectorAll("[data-export-document-pdf]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const documentItem = state.documents.find((item) => item.id === button.dataset.exportDocumentPdf);
+      if (documentItem) exportDocumentAsPdf(documentItem);
+    });
+  });
+  document.querySelectorAll("[data-export-document-doc]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const documentItem = state.documents.find((item) => item.id === button.dataset.exportDocumentDoc);
+      if (documentItem) exportDocumentAsDoc(documentItem);
+    });
   });
   document.querySelector(".document-editor-toolbar")?.addEventListener("mousedown", (event) => {
     if (event.target?.closest?.("[data-document-command], [data-document-table-toggle], [data-document-table-size]")) event.preventDefault();

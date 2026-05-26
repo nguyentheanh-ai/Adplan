@@ -1,25 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { APP_SESSION_COOKIE } from "@/lib/auth/constants";
-import { isDevPreviewAuthEnabled } from "@/lib/auth/dev-preview";
-
-const protectedRoutes = ["/ads", "/dashboard", "/workspace", "/ask", "/persona", "/plan", "/settings"];
+import { APP_SESSION_COOKIE, buildLoginRedirectPath, hasAppSessionCookie, shouldRequireAppLogin } from "@/lib/auth/protected-routes";
 
 export async function proxy(request: NextRequest) {
-  const pathname = request.nextUrl.pathname;
-  const isProtected = protectedRoutes.some((route) => pathname.startsWith(route));
-  const hasSession = Boolean(request.cookies.get(APP_SESSION_COOKIE)?.value);
-  const previewAuth = isDevPreviewAuthEnabled();
+  const { pathname, search } = request.nextUrl;
+  const hasSession = hasAppSessionCookie(request.cookies.get(APP_SESSION_COOKIE)?.value);
 
-  if (isProtected && !hasSession && !previewAuth) {
+  if (shouldRequireAppLogin(pathname) && !hasSession) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
-    redirectUrl.searchParams.set("next", pathname);
+    redirectUrl.search = buildLoginRedirectPath(pathname, search).replace("/login", "");
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (pathname === "/login" && (hasSession || previewAuth)) {
+  if (pathname === "/login" && hasSession) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/";
+    redirectUrl.search = "";
     return NextResponse.redirect(redirectUrl);
   }
 

@@ -7,7 +7,7 @@ import { canCurrentUserAccessSection } from "@/lib/admin/permissions";
 export default async function ReportsPage() {
   const session = await getAppSession();
   if (!session) redirect("/login");
-  if (!(await canCurrentUserAccessSection("reports"))) redirect("/dashboard");
+  if (!(await canCurrentUserAccessSection("reports"))) redirect("/ads-facebook");
 
   return (
     <AppShell

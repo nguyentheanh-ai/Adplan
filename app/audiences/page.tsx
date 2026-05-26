@@ -7,7 +7,7 @@ import { canCurrentUserAccessSection } from "@/lib/admin/permissions";
 export default async function AudiencesPage() {
   const session = await getAppSession();
   if (!session) redirect("/login");
-  if (!(await canCurrentUserAccessSection("audiences"))) redirect("/dashboard");
+  if (!(await canCurrentUserAccessSection("audiences"))) redirect("/ads-facebook");
 
   return (
     <AppShell

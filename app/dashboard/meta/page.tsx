@@ -4,7 +4,7 @@ import { getCurrentPermission } from "@/lib/admin/permissions";
 export default async function DashboardMetaPage() {
   const permission = await getCurrentPermission();
   if (!permission || (permission.role !== "owner" && permission.role !== "manager")) {
-    redirect("/dashboard");
+    redirect("/ads-facebook");
   }
 
   redirect("/admin");

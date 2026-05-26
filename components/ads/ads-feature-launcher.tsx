@@ -9,13 +9,13 @@ export function AdsFeatureLauncher() {
       <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-primary">Adplan AI</p>
-          <h2 className="mt-1 text-xl font-extrabold text-on-surface">Tất cả tính năng Ads Facebook</h2>
+          <h2 className="mt-1 text-xl font-extrabold text-on-surface">Trung tâm Ads Facebook</h2>
           <p className="mt-1 text-sm leading-6 text-on-surface-variant">
-            Sidebar chỉ giữ 2 khu chính cho gọn; toàn bộ module Adplan cũ nằm ở đây.
+            Theo dõi báo cáo, tối ưu, audience, creative, campaign builder và publisher trong cùng một khu vận hành.
           </p>
         </div>
-        <Link className="text-sm font-extrabold text-primary hover:underline" href="/facebook-publisher">
-          Mở Publisher URL cũ
+        <Link className="text-sm font-extrabold text-primary hover:underline" href="/ads-facebook/publisher">
+          Mở Publisher
         </Link>
       </div>
 

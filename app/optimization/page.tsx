@@ -7,7 +7,7 @@ import { getAppSession } from "@/lib/auth/session";
 export default async function OptimizationPage() {
   const session = await getAppSession();
   if (!session) redirect("/login");
-  if (!(await canCurrentUserAccessSection("optimization"))) redirect("/dashboard");
+  if (!(await canCurrentUserAccessSection("optimization"))) redirect("/ads-facebook");
   const permission = await getCurrentPermission();
   const canManageIndustryProfile = permission?.role === "owner" || permission?.role === "manager";
 
