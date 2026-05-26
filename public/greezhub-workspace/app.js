@@ -3947,6 +3947,8 @@ const state = {
   taskFilter: "today",
   promptFilter: "all",
   ideaFormOpen: false,
+  ideaViewMode: localStorage.getItem("ta.ideaViewMode") || "card",
+  ideaTagFilter: localStorage.getItem("ta.ideaTagFilter") || "all",
   documentPanelOpen: false,
   documentFocusMode: localStorage.getItem("ta.documentFocusMode") === "true",
   documentTocHidden: localStorage.getItem("ta.documentTocHidden") !== "false",
@@ -3978,7 +3980,7 @@ const state = {
   notes: readStore("ta.notes", seedNotes()),
   documentFolders: readStore("ta.documentFolders", ["KhÃ³a há»c", "TÃ i liá»‡u chung"]),
   documents: normalizeStoredDocuments(mergeKnowledgeDocuments(readStore("ta.documents", seedDocuments()))),
-  ideas: readStore("ta.ideas", seedIdeas()),
+  ideas: normalizeIdeas(readStore("ta.ideas", seedIdeas())),
   contentPlans: readStore("ta.contentPlans", seedContentPlans()),
 };
 
@@ -4159,9 +4161,60 @@ function seedIdeas() {
       title: "Swipe file landing page AI",
       url: "https://app.theanhmarketing.com/",
       note: "LÆ°u cÃ¡c link tham kháº£o, tiÃªu Ä‘á» vÃ  thumbnail nhá» Ä‘á»ƒ dÃ¹ng láº¡i khi brainstorm.",
+      tags: ["landing", "ai"],
       createdAt: new Date().toISOString(),
     },
   ];
+}
+
+function normalizeIdeaTags(tags = []) {
+  const source = Array.isArray(tags) ? tags : String(tags || "").split(/[,#\n]/);
+  const seen = new Set();
+  return source
+    .map((tag) => sanitizeDocumentText(tag).trim().replace(/^#/, ""))
+    .filter(Boolean)
+    .map((tag) => tag.slice(0, 32))
+    .filter((tag) => {
+      const key = tag.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeIdeaItem(idea = {}, index = 0) {
+  const rawTitle = sanitizeDocumentText(idea.title || "").trim();
+  const url = sanitizeDocumentText(idea.url || "").trim();
+  const note = sanitizeDocumentText(idea.note || "");
+  const thumbnail = sanitizeDocumentText(idea.thumbnail || "");
+  if (!rawTitle && !url && !note && !thumbnail) return null;
+  let fallbackTitle = "";
+  if (url) {
+    try {
+      fallbackTitle = new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      fallbackTitle = "Link idea";
+    }
+  } else if (thumbnail) {
+    fallbackTitle = "Ảnh đã lưu";
+  } else {
+    fallbackTitle = note.slice(0, 42) || `Idea ${index + 1}`;
+  }
+  return {
+    id: String(idea.id || crypto.randomUUID()),
+    title: rawTitle || fallbackTitle,
+    url,
+    note,
+    thumbnail,
+    sourceTitle: sanitizeDocumentText(idea.sourceTitle || idea.previewTitle || ""),
+    sourceDomain: sanitizeDocumentText(idea.sourceDomain || ""),
+    tags: normalizeIdeaTags(idea.tags || idea.tag || idea.category || []),
+    createdAt: idea.createdAt || new Date().toISOString(),
+  };
+}
+
+function normalizeIdeas(ideas = []) {
+  return (ideas || []).map(normalizeIdeaItem).filter(Boolean);
 }
 
 function readStore(key, fallback) {
@@ -4244,7 +4297,7 @@ function applyRemoteState(payload) {
   if (Array.isArray(payload.notes)) state.notes = payload.notes;
   if (Array.isArray(payload.documentFolders)) state.documentFolders = payload.documentFolders;
   if (Array.isArray(payload.documents)) state.documents = mergeRemoteDocumentsWithLocal(payload.documents, state.documents);
-  if (Array.isArray(payload.ideas)) state.ideas = payload.ideas;
+  if (Array.isArray(payload.ideas)) state.ideas = normalizeIdeas(payload.ideas);
   if (Array.isArray(payload.contentPlans)) state.contentPlans = payload.contentPlans;
   if (typeof payload.selectedCourseId === "string") state.selectedCourseId = payload.selectedCourseId;
   if (typeof payload.selectedDocumentId === "string") state.selectedDocumentId = payload.selectedDocumentId;
@@ -4580,6 +4633,64 @@ function matchesSearch(...values) {
   const q = state.search.trim().toLowerCase();
   if (!q) return true;
   return values.join(" ").toLowerCase().includes(q);
+}
+
+function ideaTags(idea = {}) {
+  return normalizeIdeaTags(idea.tags || []);
+}
+
+function ideaTagKey(tag = "") {
+  return String(tag).trim().toLowerCase();
+}
+
+function ideaDomain(idea = {}) {
+  if (idea.sourceDomain) return idea.sourceDomain;
+  try {
+    return new URL(idea.url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function allIdeaTags() {
+  const map = new Map();
+  state.ideas.forEach((idea) => {
+    ideaTags(idea).forEach((tag) => {
+      const key = ideaTagKey(tag);
+      if (!map.has(key)) map.set(key, tag);
+    });
+  });
+  return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "vi"));
+}
+
+function ideaMatchesTag(idea) {
+  if (!state.ideaTagFilter || state.ideaTagFilter === "all") return true;
+  return ideaTags(idea).some((tag) => ideaTagKey(tag) === ideaTagKey(state.ideaTagFilter));
+}
+
+function ideaTagPills(idea = {}) {
+  const tags = ideaTags(idea);
+  if (!tags.length) return `<span class="idea-tag is-muted">ChÆ°a gÃ¡n tag</span>`;
+  return tags.map((tag) => `<span class="idea-tag">#${escapeUiText(tag)}</span>`).join("");
+}
+
+function ideaLinkLabel(idea = {}) {
+  return ideaDomain(idea) || idea.url || "Link";
+}
+
+function ideaPreviewTitle(idea = {}) {
+  return idea.sourceTitle || idea.title || idea.url || "Idea";
+}
+
+function ideaLinkHtml(idea = {}) {
+  if (!idea.url) return `<span class="idea-link-empty">Không có link</span>`;
+  return `<a href="${escapeHtml(idea.url)}" target="_blank" rel="noreferrer">${escapeUiText(ideaLinkLabel(idea))}</a>`;
+}
+
+function ideaMediaHtml(idea = {}, className = "idea-thumbnail") {
+  const media = ideaThumbnailUrl(idea) ? `<img src="${escapeHtml(ideaThumbnailUrl(idea))}" alt="" loading="lazy" />` : icon(idea.url ? "link" : "image");
+  if (!idea.url) return `<div class="${className}" aria-label="Idea không có link">${media}</div>`;
+  return `<a class="${className}" href="${escapeHtml(idea.url)}" target="_blank" rel="noreferrer" aria-label="Mở link idea">${media}</a>`;
 }
 
 function renderNav() {
@@ -5269,51 +5380,114 @@ function renderDocuments() {
 }
 
 function renderIdeas() {
-  const filtered = state.ideas.filter((idea) => matchesSearch(idea.title, idea.url, idea.note));
+  const tags = allIdeaTags();
+  if (state.ideaTagFilter !== "all" && !tags.some((tag) => ideaTagKey(tag) === ideaTagKey(state.ideaTagFilter))) {
+    state.ideaTagFilter = "all";
+  }
+  const filtered = state.ideas.filter((idea) =>
+    ideaMatchesTag(idea) && matchesSearch(idea.title, idea.url, idea.note, idea.sourceTitle, ideaDomain(idea), ...ideaTags(idea))
+  );
+  const viewMode = state.ideaViewMode === "list" ? "list" : "card";
   return `
     <section class="page ideas-page">
       <div class="page-header">
         <div>
           <span class="eyebrow">${icon("lightbulb")} Idea</span>
           <h1 class="headline">Kho idea vÃ  link</h1>
-          <p class="subhead">LÆ°u tiÃªu Ä‘á», link vÃ  thumbnail tá»± láº¥y tá»« website Ä‘á»ƒ gom tÆ° liá»‡u tham kháº£o cho content, offer vÃ  funnel.</p>
+          <p class="subhead">Lưu ảnh, link, bài post hoặc ghi chú rời để gom tư liệu tham khảo cho content, offer và funnel.</p>
         </div>
         <button class="primary-button" id="newIdeaButton" type="button">${icon(state.ideaFormOpen ? "close" : "add")} ${state.ideaFormOpen ? "ÄÃ³ng" : "ThÃªm idea"}</button>
       </div>
       ${state.ideaFormOpen ? `<form class="idea-form card pad" id="ideaForm">
         <div class="field">
           <label for="ideaTitle">TiÃªu Ä‘á»</label>
-          <input id="ideaTitle" type="text" placeholder="VD: Máº«u landing page khÃ³a há»c AI" required />
+          <input id="ideaTitle" type="text" placeholder="VD: Mẫu landing page, ảnh hook, post hay..." />
         </div>
         <div class="field">
-          <label for="ideaUrl">Link</label>
-          <input id="ideaUrl" type="url" placeholder="https://..." required />
+          <label for="ideaUrl">Link nếu có</label>
+          <input id="ideaUrl" type="url" placeholder="https://..." />
         </div>
         <div class="field">
           <label for="ideaNote">Ghi chÃº</label>
           <textarea id="ideaNote" placeholder="Ghi angle, insight, lÃ½ do cáº§n lÆ°u..."></textarea>
         </div>
+        <div class="field">
+          <label for="ideaTags">Tag</label>
+          <input id="ideaTags" type="text" placeholder="facebook, hook, landing..." />
+        </div>
+        <div class="field">
+          <label for="ideaThumbnail">Thumbnail</label>
+          <input id="ideaThumbnail" type="text" placeholder="Dán link ảnh hoặc Ctrl+V ảnh vào vùng bên dưới" />
+        </div>
+        <div class="idea-paste-zone" id="ideaPasteZone" tabindex="0">
+          <span class="material-symbols-outlined" aria-hidden="true">add_photo_alternate</span>
+          <div>
+            <strong>Dán ảnh bằng Ctrl+V</strong>
+            <small>Click vào vùng này rồi dán ảnh. Link có thể để trống.</small>
+          </div>
+          <button class="icon-button" type="button" data-clear-idea-image aria-label="Xóa ảnh đã dán" title="Xóa ảnh đã dán">${icon("close")}</button>
+        </div>
+        <div class="idea-image-preview" id="ideaImagePreview" hidden></div>
         <button class="primary-button" type="submit">${icon("add")} LÆ°u idea</button>
       </form>` : ""}
-      <div class="idea-grid">
-        ${filtered.length ? filtered.map((idea) => `
-          <article class="idea-card">
-            <div class="idea-card-actions">
-              <button class="icon-button" type="button" data-copy-idea="${idea.id}" aria-label="Sao chÃ©p link">${icon("content_copy")}</button>
-              <button class="icon-button danger-button" type="button" data-delete-idea="${idea.id}" aria-label="XÃ³a idea">${icon("delete")}</button>
-            </div>
-            <div class="idea-thumbnail">
-              ${ideaThumbnailUrl(idea) ? `<img src="${escapeHtml(ideaThumbnailUrl(idea))}" alt="" loading="lazy" />` : icon("link")}
-            </div>
-            <div class="idea-content">
-              <h3>${escapeHtml(idea.title)}</h3>
-              <a href="${escapeHtml(idea.url)}" target="_blank" rel="noreferrer">${escapeHtml(idea.url)}</a>
-              <p>${escapeHtml(idea.note || "ChÆ°a cÃ³ ghi chÃº.")}</p>
-            </div>
-          </article>
-        `).join("") : `<div class="empty">ChÆ°a cÃ³ idea phÃ¹ há»£p.</div>`}
+      <div class="idea-controls">
+        <div class="idea-view-toggle" aria-label="Chá»n kiá»ƒu xem">
+          <button class="icon-button${viewMode === "card" ? " is-active" : ""}" type="button" data-idea-view="card" aria-label="Xem dáº¡ng tháº»" title="Xem dáº¡ng tháº»">${icon("grid_view")}</button>
+          <button class="icon-button${viewMode === "list" ? " is-active" : ""}" type="button" data-idea-view="list" aria-label="Xem dáº¡ng list" title="Xem dáº¡ng list">${icon("view_list")}</button>
+        </div>
+        <div class="idea-tag-filter" aria-label="Lá»c theo tag">
+          <button class="idea-tag-filter__chip${state.ideaTagFilter === "all" ? " is-active" : ""}" type="button" data-idea-tag-filter="all">Táº¥t cáº£</button>
+          ${tags.map((tag) => `<button class="idea-tag-filter__chip${ideaTagKey(state.ideaTagFilter) === ideaTagKey(tag) ? " is-active" : ""}" type="button" data-idea-tag-filter="${escapeHtml(tag)}">#${escapeUiText(tag)}</button>`).join("")}
+        </div>
+      </div>
+      <div class="${viewMode === "list" ? "idea-list" : "idea-grid"}">
+        ${filtered.length ? filtered.map((idea) => viewMode === "list" ? ideaListItem(idea) : ideaCard(idea)).join("") : `<div class="empty">ChÆ°a cÃ³ idea phÃ¹ há»£p.</div>`}
       </div>
     </section>
+  `;
+}
+
+function ideaCard(idea) {
+  const previewDisabled = idea.url ? "" : " disabled";
+  return `
+    <article class="idea-card">
+      <div class="idea-card-actions">
+        <button class="icon-button" type="button" data-refresh-idea-preview="${idea.id}" aria-label="Láº¥y thumbnail" title="Láº¥y thumbnail"${previewDisabled}>${icon("image_search")}</button>
+        <button class="icon-button" type="button" data-edit-idea-note="${idea.id}" aria-label="Sá»­a ghi chÃº" title="Sá»­a ghi chÃº">${icon("edit_note")}</button>
+        <button class="icon-button" type="button" data-edit-idea-tags="${idea.id}" aria-label="Sá»­a tag" title="Sá»­a tag">${icon("sell")}</button>
+        <button class="icon-button" type="button" data-copy-idea="${idea.id}" aria-label="Sao chÃ©p link" title="Sao chÃ©p link">${icon("content_copy")}</button>
+        <button class="icon-button danger-button" type="button" data-delete-idea="${idea.id}" aria-label="XÃ³a idea" title="XÃ³a idea">${icon("delete")}</button>
+      </div>
+      ${ideaMediaHtml(idea, "idea-thumbnail")}
+      <div class="idea-content">
+        <h3>${escapeUiText(idea.title)}</h3>
+        ${ideaLinkHtml(idea)}
+        <div class="idea-tags">${ideaTagPills(idea)}</div>
+        <p>${escapeUiText(idea.note || "ChÆ°a cÃ³ ghi chÃº.")}</p>
+      </div>
+    </article>
+  `;
+}
+
+function ideaListItem(idea) {
+  const previewDisabled = idea.url ? "" : " disabled";
+  return `
+    <article class="idea-list-row">
+      ${ideaMediaHtml(idea, "idea-list-row__preview")}
+      <div class="idea-list-row__main">
+        <h3>${escapeUiText(ideaPreviewTitle(idea))}</h3>
+        ${ideaLinkHtml(idea)}
+        <p>${escapeUiText(idea.note || idea.title || "ChÆ°a cÃ³ ghi chÃº.")}</p>
+        <div class="idea-tags">${ideaTagPills(idea)}</div>
+      </div>
+      <div class="idea-list-row__actions">
+        <button class="icon-button" type="button" data-refresh-idea-preview="${idea.id}" aria-label="Láº¥y thumbnail" title="Láº¥y thumbnail"${previewDisabled}>${icon("image_search")}</button>
+        <button class="icon-button" type="button" data-edit-idea-note="${idea.id}" aria-label="Sá»­a ghi chÃº" title="Sá»­a ghi chÃº">${icon("edit_note")}</button>
+        <button class="icon-button" type="button" data-edit-idea-tags="${idea.id}" aria-label="Sá»­a tag" title="Sá»­a tag">${icon("sell")}</button>
+        <button class="icon-button" type="button" data-copy-idea="${idea.id}" aria-label="Sao chÃ©p link" title="Sao chÃ©p link">${icon("content_copy")}</button>
+        <button class="icon-button danger-button" type="button" data-delete-idea="${idea.id}" aria-label="XÃ³a idea" title="XÃ³a idea">${icon("delete")}</button>
+      </div>
+    </article>
   `;
 }
 
@@ -5324,6 +5498,114 @@ function ideaThumbnailUrl(idea) {
     return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`;
   } catch {
     return "";
+  }
+}
+
+function readIdeaImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadIdeaImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = dataUrl;
+  });
+}
+
+async function normalizeIdeaImageFile(file) {
+  if (!file?.type?.startsWith("image/")) return "";
+  const dataUrl = await readIdeaImageFile(file);
+  try {
+    const image = await loadIdeaImage(dataUrl);
+    const maxSide = 1400;
+    const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.86);
+  } catch {
+    return dataUrl;
+  }
+}
+
+function setIdeaImagePreview(src = "") {
+  const preview = document.querySelector("#ideaImagePreview");
+  const pasteZone = document.querySelector("#ideaPasteZone");
+  const clearButton = document.querySelector("[data-clear-idea-image]");
+  if (!preview) return;
+  if (!src) {
+    preview.hidden = true;
+    preview.innerHTML = "";
+    pasteZone?.classList.remove("has-image");
+    clearButton?.setAttribute("hidden", "");
+    return;
+  }
+  preview.hidden = false;
+  preview.innerHTML = `<img src="${escapeHtml(src)}" alt="" />`;
+  pasteZone?.classList.add("has-image");
+  clearButton?.removeAttribute("hidden");
+}
+
+async function handleIdeaImageFile(file) {
+  const imageData = await normalizeIdeaImageFile(file);
+  if (!imageData) return;
+  const input = document.querySelector("#ideaThumbnail");
+  if (input) input.value = imageData;
+  setIdeaImagePreview(imageData);
+  showToast("Đã dán ảnh vào idea");
+}
+
+async function fetchIdeaPreview(url) {
+  if (!url) return null;
+  const response = await fetch(`/api/workspace/link-preview?url=${encodeURIComponent(url)}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "KhÃ´ng láº¥y Ä‘Æ°á»£c preview");
+  return payload.data || null;
+}
+
+function applyIdeaPreview(idea, preview = {}) {
+  if (!idea || !preview) return false;
+  let changed = false;
+  if (preview.title && !idea.sourceTitle) {
+    idea.sourceTitle = preview.title;
+    changed = true;
+  }
+  if (preview.domain && !idea.sourceDomain) {
+    idea.sourceDomain = preview.domain;
+    changed = true;
+  }
+  if (preview.image && !idea.thumbnail) {
+    idea.thumbnail = preview.image;
+    changed = true;
+  }
+  return changed;
+}
+
+async function refreshIdeaPreview(ideaId, options = {}) {
+  const idea = state.ideas.find((item) => item.id === ideaId);
+  if (!idea?.url) {
+    if (options.toast !== false) showToast("Idea n\u00e0y ch\u01b0a c\u00f3 link \u0111\u1ec3 l\u1ea5y thumbnail");
+    return;
+  }
+  try {
+    const preview = await fetchIdeaPreview(idea.url);
+    const changed = applyIdeaPreview(idea, preview);
+    if (changed) {
+      writeStore("ta.ideas", state.ideas);
+      render();
+    }
+    if (options.toast !== false) showToast(changed ? "ÄÃ£ láº¥y thumbnail cho idea" : "Link nÃ y chÆ°a cÃ³ thumbnail má»›i");
+  } catch {
+    if (options.toast !== false) showToast("Kh\u00f4ng t\u1ef1 l\u1ea5y thumbnail, anh d\u00e1n link \u1ea3nh th\u1ee7 c\u00f4ng nh\u00e9");
   }
 }
 
@@ -6469,26 +6751,89 @@ function bindViewEvents() {
     state.ideaFormOpen = !state.ideaFormOpen;
     render();
   });
-  document.querySelector("#ideaForm")?.addEventListener("submit", (event) => {
+  document.querySelectorAll("[data-idea-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.ideaViewMode = button.dataset.ideaView === "list" ? "list" : "card";
+      localStorage.setItem("ta.ideaViewMode", state.ideaViewMode);
+      render();
+    });
+  });
+  document.querySelectorAll("[data-idea-tag-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.ideaTagFilter = button.dataset.ideaTagFilter || "all";
+      localStorage.setItem("ta.ideaTagFilter", state.ideaTagFilter);
+      render();
+    });
+  });
+  const ideaForm = document.querySelector("#ideaForm");
+  ideaForm?.addEventListener("paste", async (event) => {
+    const file = Array.from(event.clipboardData?.files || []).find((item) => item.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault();
+    await handleIdeaImageFile(file);
+  });
+  document.querySelector("#ideaThumbnail")?.addEventListener("input", (event) => {
+    setIdeaImagePreview(event.target.value.trim());
+  });
+  document.querySelector("[data-clear-idea-image]")?.addEventListener("click", () => {
+    const input = document.querySelector("#ideaThumbnail");
+    if (input) input.value = "";
+    setIdeaImagePreview("");
+  });
+  document.querySelector("#ideaPasteZone")?.addEventListener("click", () => {
+    document.querySelector("#ideaPasteZone")?.focus();
+  });
+  ideaForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const title = document.querySelector("#ideaTitle").value.trim();
     const url = document.querySelector("#ideaUrl").value.trim();
-    if (!title || !url) return showToast("Nháº­p tiÃªu Ä‘á» vÃ  link trÆ°á»›c");
-    state.ideas.unshift({
+    const note = document.querySelector("#ideaNote").value.trim();
+    const thumbnail = document.querySelector("#ideaThumbnail")?.value.trim() || "";
+    if (!title && !url && !note && !thumbnail) return showToast("Th\u00eam \u00edt nh\u1ea5t link, \u1ea3nh ho\u1eb7c ghi ch\u00fa tr\u01b0\u1edbc");
+    const idea = {
       id: crypto.randomUUID(),
-      title,
+      title: title || (url ? "Link idea" : thumbnail ? "\u1ea2nh \u0111\u00e3 l\u01b0u" : "Ghi ch\u00fa idea"),
       url,
-      note: document.querySelector("#ideaNote").value.trim(),
+      note,
+      thumbnail,
+      tags: normalizeIdeaTags(document.querySelector("#ideaTags")?.value || ""),
       createdAt: new Date().toISOString(),
-    });
+    };
+    state.ideas.unshift(idea);
     state.ideaFormOpen = false;
     writeStore("ta.ideas", state.ideas);
     render();
+    if (idea.url && !idea.thumbnail) refreshIdeaPreview(idea.id, { toast: false });
+  });
+  document.querySelectorAll("[data-refresh-idea-preview]").forEach((button) => {
+    button.addEventListener("click", () => refreshIdeaPreview(button.dataset.refreshIdeaPreview));
+  });
+  document.querySelectorAll("[data-edit-idea-note]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const idea = state.ideas.find((item) => item.id === button.dataset.editIdeaNote);
+      if (!idea) return;
+      const nextNote = window.prompt("Nh\u1eadp ghi ch\u00fa cho idea", idea.note || "");
+      if (nextNote === null) return;
+      idea.note = nextNote.trim();
+      writeStore("ta.ideas", state.ideas);
+      render();
+    });
+  });
+  document.querySelectorAll("[data-edit-idea-tags]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const idea = state.ideas.find((item) => item.id === button.dataset.editIdeaTags);
+      if (!idea) return;
+      const nextTags = window.prompt("Nháº­p tag, ngÄƒn cÃ¡ch báº±ng dáº¥u pháº©y", ideaTags(idea).join(", "));
+      if (nextTags === null) return;
+      idea.tags = normalizeIdeaTags(nextTags);
+      writeStore("ta.ideas", state.ideas);
+      render();
+    });
   });
   document.querySelectorAll("[data-copy-idea]").forEach((button) => {
     button.addEventListener("click", () => {
       const idea = state.ideas.find((item) => item.id === button.dataset.copyIdea);
-      copyText(idea?.url || "", "ÄÃ£ sao chÃ©p link idea");
+      copyText(idea?.url || idea?.note || idea?.title || "", "ÄÃ£ sao chÃ©p idea");
     });
   });
   document.querySelectorAll("[data-delete-idea]").forEach((button) => {

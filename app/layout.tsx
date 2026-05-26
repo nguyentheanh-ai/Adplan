@@ -3,7 +3,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Greezhub Workspace",
+  title: "The Anh Marketing Workspace",
   description: "SaaS dashboard cho Workspace, kế hoạch nội dung và Ads Facebook."
 };
 

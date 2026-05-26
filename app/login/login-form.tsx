@@ -32,7 +32,7 @@ export function LoginForm() {
             </div>
             <div>
               <p className="text-[22px] font-extrabold leading-none text-on-background">TA Marketing</p>
-              <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Greezhub Workspace</p>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">The Anh Marketing Workspace</p>
             </div>
           </div>
         </div>

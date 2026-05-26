@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -67,11 +68,11 @@ export function AppShell({
       >
         <div className="flex items-center justify-between px-6 py-7">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-xl font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)]">
-              G
+            <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-xl border border-[#ece4d6] bg-white shadow-[0_14px_34px_rgba(17,17,19,0.12)]">
+              <Image alt="The Anh Marketing" className="h-full w-full object-contain" height={44} priority src="/brand/ta-mark.svg" width={44} />
             </div>
             <div>
-              <h1 className="text-lg font-extrabold leading-none text-[#0f172a]">Greezhub</h1>
+              <h1 className="text-lg font-extrabold leading-none text-[#0f172a]">The Anh Marketing</h1>
               <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Workspace</p>
             </div>
           </Link>
@@ -109,7 +110,7 @@ export function AppShell({
         </nav>
 
         <div className="px-6 py-6">
-          <p className="text-xs font-semibold text-slate-400">© 2026 Greezhub</p>
+          <p className="text-xs font-semibold text-slate-400">© 2026 The Anh Marketing</p>
         </div>
       </aside>
 
@@ -297,7 +298,7 @@ function AccountMenu() {
         </div>
         <div className="hidden text-right sm:block">
           <p className="max-w-[180px] truncate text-sm font-extrabold text-slate-900">{loading ? "Đang tải..." : displayName}</p>
-          <p className="text-[11px] uppercase tracking-wider text-slate-400">{facebookConnected ? "Facebook connected" : "Greezhub"}</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-400">{facebookConnected ? "Facebook connected" : "The Anh Marketing"}</p>
         </div>
         <MaterialIcon className="hidden text-[20px] text-slate-800 sm:block" name="keyboard_arrow_down" />
       </button>

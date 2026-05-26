@@ -16,7 +16,7 @@ export function GreezhubWorkspaceApp() {
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
       <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;600;700&display=swap" rel="stylesheet" />
-      <link rel="stylesheet" href="/greezhub-workspace/styles.css?v=20260525-next-port" />
+      <link rel="stylesheet" href="/greezhub-workspace/styles.css?v=20260527-ideas-media" />
 
       <div className="workspace-embedded">
         <div className="hidden" aria-hidden="true">
@@ -40,8 +40,8 @@ export function GreezhubWorkspaceApp() {
           __html: `window.WORKSPACE_REMOTE_CONFIG = { mode: "adplan_api", endpoint: "/api/workspace/app-state" }; window.SUPABASE_CONFIG = ${JSON.stringify(workspaceSupabaseConfig)};`
         }}
       />
-      <Script src="/greezhub-workspace/knowledge-seeds.js?v=20260525-next-port" strategy="afterInteractive" />
-      <Script src="/greezhub-workspace/app.js?v=20260525-next-port" strategy="afterInteractive" />
+      <Script src="/greezhub-workspace/knowledge-seeds.js?v=20260527-ideas-media" strategy="afterInteractive" />
+      <Script src="/greezhub-workspace/app.js?v=20260527-ideas-media" strategy="afterInteractive" />
     </>
   );
 }

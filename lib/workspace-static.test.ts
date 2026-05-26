@@ -225,6 +225,39 @@ describe("Greezhub workspace integration", () => {
     expect(app).not.toContain('title: "TÃ i liá»‡u má»›i"');
   });
 
+  it("supports idea list view, tags, and server-side link thumbnails", () => {
+    const app = read("public/greezhub-workspace/app.js");
+    const styles = read("public/greezhub-workspace/styles.css");
+    const route = read("app/api/workspace/link-preview/route.ts");
+
+    expect(app).toContain("ideaViewMode");
+    expect(app).toContain("ideaTagFilter");
+    expect(app).toContain("normalizeIdeaTags");
+    expect(app).toContain("normalizeIdeaImageFile");
+    expect(app).toContain("ideaListItem");
+    expect(app).toContain('data-idea-view="list"');
+    expect(app).toContain("data-idea-tag-filter");
+    expect(app).toContain("data-refresh-idea-preview");
+    expect(app).toContain("data-edit-idea-note");
+    expect(app).toContain("data-clear-idea-image");
+    expect(app).toContain("clipboardData");
+    expect(app).toContain("Th\\u00eam \\u00edt nh\\u1ea5t link");
+    expect(app).not.toContain('id="ideaUrl" type="url" placeholder="https://..." required');
+    expect(app).toContain("Nh\\u1eadp ghi ch\\u00fa cho idea");
+    expect(app).toContain("/api/workspace/link-preview?url=");
+    expect(app).toContain("sourceTitle");
+    expect(app).toContain("thumbnail");
+    expect(styles).toContain(".idea-list-row");
+    expect(styles).toContain(".idea-paste-zone");
+    expect(styles).toContain(".idea-image-preview");
+    expect(styles).toContain(".idea-tag-filter__chip");
+    expect(styles).toContain(".idea-tags");
+    expect(route).toContain("og:image");
+    expect(route).toContain("twitter:image");
+    expect(route).toContain("facebookexternalhit");
+    expect(route).toContain("isPrivateIpv4");
+  });
+
   it("scopes legacy utility classes so the embedded app cannot override AppShell responsive UI", () => {
     const styles = read("public/greezhub-workspace/styles.css");
 

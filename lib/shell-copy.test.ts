@@ -62,6 +62,17 @@ describe("shell customer-facing copy", () => {
     expect(appShell).not.toContain("navGroups");
   });
 
+  it("uses The Anh Marketing branding in the shared shell", () => {
+    const appShell = read("components/app-shell.tsx");
+    const layout = read("app/layout.tsx");
+    const loginForm = read("app/login/login-form.tsx");
+
+    expect(appShell).toContain("/brand/ta-mark.svg");
+    expect(appShell).toContain("The Anh Marketing");
+    expect(layout).toContain("The Anh Marketing Workspace");
+    expect(loginForm).toContain("The Anh Marketing Workspace");
+  });
+
   it("can hide the desktop sidebar completely and reopen it with an icon", () => {
     const appShell = read("components/app-shell.tsx");
 
