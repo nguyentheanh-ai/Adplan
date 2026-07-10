@@ -1,5 +1,14 @@
 # Session Log
 
+## 2026-07-10 - Verify recovery release candidate
+
+Phạm vi: integrate the preserved recovery checkpoint into `main`.
+Các file đã thay đổi: existing recovery checkpoint plus `CURRENT_STATE.md` and `SESSION_LOG.md`.
+Kết quả: fast-forward integration completed; remote backup branch exists; preview `dpl_Gq9oRFd894PA4a5DdVTgZEbUfgiU` is Ready.
+Kiểm tra đã chạy: 126/126 tests, typecheck, lint, local build, Vercel build and preview smoke.
+Việc còn lại: push `main` and verify live deployment.
+Cảnh báo: real Meta campaign actions remain conservative and protected.
+
 ## 2026-07-10 - Workspace governance
 
 Phạm vi: project identity, live domain, feature map and deploy documentation.
