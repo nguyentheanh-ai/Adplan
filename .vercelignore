@@ -1,0 +1,7 @@
+.git
+.next
+.serena
+node_modules
+*.log
+dev-server.log
+dev-adpilot*.log

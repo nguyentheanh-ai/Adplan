@@ -1,1 +1,5 @@
-export { default } from "../../creative/page";
+import { redirect } from "next/navigation";
+
+export default function RemovedCreativePage() {
+  redirect("/ads-facebook/campaigns");
+}

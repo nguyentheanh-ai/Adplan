@@ -1,1 +1,5 @@
-export { default } from "../../facebook-publisher/page";
+import { redirect } from "next/navigation";
+
+export default function RemovedPublisherPage() {
+  redirect("/ads-facebook/posts");
+}

@@ -9,6 +9,7 @@ import type {
   CampaignInsight,
   DailyInsight,
   DateRange,
+  FacebookPagePost,
   MetaAd,
   MetaAdWithCreative
 } from "@/lib/meta/types";
@@ -21,6 +22,31 @@ type MetaManagedPage = {
   name: string;
   category?: string;
   access_token?: string;
+};
+
+type PostSummaryCount = {
+  summary?: {
+    total_count?: number;
+  };
+};
+
+type MetaPagePostPayload = {
+  id: string;
+  message?: string;
+  created_time?: string;
+  permalink_url?: string;
+  likes?: PostSummaryCount;
+  comments?: PostSummaryCount;
+  shares?: {
+    count?: number;
+  };
+};
+
+type PostInsightMetric = {
+  name: string;
+  values?: Array<{
+    value?: number | Record<string, number>;
+  }>;
 };
 
 export type MetaApiErrorPayload = {
@@ -414,7 +440,7 @@ export async function getMetaDailyInsights(
     params: {
       level: "account",
       time_increment: "1",
-      fields: "date_start,date_stop,spend,impressions,reach,ctr,cpc,cpm,clicks",
+      fields: "date_start,date_stop,spend,impressions,reach,ctr,cpc,cpm,clicks,actions,cost_per_action_type",
       time_range: serializeDateRange(dateRange),
       limit: "100"
     }
@@ -488,6 +514,47 @@ async function getDirectManagedPages(accessToken?: string | null) {
     params: {
       fields: "id,name,category,access_token",
       limit: "100"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function getMetaCampaignDailyInsights(
+  adAccountIdInput: string | null | undefined,
+  dateRange: DateRange,
+  accessToken?: string | null
+) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const payload = await metaFetch<{ data: DailyInsight[] }>(`${adAccountId}/insights`, {
+    accessToken,
+    params: {
+      level: "campaign",
+      time_increment: "1",
+      fields: "campaign_id,campaign_name,date_start,date_stop,spend,impressions,reach,ctr,cpc,cpm,clicks,actions,cost_per_action_type",
+      time_range: serializeDateRange(dateRange),
+      limit: "500"
+    }
+  });
+
+  return payload.data ?? [];
+}
+
+export async function getMetaHourlyAccountInsights(
+  adAccountIdInput: string | null | undefined,
+  dateRange: DateRange,
+  accessToken?: string | null
+) {
+  const adAccountId = resolveAdAccountId(adAccountIdInput);
+  const payload = await metaFetch<{ data: DailyInsight[] }>(`${adAccountId}/insights`, {
+    accessToken,
+    params: {
+      level: "account",
+      breakdowns: "hourly_stats_aggregated_by_advertiser_time_zone",
+      time_increment: "1",
+      fields: "date_start,date_stop,spend,impressions,reach,ctr,cpc,cpm,clicks,actions,cost_per_action_type",
+      time_range: serializeDateRange(dateRange),
+      limit: "1000"
     }
   });
 
@@ -581,16 +648,73 @@ export async function getMetaPagePosts({
   accessToken?: string | null;
 }) {
   const payload = await metaFetch<{
-    data: Array<{ id: string; message?: string; created_time?: string; permalink_url?: string }>;
+    data: MetaPagePostPayload[];
   }>(`${pageId}/posts`, {
     accessToken,
     params: {
-      fields: "id,message,created_time,permalink_url",
+      fields: "id,message,created_time,permalink_url,likes.limit(0).summary(true),comments.limit(0).summary(true),shares",
       limit: "20"
     }
   });
 
-  return payload.data ?? [];
+  const posts = payload.data ?? [];
+  const enriched = await Promise.all(posts.map((post) => enrichPagePostMetrics(post, accessToken)));
+  return enriched;
+}
+
+async function enrichPagePostMetrics(post: MetaPagePostPayload, accessToken?: string | null): Promise<FacebookPagePost> {
+  const base: FacebookPagePost = {
+    id: post.id,
+    message: post.message,
+    created_time: post.created_time,
+    permalink_url: post.permalink_url,
+    like_count: post.likes?.summary?.total_count ?? 0,
+    comment_count: post.comments?.summary?.total_count ?? 0,
+    share_count: post.shares?.count ?? 0,
+    reach: 0,
+    impressions: 0,
+    engaged_users: 0,
+    clicks: 0,
+    reactions_by_type: {}
+  };
+
+  try {
+    const payload = await metaFetch<{ data?: PostInsightMetric[] }>(`${post.id}/insights`, {
+      accessToken,
+      params: {
+        metric: [
+          "post_impressions",
+          "post_impressions_unique",
+          "post_engaged_users",
+          "post_clicks",
+          "post_reactions_by_type_total"
+        ].join(",")
+      }
+    });
+    const metrics = payload.data ?? [];
+    return {
+      ...base,
+      impressions: getPostInsightNumber(metrics, "post_impressions"),
+      reach: getPostInsightNumber(metrics, "post_impressions_unique"),
+      engaged_users: getPostInsightNumber(metrics, "post_engaged_users"),
+      clicks: getPostInsightNumber(metrics, "post_clicks"),
+      reactions_by_type: getPostInsightObject(metrics, "post_reactions_by_type_total")
+    };
+  } catch (error) {
+    if (error instanceof MetaApiError) return base;
+    throw error;
+  }
+}
+
+function getPostInsightNumber(metrics: PostInsightMetric[], name: string) {
+  const value = metrics.find((metric) => metric.name === name)?.values?.[0]?.value;
+  return typeof value === "number" ? value : 0;
+}
+
+function getPostInsightObject(metrics: PostInsightMetric[], name: string) {
+  const value = metrics.find((metric) => metric.name === name)?.values?.[0]?.value;
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(Object.entries(value).map(([key, count]) => [key, typeof count === "number" ? count : 0]));
 }
 
 export async function publishMetaPageFeedPost({

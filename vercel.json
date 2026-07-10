@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/facebook-auto-publisher",
-      "schedule": "5 0 * * *"
+      "path": "/api/cron/revenue-telegram-report",
+      "schedule": "5 10 * * *"
     }
   ]
 }

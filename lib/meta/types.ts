@@ -114,6 +114,9 @@ export type AccountInsight = CampaignInsight;
 export type DailyInsight = {
   date_start: string;
   date_stop?: string;
+  hourly_stats_aggregated_by_advertiser_time_zone?: string;
+  campaign_id?: string;
+  campaign_name?: string;
   spend?: string;
   impressions?: string;
   reach?: string;
@@ -121,6 +124,8 @@ export type DailyInsight = {
   cpc?: string;
   cpm?: string;
   clicks?: string;
+  actions?: Array<{ action_type: string; value: string }>;
+  cost_per_action_type?: Array<{ action_type: string; value: string }>;
 };
 
 export type BreakdownType = "age" | "gender" | "placement";
@@ -344,6 +349,14 @@ export type FacebookPagePost = {
   message?: string;
   created_time?: string;
   permalink_url?: string;
+  like_count?: number;
+  comment_count?: number;
+  share_count?: number;
+  reach?: number;
+  impressions?: number;
+  engaged_users?: number;
+  clicks?: number;
+  reactions_by_type?: Record<string, number>;
 };
 
 export type CreativeAsset = {

@@ -22,10 +22,12 @@
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.0",
+    "@types/luxon": "^3.7.1",
     "clsx": "^2.1.1",
     "facebook-nodejs-business-sdk": "^24.0.1",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.16.0",
+    "luxon": "^3.7.2",
     "next": "^16.2.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

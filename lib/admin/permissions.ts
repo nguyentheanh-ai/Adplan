@@ -202,6 +202,14 @@ export async function requireAdminRole() {
   return permission;
 }
 
+export async function requireOwnerRole() {
+  const permission = await getCurrentPermission();
+  if (!permission || permission.role !== "owner") {
+    throw new Error("Bạn không có quyền truy cập báo cáo này.");
+  }
+  return permission;
+}
+
 export function canAccessSection(permission: AdminUserPermission | null, section: string) {
   if (!permission) return false;
   if (permission.role === "owner" || permission.role === "manager") return true;

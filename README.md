@@ -31,11 +31,15 @@ GEMINI_API_KEY=
 N8N_WEBHOOK_URL=
 META_APP_ID=
 META_APP_SECRET=
+META_ACCESS_TOKEN=
+META_AD_ACCOUNT_ID=act_1255736315302940
 META_API_VERSION=v23.0
 NEXT_PUBLIC_SITE_URL=https://adsplan.theanhmarketing.com
 ADMIN_FACEBOOK_IDS=
 ADMIN_FACEBOOK_PROFILE_URLS=
 ADMIN_FACEBOOK_USERNAMES=
+REVENUE_REPORT_SUPABASE_URL=
+REVENUE_REPORT_SUPABASE_SERVICE_ROLE_KEY=
 ```
 
 Bạn có thể cấp admin theo 1 trong 3 cách:
@@ -97,12 +101,20 @@ npm run dev
 - `GET/POST /api/saved-audiences`
 - `GET /api/admin/me`
 - `GET/PATCH /api/admin/users`
+- `GET /api/admin/community-users`
+- `GET /api/admin/revenue-report/summary`
+- `GET /api/admin/revenue-report/timeseries`
+- `GET /api/admin/revenue-report/orders`
+- `GET /api/admin/revenue-report/meta-insights`
 
 ## Lưu ý bảo mật
 
 - Không expose `META_ACCESS_TOKEN` hoặc `META_APP_SECRET` ra frontend.
 - Tất cả gọi Meta API thực hiện ở server route.
 - Campaign tạo thật luôn ở trạng thái `PAUSED`.
+- Báo cáo doanh thu chỉ dành cho role `owner`; menu frontend chỉ hiện với owner và API/page đều guard server-side.
+- Revenue report đọc `orders`/`leads` server-side từ Supabase. Nếu khác DB với web chính, cấu hình `REVENUE_REPORT_SUPABASE_URL` và `REVENUE_REPORT_SUPABASE_SERVICE_ROLE_KEY`; không scrape admin page và không fake số liệu khi thiếu bảng/token.
+- Community users trong Settings đọc read-only từ `orders`/`leads` website qua cùng `REVENUE_REPORT_SUPABASE_*`, dedupe theo email/phone và chỉ owner xem được; không tự cấp quyền Adplan cho các user này.
 
 ## Kiểm tra trước deploy
 

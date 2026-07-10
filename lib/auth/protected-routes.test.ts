@@ -4,9 +4,9 @@ import { buildLoginRedirectPath, hasAppSessionCookie, shouldRequireAppLogin } fr
 describe("protected app routes", () => {
   it("requires login for main app pages", () => {
     expect(shouldRequireAppLogin("/")).toBe(true);
-    expect(shouldRequireAppLogin("/workspace")).toBe(true);
+    expect(shouldRequireAppLogin("/ads-facebook/campaigns")).toBe(true);
     expect(shouldRequireAppLogin("/settings")).toBe(true);
-    expect(shouldRequireAppLogin("/ads-facebook/reports")).toBe(true);
+    expect(shouldRequireAppLogin("/ads-facebook/posts")).toBe(true);
   });
 
   it("keeps login, auth callback, api routes and assets public", () => {

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap");
 
 @tailwind base;
@@ -19,9 +19,9 @@ html {
 
 body {
   margin: 0;
-  background: #faf9ff;
-  color: #051a3e;
-  font-family: "Hanken Grotesk", Inter, system-ui, sans-serif;
+  background: #f9f9ff;
+  color: #151c27;
+  font-family: Inter, system-ui, sans-serif;
 }
 
 button,
@@ -67,11 +67,11 @@ select {
 }
 
 .ai-gradient-bg {
-  background: linear-gradient(135deg, #004cca 0%, #6b38d4 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #006c49 100%);
 }
 
 .ai-gradient-text {
-  background: linear-gradient(135deg, #004cca 0%, #6b38d4 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #006c49 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -144,21 +144,20 @@ select {
 .dashboard-input {
   height: 2.5rem;
   width: 100%;
-  border-radius: 0.5rem;
-  border: 1px solid #c3c6d6;
+  border-radius: 0.375rem;
+  border: 1px solid #d1d5db;
   background: #ffffff;
   padding: 0 0.75rem;
   font-size: 0.875rem;
-  font-weight: 600;
-  color: #051a3e;
+  font-weight: 500;
+  color: #151c27;
   outline: none;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .dashboard-input:focus {
-  border-width: 2px;
-  border-color: #003d9b;
-  box-shadow: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 2px rgb(79 70 229 / 0.18);
 }
 
 .mono-data {
@@ -174,6 +173,15 @@ select {
   }
   100% {
     transform: translateY(0);
+  }
+}
+
+@keyframes adpilot-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(220%);
   }
 }
 

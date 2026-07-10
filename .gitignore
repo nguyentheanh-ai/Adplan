@@ -11,10 +11,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.next-dev*.log
 
 dev-server.log
 tsconfig.tsbuildinfo
 stitch_ai_fb_ads_planner/
 .codex-screenshots/
+.serena/
 
 .vercel

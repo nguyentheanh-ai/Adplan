@@ -5,7 +5,9 @@ import {
   createAdsetFromSourceOnMeta,
   createPausedMetaCampaign,
   getMetaAdAccounts,
+  getMetaHourlyAccountInsights,
   getMetaManagedPages,
+  getMetaPagePosts,
   getMetaCampaigns
 } from "./facebook";
 
@@ -88,6 +90,18 @@ describe("classifyMetaError", () => {
         })
       })
     );
+  });
+
+  it("requests hourly account insights with daily increments so multi-day ranges do not collapse into one date", async () => {
+    vi.stubEnv("META_API_VERSION", "v23.0");
+    const fetchMock = vi.fn(async () => Response.json({ data: [] }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await getMetaHourlyAccountInsights("act_1295473488844957", { startDate: "2026-06-01", endDate: "2026-06-14" }, "facebook-provider-token");
+
+    const [url] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.searchParams.get("breakdowns")).toBe("hourly_stats_aggregated_by_advertiser_time_zone");
+    expect(url.searchParams.get("time_increment")).toBe("1");
   });
 
   it("creates campaigns as paused in the selected ad account", async () => {
@@ -188,6 +202,107 @@ describe("classifyMetaError", () => {
       }),
       expect.any(Object)
     );
+  });
+
+  it("enriches Page posts with engagement and insight metrics", async () => {
+    vi.stubEnv("META_API_VERSION", "v23.0");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [
+            {
+              id: "page_1_post_1",
+              message: "Post 1",
+              created_time: "2026-06-01T00:00:00+0000",
+              permalink_url: "https://facebook.com/post-1",
+              likes: { summary: { total_count: 12 } },
+              comments: { summary: { total_count: 3 } },
+              shares: { count: 2 }
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [
+            { name: "post_impressions", values: [{ value: 1000 }] },
+            { name: "post_impressions_unique", values: [{ value: 750 }] },
+            { name: "post_engaged_users", values: [{ value: 88 }] },
+            { name: "post_clicks", values: [{ value: 24 }] },
+            { name: "post_reactions_by_type_total", values: [{ value: { like: 10, love: 2 } }] }
+          ]
+        })
+      );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const posts = await getMetaPagePosts({ pageId: "page_1", accessToken: "page-token" });
+
+    expect(posts[0]).toMatchObject({
+      id: "page_1_post_1",
+      like_count: 12,
+      comment_count: 3,
+      share_count: 2,
+      impressions: 1000,
+      reach: 750,
+      engaged_users: 88,
+      clicks: 24,
+      reactions_by_type: { like: 10, love: 2 }
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: expect.stringContaining("/v23.0/page_1/posts?")
+      }),
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: expect.stringContaining("/v23.0/page_1_post_1/insights?")
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("keeps Page posts visible when post insights are not available", async () => {
+    vi.stubEnv("META_API_VERSION", "v23.0");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [
+            {
+              id: "page_1_post_1",
+              message: "Post 1",
+              likes: { summary: { total_count: 4 } },
+              comments: { summary: { total_count: 1 } }
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            error: {
+              code: 200,
+              message: "Permissions error"
+            }
+          },
+          { status: 403 }
+        )
+      );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const posts = await getMetaPagePosts({ pageId: "page_1", accessToken: "page-token" });
+
+    expect(posts[0]).toMatchObject({
+      id: "page_1_post_1",
+      like_count: 4,
+      comment_count: 1,
+      reach: 0,
+      impressions: 0,
+      engaged_users: 0,
+      clicks: 0
+    });
   });
 
   it("copies an adset through Meta copies endpoint with campaign_id and deep copy", async () => {

@@ -3,8 +3,8 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "The Anh Marketing Workspace",
-  description: "SaaS dashboard cho Workspace, kế hoạch nội dung và Ads Facebook."
+  title: "AdPilot Marketing Console",
+  description: "Operational dashboard for Meta ads reporting and Facebook Page publishing."
 };
 
 export default function RootLayout({

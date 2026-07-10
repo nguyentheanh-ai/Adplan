@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getCachedJson, getCachedState, setCachedState } from "@/lib/meta/client-cache";
 import { applyDefaultAdAccount, getDefaultAdAccountId, setDefaultAdAccountId } from "@/lib/meta/default-account";
-import type { MetaIntelligenceDashboardData, NormalizedCampaignPerformance } from "@/lib/meta/types";
+import type { DailyInsight, MetaIntelligenceDashboardData, NormalizedCampaignPerformance } from "@/lib/meta/types";
 import { formatMoney, formatNumber, formatPercent } from "@/lib/reports/ads-report";
 import { campaignMetricValue } from "@/lib/reports/meta-intelligence";
 
@@ -389,7 +389,7 @@ function DailyChart({
   currency,
   compact = false
 }: {
-  rows: Array<Record<string, string | undefined>>;
+  rows: DailyInsight[];
   metric: MetricKey;
   chartType: ChartType;
   currency: string;

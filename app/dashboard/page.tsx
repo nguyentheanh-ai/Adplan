@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function DashboardPage() {
-  redirect("/ads-facebook");
+export default function RemovedDashboardPage() {
+  redirect("/");
 }

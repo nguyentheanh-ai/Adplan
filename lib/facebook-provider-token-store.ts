@@ -96,3 +96,25 @@ export async function getStoredFacebookProviderToken(userId: string) {
     grantedScopes: data.granted_scopes ?? []
   };
 }
+
+export async function getStoredFacebookProviderTokenCandidates() {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("facebook_provider_tokens")
+    .select("user_id,facebook_user_id,access_token_encrypted,token_expires_at,granted_scopes,created_at,updated_at")
+    .or(`token_expires_at.is.null,token_expires_at.gt.${new Date().toISOString()}`)
+    .order("updated_at", { ascending: false })
+    .limit(10)
+    .returns<StoredProviderTokenRow[]>();
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    userId: row.user_id,
+    facebookUserId: row.facebook_user_id || null,
+    accessToken: decryptStoredFacebookToken(row.access_token_encrypted),
+    expiresAt: row.token_expires_at || null,
+    grantedScopes: row.granted_scopes ?? [],
+    updatedAt: row.updated_at || null
+  }));
+}
